@@ -148,7 +148,7 @@ def send_telegram_msg(chat_id, text, timeout=8, retries=2, pin=False):
             print(f"[TELEGRAM SEND EXCEPTION] {e}", flush=True)
     return False
 
-def pin_telegram_msg(chat_id, message_id, disable_notification=True):
+def pin_telegram_msg(chat_id, message_id, disable_notification=False):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/pinChatMessage"
     payload = {
         "chat_id": chat_id,
@@ -819,8 +819,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
 
     # Tier 1: POST-STOP-LOSS ULTRA-SNIPER GUARD
     if POST_STOP_LOSS_GUARD:
-        if w_v < 12 or weight_ratio < 0.76 or calc_conf < 87.0 or (w_v - l_v) < 6:
-            shield_desc = f"Post-Stop-Loss Ultra-Sniper Guard active ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Waiting for 12+/15 Golden Setup to guarantee win."
+        if w_v < 13 or weight_ratio < 0.85 or calc_conf < 91.0 or (w_v - l_v) < 8:
+            shield_desc = f"Post-Stop-Loss Ultra-Sniper Guard active ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Waiting for 13+/15 Golden Setup to guarantee win."
             return "WAIT", 0.0, shield_desc, "💎 Capital Shield (Post-Stop-Loss Golden Sniper)", False, "SHIELD"
         else:
             POST_STOP_LOSS_GUARD = False
@@ -828,14 +828,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
 
     # Tier 2: LEVEL 2 RECOVERY GUARD (When current_loss_streak == 1)
     elif current_loss_streak == 1:
-        if w_v < 11 or weight_ratio < 0.74 or calc_conf < 86.0 or (w_v - l_v) < 5:
-            shield_desc = f"Level 2 Recovery armed ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Sub-optimal consensus filtered. Awaiting 11+ sniper setup to prevent 2nd loss."
+        if w_v < 13 or weight_ratio < 0.82 or calc_conf < 89.0 or (w_v - l_v) < 8:
+            shield_desc = f"Level 2 Recovery armed ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Sub-optimal consensus filtered. Awaiting 13+ super-sniper setup to prevent 2nd loss."
             return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 2 Recovery Guard)", False, "SHIELD"
         signal_grade = "GRADE_A_PLUS"
 
     # Tier 3: LEVEL 1 BASE BET SNIPER FILTER (Zero-Loss Mandate)
     else:
-        if w_v < 10 or weight_ratio < 0.68 or calc_conf < 82.0 or (w_v - l_v) < 4:
+        if w_v < 12 or weight_ratio < 0.78 or calc_conf < 86.0 or (w_v - l_v) < 6:
             shield_desc = f"Council consensus split ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Setup filtered to guarantee zero-loss accuracy."
             return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Selective Sniper Filter)", False, "SHIELD"
         signal_grade = "GRADE_A"
