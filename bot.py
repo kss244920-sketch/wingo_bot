@@ -123,6 +123,8 @@ def send_telegram_msg(chat_id, text, timeout=8, retries=1):
             r = requests.post(url, json=payload, timeout=timeout)
             if r.status_code == 200:
                 return True
+            else:
+                print(f"[TELEGRAM API ERROR] Status {r.status_code}: {r.text}", flush=True)
         except Exception:
             if attempt < retries:
                 time.sleep(0.5)
