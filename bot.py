@@ -116,7 +116,7 @@ def save_cache():
     except Exception:
         pass
 
-def send_telegram_msg(chat_id, text, timeout=8, retries=1, pin=False):
+def send_telegram_msg(chat_id, text, timeout=8, retries=2, pin=False):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     for attempt in range(retries + 1):
@@ -128,13 +128,24 @@ def send_telegram_msg(chat_id, text, timeout=8, retries=1, pin=False):
                 if pin and msg_id:
                     pin_telegram_msg(chat_id, msg_id)
                 return msg_id or True
+            elif r.status_code == 429:
+                retry_after = 1
+                try:
+                    retry_after = int(r.json().get("parameters", {}).get("retry_after", 1))
+                except Exception:
+                    pass
+                time.sleep(min(retry_after, 3))
+                continue
+            elif r.status_code == 400 and "can't parse entities" in r.text.lower():
+                payload.pop("parse_mode", None)
+                continue
             else:
                 print(f"[TELEGRAM API ERROR] Status {r.status_code}: {r.text}", flush=True)
-        except Exception:
+        except Exception as e:
             if attempt < retries:
                 time.sleep(0.5)
                 continue
-            raise
+            print(f"[TELEGRAM SEND EXCEPTION] {e}", flush=True)
     return False
 
 def pin_telegram_msg(chat_id, message_id, disable_notification=True):
@@ -144,14 +155,21 @@ def pin_telegram_msg(chat_id, message_id, disable_notification=True):
         "message_id": message_id,
         "disable_notification": disable_notification
     }
-    try:
-        r = requests.post(url, json=payload, timeout=6)
-        if r.status_code == 200:
-            return True
-        else:
-            print(f"[PIN ERROR] Status {r.status_code}: {r.text}", flush=True)
-    except Exception as e:
-        print(f"[PIN EXCEPTION] {e}", flush=True)
+    for attempt in range(2):
+        try:
+            r = requests.post(url, json=payload, timeout=6)
+            if r.status_code == 200:
+                return True
+            elif r.status_code == 429:
+                time.sleep(1)
+                continue
+            else:
+                print(f"[PIN ERROR] Status {r.status_code}: {r.text}", flush=True)
+        except Exception as e:
+            if attempt < 1:
+                time.sleep(0.5)
+                continue
+            print(f"[PIN EXCEPTION] {e}", flush=True)
     return False
 
 def save_to_memory(period, number, raw_color, auto_save=True):
