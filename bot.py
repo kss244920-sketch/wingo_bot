@@ -13,8 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 # ⚙️ CONFIGURATION & API KEYS
 # ====================================================
 TELEGRAM_BOT_TOKEN = "8602171474:AAGYklXRTUbvinIRsLVsUOt9TsKApQUBhYA"
-USER_ALERT_CHAT_ID = "8327850869"          # Direct DM for signals
-STORAGE_CHANNEL_ID = "-1003707286637"      # Unlimited Cloud Storage Channel
+USER_ALERT_CHAT_ID = "-1003707286637"          # Official Prediction Channel (@OwEnvy)
+STORAGE_CHANNEL_ID = None                      # Disabled raw DB logging so channel stays clean
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
@@ -165,6 +165,9 @@ def save_to_memory(period, number, raw_color, auto_save=True):
 # 📡 TELEGRAM STORAGE CHANNEL SYNC
 # ====================================================
 def log_round_to_storage_channel(period, number, base_color, has_violet, size):
+    if not STORAGE_CHANNEL_ID:
+        return
+
     if has_violet:
         c_tag = "🔴 RED + 🟣 VIOLET" if base_color == "RED" else "🟢 GREEN + 🟣 VIOLET"
     else:
@@ -676,9 +679,12 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_LOSS_STREAK = 0
         TOTAL_WINS += 1
         if is_violet:
-            header = "✅ <b>WIN (Mixed 🟣 Violet Hit!)</b>"
+            if pred.get("violet_alert"):
+                header = "🟣 <b>JACKPOT VIOLET WIN (4.5x Payout)!</b>"
+            else:
+                header = "🟡 <b>HALF WIN (1.5x Payout - Mixed Violet)</b>"
         else:
-            header = "✅ <b>WIN</b>"
+            header = "✅ <b>WIN (2x Payout)</b>"
     else:
         CURRENT_LOSS_STREAK += 1
         TOTAL_LOSSES += 1
