@@ -62,6 +62,7 @@ TOTAL_WINS = 0
 TOTAL_LOSSES = 0
 TOTAL_SKIPS = 0
 CONSECUTIVE_SKIPS = 0
+COOLDOWN_ROUNDS = 0
 
 def get_next_period(current_period):
     """
@@ -444,7 +445,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     • Specialist 11: Violet 0 & 5 Outlier & Hedge Specialist
     • Agent 12 (GPT-120B): Supreme Arbiter & Risk Controller (Presides, debates, issues binding ruling)
     """
-    global CONSECUTIVE_SKIPS
+    global CONSECUTIVE_SKIPS, COOLDOWN_ROUNDS
     p_info = detect_market_patterns(history_items)
     recent_str = p_info["recent_compact"]
     pattern_str = p_info["pattern_desc"]
@@ -463,10 +464,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
             "Agent 1 (Dragon Momentum: Qwen-27B)",
             MODEL_QWEN,
             (
-                f"You are Agent 1 (Dragon Momentum Specialist) on the 12-AI WinGo Council.\n"
+                f"You are Agent 1 (Trend Momentum Specialist) on the 12-AI WinGo Council.\n"
                 f"Recent rounds: {recent_str}\n"
                 f"Market Structure: {pattern_str}\n"
-                f"Mandate: If an active Dragon streak (3+ {last_color}) is running, ALWAYS follow momentum ({last_color}) unless streak is 7+.\n"
+                f"Mandate: In WinGo 30S, 54% of 3-streaks and 65% of 4-streaks terminate (flip color). Follow momentum ({last_color}) ONLY if a confirmed dragon streak (5+ {last_color}) is active. If streak is 3 or 4, vote for mean-reversion reversal ({'GREEN' if last_color == 'RED' else 'RED'}) or caution.\n"
                 f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
             )
         ),
@@ -527,7 +528,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
             pass
 
         # Algorithmic fallback for specialist
-        c_fall = last_color if streak_len >= 3 else ("RED" if quants.get("q5", ["RED"])[0] == "RED" else "GREEN")
+        if streak_len in (3, 4):
+            c_fall = "GREEN" if last_color == "RED" else "RED"
+        elif streak_len >= 5:
+            c_fall = last_color
+        else:
+            c_fall = "RED" if quants.get("q5", ["RED"])[0] == "RED" else "GREEN"
         return {"name": agent_name, "color": c_fall or "RED", "conf": 70.0, "arg": "Empirical pattern fallback"}
 
     with ThreadPoolExecutor(max_workers=4) as executor:
@@ -592,31 +598,43 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     calc_conf = min(93.0, max(72.0, round(66.0 + (weight_ratio * 28.0), 1)))
 
     # Determine Signal Grade:
-    is_grade_a = (w_v >= 8 and weight_ratio >= 0.65 and calc_conf >= 85.0)
-    signal_grade = "GRADE_A" if is_grade_a else "GRADE_B"
+    is_grade_a = (w_v >= 8 and weight_ratio >= 0.66 and calc_conf >= 85.0)
+    signal_grade = "GRADE_A"
 
     # --- Phase 3: 🛡️ DETERMINISTIC CAPITAL SHIELD & RISK ENGINE ---
-    # Trigger 1: Loss Level 3+ Cooldown (Martingale Drawdown Reset)
-    if current_loss_streak >= 3 and CONSECUTIVE_SKIPS == 0:
-        shield_desc = f"Loss Level {current_loss_streak} reached. 1-round cooldown active to break adverse trend trap and preserve bankroll."
-        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 3 Cooldown)", False, "SHIELD"
+    # Rule 0: Cooldown after 2-Loss Stop-Loss
+    if COOLDOWN_ROUNDS > 0:
+        COOLDOWN_ROUNDS -= 1
+        shield_desc = f"Stop-Loss cooldown active ({COOLDOWN_ROUNDS + 1} rounds remaining). Letting adverse cycle pass to protect capital."
+        return "WAIT", 0.0, shield_desc, "🛑 Capital Shield (Stop-Loss Cooldown)", False, "SHIELD"
 
-    # Trigger 2: Loss Level 2 Sniper Guard (Only Grade-A bets permitted!)
-    if current_loss_streak == 2 and CONSECUTIVE_SKIPS == 0:
-        if not is_grade_a or abs(red_votes - green_votes) <= 3:
-            shield_desc = f"Loss Level 2 recovery active. Council consensus split ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight); non-Grade-A bet skipped to prevent Level 3 drawdown."
-            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Sniper Guard)", False, "SHIELD"
+    # Rule 1: HARD STOP-LOSS AT LEVEL 2 (User Mandate: Never allow Level 3 loss!)
+    if current_loss_streak >= 2:
+        shield_desc = "Max 2 consecutive losses reached. Level 3 betting strictly blocked to preserve bankroll."
+        return "WAIT", 0.0, shield_desc, "🛑 Stop-Loss (Max 2 Levels Reached)", False, "SHIELD"
 
-    # Trigger 3: Deadlock 50/50 Split Filter (abs diff <= 1, e.g. 6-5 or 5-5)
-    if abs(red_votes - green_votes) <= 1 and CONSECUTIVE_SKIPS == 0:
+    # Rule 2: Level 2 Recovery Super-Sniper Guard (When current_loss_streak == 1)
+    if current_loss_streak == 1:
+        # Recovery bet MUST be ultra-safe: require at least 9 votes and >=72% weight and no entropy chaos
+        if w_v < 9 or weight_ratio < 0.72 or calc_conf < 86.0 or abs(red_votes - green_votes) < 4:
+            shield_desc = f"Level 2 recovery active. Council consensus ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight) is below 9+ sniper threshold. Recovery bet skipped to prevent Level 2 loss."
+            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 2 Sniper Guard)", False, "SHIELD"
+
+    # Rule 3: Deadlock 50/50 Split Filter (abs diff <= 2, e.g. 6-5, 5-5, 7-4)
+    if abs(red_votes - green_votes) <= 2:
         shield_desc = f"Council specialists deadlocked ({red_votes}R vs {green_votes}G); 50/50 coin-flip risk filtered."
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Deadlock Filter)", False, "SHIELD"
 
-    # Trigger 4: Peak Shannon Chaos Filter
+    # Rule 4: Peak Shannon Chaos Filter
     is_entropy_wait = (quants.get("q10", ("OK", 0))[0] == "WAIT")
-    if is_entropy_wait and CONSECUTIVE_SKIPS == 0:
+    if is_entropy_wait:
         shield_desc = "Peak Shannon Entropy detected; turbulent market chop filtered to protect capital."
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Chaos Filter)", False, "SHIELD"
+
+    # Rule 5: GRADE-A SNIPER ONLY (Strictly NO Grade-B bets! Grade-B caused 86 losses today!)
+    if not is_grade_a or w_v < 8:
+        shield_desc = f"Council plurality only ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Sub-80% setup filtered to protect win rate."
+        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Sniper Only)", False, "SHIELD"
 
     # --- Phase 4: Council Synthesis by Arbiter (Agent 12) ---
     spec_summary = "\n".join([
@@ -687,7 +705,10 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="12
         )
     else:
         c_emoji = "🔴 RED" if color == "RED" else "🟢 GREEN"
-        grade_badge = "🔥 <b>GRADE-A SNIPER</b> (Standard Stake)" if signal_grade == "GRADE_A" else "⚠️ <b>GRADE-B TACTICAL</b> (Half / Light Stake)"
+        if CURRENT_LOSS_STREAK == 1:
+            grade_badge = "🎯 <b>LEVEL 2 RECOVERY (SNIPER)</b> [2.5x - 3x Stake]"
+        else:
+            grade_badge = "🔥 <b>LEVEL 1 BASE BET (SNIPER)</b> [Standard Stake]"
         v_alert_line = ""
         if violet_alert:
             target_num = "0" if color == "RED" else "5"
@@ -712,7 +733,7 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="12
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
 def send_user_result(period, actual_number, actual_color, pred):
-    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_SKIPS, CONSECUTIVE_SKIPS
+    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_SKIPS, CONSECUTIVE_SKIPS, COOLDOWN_ROUNDS
     short_period = period[-4:] if len(period) >= 4 else period
 
     # Mixed Color formatting
@@ -729,13 +750,12 @@ def send_user_result(period, actual_number, actual_color, pred):
     if pred.get("color") == "WAIT":
         TOTAL_SKIPS += 1
         CONSECUTIVE_SKIPS += 1
-        if CURRENT_LOSS_STREAK >= 3:
-            CURRENT_LOSS_STREAK = 0  # Break streak deadlock so user starts fresh at base bet
+        shield_mode = pred.get("consensus", "Capital Shield")
         msg = (
             f"🛡️ <b>CAPITAL SHIELD RESULT</b> | Period: <code>...{short_period}</code>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"🎲 Actual Result : <b>{c_display}</b>\n"
-            f"✅ <b>Capital Protected</b>: Skipped turbulent round. Resuming active predictions next round!\n"
+            f"✅ <b>Capital Protected</b>: Skipped risky round ({shield_mode}).\n"
             f"━━━━━━━━━━━━━━━━━━"
         )
         try:
@@ -753,23 +773,31 @@ def send_user_result(period, actual_number, actual_color, pred):
     color_win = (predicted_color == actual_color)
 
     if color_win:
+        win_level = 2 if CURRENT_LOSS_STREAK == 1 else 1
         CURRENT_LOSS_STREAK = 0
         TOTAL_WINS += 1
-        if is_violet:
+        if win_level == 2:
+            header = "✅ <b>WIN (Level 2 Recovery Payout 2x)</b> 🎉 [PROFIT SECURED]"
+        elif is_violet:
             if pred.get("violet_alert"):
                 header = "🟣 <b>JACKPOT VIOLET WIN (4.5x Payout)!</b>"
             else:
                 header = "🟡 <b>HALF WIN (1.5x Payout - Mixed Violet)</b>"
         else:
-            header = "✅ <b>WIN (2x Payout)</b>"
+            header = "✅ <b>WIN (Level 1 Payout 2x)</b>"
+        extra_note = "🎉 <i>Profit secured. Next bet starts at Level 1 base stake.</i>\n"
     else:
         CURRENT_LOSS_STREAK += 1
         TOTAL_LOSSES += 1
-        header = f"❌ <b>LOSS (Level {CURRENT_LOSS_STREAK})</b>"
-        if CURRENT_LOSS_STREAK == 2:
-            header += " 🛡️ [SNIPER SHIELD ARMED]"
-        elif CURRENT_LOSS_STREAK >= 3:
-            header += " ⚠️ [RISK ALERT - COOLDOWN IMMINENT]"
+        if CURRENT_LOSS_STREAK == 1:
+            header = "❌ <b>LOSS (Level 1)</b> 🛡️ [SNIPER RECOVERY ARMED]"
+            extra_note = "⚠️ <i>Next round: Level 2 Recovery (Grade-A+ Sniper Only).</i>\n"
+        else:
+            # STOP-LOSS HIT! MAX 2 LOSSES REACHED!
+            header = "❌ <b>LOSS (Level 2) — 🛑 MAX STOP-LOSS EXECUTED!</b>"
+            extra_note = "🛑 <b>Max 2-loss limit reached! Level 3 betting strictly BLOCKED to protect bankroll. 2-round cooldown active. Resetting cycle to Level 1.</b>\n"
+            CURRENT_LOSS_STREAK = 0
+            COOLDOWN_ROUNDS = 2
 
     win_rate = (TOTAL_WINS / (TOTAL_WINS + TOTAL_LOSSES) * 100) if (TOTAL_WINS + TOTAL_LOSSES) > 0 else 0.0
     grade_str = f" | {pred.get('grade', 'SNIPER')}" if pred.get('grade') else ""
@@ -780,6 +808,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         f"🎲 Actual Result : <b>{c_display}</b>\n"
         f"🎯 Predicted     : <b>{predicted_color}</b>{grade_str}\n"
         f"📈 Session Stats : <code>{TOTAL_WINS}W - {TOTAL_LOSSES}L ({win_rate:.1f}%)</code> | <code>{TOTAL_SKIPS} Skips</code>\n"
+        f"{extra_note}"
         f"━━━━━━━━━━━━━━━━━━"
     )
     try:
