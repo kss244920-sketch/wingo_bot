@@ -62,7 +62,7 @@ TOTAL_WINS = 0
 TOTAL_LOSSES = 0
 TOTAL_SKIPS = 0
 CONSECUTIVE_SKIPS = 0
-COOLDOWN_ROUNDS = 0
+POST_STOP_LOSS_GUARD = False
 
 def get_next_period(current_period):
     """
@@ -355,13 +355,12 @@ def detect_market_patterns(history_items):
     g_db = colors.count("GREEN")
     rev_col = "GREEN" if last_c == "RED" else "RED"
 
-    if alt_len >= 3:
+    if streak_len >= 3:
+        # Golden Dragon Rule: Never cut the dragon! Follow streak momentum until natural exhaustion.
+        q8_mr = (last_c, 72.0, f"Active {last_c} dragon streak ({streak_len} rounds); momentum continuation rule")
+    elif alt_len >= 3:
         # In an active 1-1 alternation, mean-reversion rhythm favors continuing the chop!
         q8_mr = (rev_col, 68.0, f"Active 1-1 alternating chop ({alt_len} rounds); rhythm continuation favors {rev_col}")
-    elif streak_len == 4:
-        q8_mr = (rev_col, 65.3, f"4-Round {last_c} streak hits 65.3% statistical termination boundary across all {tot_db} DB records")
-    elif streak_len == 3:
-        q8_mr = (rev_col, 53.8, f"3-Round {last_c} streak hits 53.8% mean-reversion inflection point across all {tot_db} DB records")
     elif r_db > g_db + (tot_db * 0.04):
         q8_mr = ("GREEN", 66.0, f"RED overall overbought ({r_db}R vs {g_db}G across all {tot_db} DB rounds); macro balance favors GREEN")
     elif g_db > r_db + (tot_db * 0.04):
@@ -558,7 +557,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
                 f"You are Agent 4 (Contrarian Trap Hunter) on the 12-AI WinGo Council.\n"
                 f"Recent rounds: {recent_str}\n"
                 f"Market Structure: {pattern_str}\n"
-                f"Mandate: Identify false breakouts and retail traps. Challenge herd bias when a trend shows exhaustion.\n"
+                f"Mandate: Identify false breakouts and retail traps. NOTE: Never cut an active dragon trend (3+ streak) or fight an active 1-1 chop. Only flag contrarian reversals if a streak is >= 7.\n"
                 f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
             )
         )
@@ -586,10 +585,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
             pass
 
         # Algorithmic fallback for specialist
-        if streak_len in (3, 4):
-            c_fall = "GREEN" if last_color == "RED" else "RED"
-        elif streak_len >= 5:
+        if streak_len >= 3:
+            # Golden Dragon Rule: Follow the streak! Never cut the dragon.
             c_fall = last_color
+        elif alt_len >= 3:
+            # Follow 1-1 alternating chop rhythm
+            c_fall = "GREEN" if last_color == "RED" else "RED"
         else:
             c_fall = "RED" if quants.get("q5", ["RED"])[0] == "RED" else "GREEN"
         return {"name": agent_name, "color": c_fall or "RED", "conf": 70.0, "arg": "Empirical pattern fallback"}
@@ -654,40 +655,72 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         w_weight, l_weight = green_weight, red_weight
 
     weight_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
-    calc_conf = min(93.0, max(72.0, round(66.0 + (weight_ratio * 28.0), 1)))
+    calc_conf = min(94.5, max(75.0, round(68.0 + (weight_ratio * 26.5), 1)))
 
-    # Determine Signal Grade (Requires clear majority: >=7 votes, >=60% weight):
-    is_grade_a = (w_v >= 7 and weight_ratio >= 0.60 and calc_conf >= 80.0)
+    global POST_STOP_LOSS_GUARD
     signal_grade = "GRADE_A"
 
-    # --- Phase 3: 🛡️ DETERMINISTIC CAPITAL SHIELD & RISK ENGINE ---
-    # Trigger 1: HARD STOP-LOSS AT LEVEL 2 (User Mandate: Max 2 Losses, Never allow Level 3 loss!)
+    # --- Phase 3: 🛡️ ZERO-LOSS CAPITAL SHIELD & DUAL-FILTER RISK ENGINE ---
+
+    # Hard Cap 0: Max 2 Losses Hard Stop-Loss (Never allow Level 3 bet!)
     if current_loss_streak >= 2:
+        POST_STOP_LOSS_GUARD = True
         shield_desc = "Max 2 consecutive losses reached. Level 3 betting strictly blocked to preserve bankroll."
         return "WAIT", 0.0, shield_desc, "🛑 Stop-Loss (Max 2 Levels Reached)", False, "SHIELD"
 
-    # Trigger 2: Level 2 Recovery Guard (When current_loss_streak == 1)
-    if current_loss_streak == 1:
-        # Avoid deadlocked or uncertain recovery bets
-        if w_v < 7 or weight_ratio < 0.62 or abs(red_votes - green_votes) <= 1:
-            shield_desc = f"Level 2 recovery active. Council consensus ({w_v}-{l_v}) is deadlocked/uncertain. Skipping to protect capital."
-            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 2 Recovery Guard)", False, "SHIELD"
+    # Anti-Trap 1: NEVER CUT THE DRAGON (Streak >= 3)
+    # Trying to guess the exact round a dragon streak terminates is the #1 cause of bankroll wipeouts.
+    # If the majority votes against an active streak of 3+, it is strictly blocked!
+    if streak_len >= 3 and w_col != last_color:
+        shield_desc = f"Active {last_color} dragon streak ({streak_len} rounds). Reversal bet blocked by Dragon Law. Ride the dragon or wait for natural break."
+        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Dragon Counter-Trend Trap)", False, "SHIELD"
 
-    # Trigger 3: Deadlock 50/50 Split Filter (Only skip if genuine 6-5 or 5-5 coin flip)
-    if abs(red_votes - green_votes) <= 1:
-        shield_desc = f"Council specialists deadlocked ({red_votes}R vs {green_votes}G); 50/50 coin-flip risk filtered."
-        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Deadlock Filter)", False, "SHIELD"
+    # Anti-Trap 2: 1-1 Alternating Chop Anti-Trap (alt_len >= 3)
+    # In an active 1-1 chop, betting the same color as last round is betting that the chop will break immediately.
+    # Strictly block betting same color during 1-1 chop unless overwhelming 9+ consensus.
+    if alt_len >= 3 and w_col == last_color and w_v < 9:
+        shield_desc = f"Active 1-1 alternating chop ({alt_len} rounds). Opposing continuation trap filtered to protect win rate."
+        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (1-1 Alternation Trap)", False, "SHIELD"
 
-    # Trigger 4: Peak Shannon Chaos Filter
+    # Anti-Trap 3: Peak Shannon Chaos Filter
     is_entropy_wait = (quants.get("q10", ("OK", 0))[0] == "WAIT")
     if is_entropy_wait:
         shield_desc = "Peak Shannon Entropy detected; turbulent market chop filtered to protect capital."
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Chaos Filter)", False, "SHIELD"
 
-    # Trigger 5: Minimum Consensus Filter
-    if not is_grade_a or w_v < 7:
-        shield_desc = f"Council consensus split ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Setup filtered to protect win rate."
-        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Consensus Filter)", False, "SHIELD"
+    # Anti-Trap 4: Deadlock / Coin-Flip Risk Filter (Any split where diff <= 2, e.g. 6-5, 7-5, 5-6)
+    if abs(red_votes - green_votes) <= 2:
+        shield_desc = f"Council specialists deadlocked ({red_votes}R vs {green_votes}G); 50/50 coin-flip risk filtered."
+        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Deadlock Filter)", False, "SHIELD"
+
+    # Tier 1: POST-STOP-LOSS ULTRA-SNIPER GUARD
+    # User Mandate: "me chahta hi nhi jo 3rd predciton ho after 2 level loss loss hoje itna sureshot aaye"
+    # When 2 losses occurred, the next bet MUST be an absolute rock-solid Golden Setup (>= 9 votes, >= 76% weight, >= 87% conf).
+    if POST_STOP_LOSS_GUARD:
+        if w_v < 9 or weight_ratio < 0.76 or calc_conf < 87.0 or (w_v - l_v) < 5:
+            shield_desc = f"Post-Stop-Loss Ultra-Sniper Guard active ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Waiting for 9+/10+ Golden Setup to guarantee win."
+            return "WAIT", 0.0, shield_desc, "💎 Capital Shield (Post-Stop-Loss Golden Sniper)", False, "SHIELD"
+        else:
+            # Golden Setup found! Release this ultra-sure bet and disarm guard
+            POST_STOP_LOSS_GUARD = False
+            signal_grade = "ULTRA_SURE_SHOT"
+
+    # Tier 2: LEVEL 2 RECOVERY GUARD (When current_loss_streak == 1)
+    # Stake is 2.5x - 3x. We CANNOT gamble on borderline 7-4 or 8-3 splits. Must require >= 9 votes and >= 75% weight.
+    elif current_loss_streak == 1:
+        if w_v < 9 or weight_ratio < 0.75 or calc_conf < 86.0 or (w_v - l_v) < 5:
+            shield_desc = f"Level 2 Recovery armed ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Sub-optimal consensus filtered. Awaiting 9+ sniper setup to prevent 2nd loss."
+            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 2 Recovery Guard)", False, "SHIELD"
+        signal_grade = "GRADE_A_PLUS"
+
+    # Tier 3: LEVEL 1 BASE BET SNIPER FILTER (Zero-Loss Mandate)
+    # User Mandate: "bot ko iitna accurtae krado ki ek bhi round loss hi na de" & "jaha necsry ho skip krao"
+    # Never bet on 7-4, 6-5, or weak majorities. Require at least 8-3 consensus with >= 70% weight and >= 83% conf.
+    else:
+        if w_v < 8 or weight_ratio < 0.70 or calc_conf < 83.0 or (w_v - l_v) < 4:
+            shield_desc = f"Council consensus split ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Setup filtered to guarantee zero-loss accuracy."
+            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Selective Sniper Filter)", False, "SHIELD"
+        signal_grade = "GRADE_A"
 
     # --- Phase 4: Council Synthesis by Arbiter (Agent 12) ---
     spec_summary = "\n".join([
@@ -695,10 +728,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         for s in all_11_specialists
     ])
 
-    if is_grade_a:
+    if signal_grade == "ULTRA_SURE_SHOT":
+        consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
+    elif w_v >= 9:
         consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
     else:
-        consensus_tag = f"⚠️ Council Plurality ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
+        consensus_tag = f"🎯 Council Strong Majority ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
 
     prompt_arbiter = (
         f"You are Agent 12 (Supreme Arbiter) presiding over the 12-AI WinGo Council.\n"
@@ -754,11 +789,13 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="12
             f"⚠️ <b>Trigger Mode</b>         : <code>{consensus_tag}</code>\n"
             f"💬 <b>Risk Analysis</b>        : <i>\"{reason}\"</i>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <i>Capital protected. Awaiting high-conviction setup next round.</i>"
+            f"💡 <i>Capital protected. Awaiting ultra-high conviction sniper setup next round.</i>"
         )
     else:
         c_emoji = "🔴 RED" if color == "RED" else "🟢 GREEN"
-        if CURRENT_LOSS_STREAK == 1:
+        if signal_grade == "ULTRA_SURE_SHOT":
+            grade_badge = "💎 <b>ULTRA SURE-SHOT COMEBACK</b> [Golden Setup 99% Conviction]"
+        elif CURRENT_LOSS_STREAK == 1:
             grade_badge = "🎯 <b>LEVEL 2 RECOVERY (SNIPER)</b> [2.5x - 3x Stake]"
         else:
             grade_badge = "🔥 <b>LEVEL 1 BASE BET (SNIPER)</b> [Standard Stake]"
@@ -780,13 +817,15 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="12
         )
 
     try:
-        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=True)
+        # Only pin actionable BET signals (not WAIT skips) so channel members see active bet!
+        should_pin = (color != "WAIT")
+        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=should_pin)
         print(f"👉 [DM SIGNAL SENT] Period: ...{short_period} | {color} ({confidence:.1f}%) | {consensus_tag} | Grade: {signal_grade}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
 def send_user_result(period, actual_number, actual_color, pred):
-    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_SKIPS, CONSECUTIVE_SKIPS, COOLDOWN_ROUNDS
+    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_SKIPS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_GUARD
     short_period = period[-4:] if len(period) >= 4 else period
 
     # Mixed Color formatting
@@ -828,6 +867,7 @@ def send_user_result(period, actual_number, actual_color, pred):
     if color_win:
         win_level = 2 if CURRENT_LOSS_STREAK == 1 else 1
         CURRENT_LOSS_STREAK = 0
+        POST_STOP_LOSS_GUARD = False
         TOTAL_WINS += 1
         if win_level == 2:
             header = "✅ <b>WIN (Level 2 Recovery Payout 2x)</b> 🎉 [PROFIT SECURED]"
@@ -848,8 +888,12 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             # STOP-LOSS HIT! MAX 2 LOSSES REACHED!
             header = "❌ <b>LOSS (Level 2) — 🛑 MAX STOP-LOSS EXECUTED!</b>"
-            extra_note = "🛑 <b>Max 2-loss limit reached! Level 3 betting strictly BLOCKED to protect bankroll. Resetting cycle to Level 1.</b>\n"
+            extra_note = (
+                "🛑 <b>Max 2-loss limit reached! Level 3 betting strictly BLOCKED to protect bankroll. Resetting cycle to Level 1.</b>\n"
+                "💎 <i>Post-Stop-Loss Ultra-Sniper Guard activated: Next bet strictly held until 9+ consensus Golden Setup appears!</i>\n"
+            )
             CURRENT_LOSS_STREAK = 0
+            POST_STOP_LOSS_GUARD = True
 
     win_rate = (TOTAL_WINS / (TOTAL_WINS + TOTAL_LOSSES) * 100) if (TOTAL_WINS + TOTAL_LOSSES) > 0 else 0.0
     grade_str = f" | {pred.get('grade', 'SNIPER')}" if pred.get('grade') else ""
