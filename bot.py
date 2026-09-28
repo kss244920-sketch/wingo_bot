@@ -13,8 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 # ⚙️ CONFIGURATION & API KEYS
 # ====================================================
 TELEGRAM_BOT_TOKEN = "8602171474:AAGYklXRTUbvinIRsLVsUOt9TsKApQUBhYA"
-USER_ALERT_CHAT_ID = "-1003707286637"          # Official Prediction Channel (@OwEnvy)
-STORAGE_CHANNEL_ID = None                      # Disabled raw DB logging so channel stays clean
+USER_ALERT_CHAT_ID = "-1003799001380"          # WinGo Prediction Channel
+STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
