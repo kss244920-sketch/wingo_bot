@@ -773,7 +773,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Weibull Hazard Climax)", False, "SHIELD"
 
     # Mathematical Gate 2: Kolmogorov & Bayesian White-Noise Incompressibility Gate
-    if q14[0] == "WAIT" and q15[0] == "WAIT":
+    # Skip if both detect pure white noise AND council does NOT have overwhelming 12+ super-consensus
+    if (q14[0] == "WAIT" and q15[0] == "WAIT") and w_v < 12:
         shield_desc = "Kolmogorov and Bayesian Credible Interval confirm uncompressible white-noise state; 50/50 toss filtered."
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Kolmogorov-Bayes White Noise)", False, "SHIELD"
 
@@ -877,7 +878,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
 # ====================================================
 # 🚀 USER SIGNALS (SENT DIRECTLY TO USER DM)
 # ====================================================
-def send_user_signal(target_period, color, confidence, reason, consensus_tag="12-AI Council", violet_alert=False, signal_grade="GRADE_A"):
+def send_user_signal(target_period, color, confidence, reason, consensus_tag="16-Agent Council", violet_alert=False, signal_grade="GRADE_A"):
+    global CONSECUTIVE_SKIPS
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
     if color == "WAIT":
@@ -920,6 +922,21 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="12
         should_pin = (color != "WAIT")
         send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=should_pin)
         print(f"👉 [DM SIGNAL SENT] Period: ...{short_period} | {color} ({confidence:.1f}%) | {consensus_tag} | Grade: {signal_grade}", flush=True)
+
+        # 🚨 USER MANDATE: When a sureshot bet arrives after skips, send 5-burst alert pings!
+        if color != "WAIT" and (CONSECUTIVE_SKIPS >= 2 or signal_grade == "ULTRA_SURE_SHOT" or confidence >= 89.0):
+            alert_header = "💎 ULTRA SURE-SHOT" if signal_grade == "ULTRA_SURE_SHOT" else "🔥 SURE-SHOT SNIPER"
+            for i in range(2, 6):
+                time.sleep(0.3)
+                p_msg = (
+                    f"🚨🚨🚨 <b>{alert_header} ALERT (PING #{i}/5)</b> 🚨🚨🚨\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👉 Bet: <b>{c_emoji}</b> | Period: <code>...{short_period}</code>\n"
+                    f"📊 Conviction: <b>{confidence:.1f}%</b> | <b>PLACE BET NOW!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━"
+                )
+                send_telegram_msg(USER_ALERT_CHAT_ID, p_msg, timeout=6, retries=1, pin=False)
+
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
