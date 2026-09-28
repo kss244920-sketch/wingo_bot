@@ -324,48 +324,59 @@ def detect_market_patterns(history_items):
         else:
             q7_bs = (last_c, 55.0, "Composite neutral")
 
-    # 7. Quant 8: Rolling Mean-Reversion & Streak Termination Analysis
+    # 7. Quant 8: Rolling Mean-Reversion & Streak Termination Analysis (50-Round Scope)
     # Empirical facts: 53.8% of 3-streaks terminate at 3; 65.3% of 4-streaks terminate at 4!
-    recent_30 = colors[-30:] if len(colors) >= 30 else colors
-    r_count = recent_30.count("RED")
-    g_count = recent_30.count("GREEN")
+    recent_50 = colors[-50:] if len(colors) >= 50 else colors
+    r_count = recent_50.count("RED")
+    g_count = recent_50.count("GREEN")
     rev_col = "GREEN" if last_c == "RED" else "RED"
 
     if streak_len == 4:
         q8_mr = (rev_col, 65.3, f"4-Round {last_c} streak hits 65.3% statistical termination boundary")
     elif streak_len == 3:
         q8_mr = (rev_col, 53.8, f"3-Round {last_c} streak hits 53.8% mean-reversion inflection point")
-    elif r_count >= g_count + 5:
-        q8_mr = ("GREEN", 68.0, f"RED heavily overbought ({r_count} vs {g_count} in last 30); mean-reversion favors GREEN")
-    elif g_count >= r_count + 5:
-        q8_mr = ("RED", 68.0, f"GREEN heavily overbought ({g_count} vs {r_count} in last 30); mean-reversion favors RED")
+    elif r_count >= g_count + 8:
+        q8_mr = ("GREEN", 68.0, f"RED heavily overbought ({r_count} vs {g_count} in last 50); mean-reversion favors GREEN")
+    elif g_count >= r_count + 8:
+        q8_mr = ("RED", 68.0, f"GREEN heavily overbought ({g_count} vs {r_count} in last 50); mean-reversion favors RED")
     else:
-        q8_mr = (last_c, 52.0, f"Balanced 30-round distribution ({r_count}R / {g_count}G); trend maintained")
+        q8_mr = (last_c, 52.0, f"Balanced 50-round distribution ({r_count}R / {g_count}G); trend maintained")
 
-    # 8. Quant 9: Micro-Cycle Periodicity & Rhythm (Lag-2 & Lag-3 harmonic autocorrelation)
-    if len(colors) >= 6:
-        lag2_matches = sum(1 for i in range(len(colors) - 10, len(colors)) if colors[i] == colors[i - 2])
-        if lag2_matches >= 6:
-            rhy_col = colors[-2]
-            q9_rhy = (rhy_col, 70.0, f"Strong Lag-2 cyclical harmonic active ({lag2_matches}/10 matches)")
+    # 8. Quant 9: Micro-Cycle Periodicity & Rhythm (50-Round Lag-2 & Harmonic Autocorrelation)
+    recent_cycle = colors[-50:] if len(colors) >= 50 else colors
+    if len(recent_cycle) >= 6:
+        lag2_matches = sum(1 for i in range(2, len(recent_cycle)) if recent_cycle[i] == recent_cycle[i - 2])
+        lag2_total = len(recent_cycle) - 2
+        lag2_pct = (lag2_matches / lag2_total * 100) if lag2_total > 0 else 50.0
+        if lag2_pct >= 60.0:
+            rhy_col = recent_cycle[-2]
+            q9_rhy = (rhy_col, round(lag2_pct, 1), f"Strong Lag-2 cyclical harmonic active ({lag2_matches}/{lag2_total} matches | {lag2_pct:.1f}%)")
         else:
-            q9_rhy = (last_c, 54.0, "Micro-cycle rhythm in balance")
+            q9_rhy = (last_c, 54.0, f"Micro-cycle rhythm in balance ({lag2_pct:.1f}% lag-2 across 50 rounds)")
     else:
         q9_rhy = (last_c, 50.0, "Insufficient cycle span")
 
-    # 9. Quant 10: Market Chaos & Shannon Entropy Gatekeeper
-    recent_10 = colors[-10:] if len(colors) >= 10 else colors
-    p_r = recent_10.count("RED") / len(recent_10)
-    p_g = recent_10.count("GREEN") / len(recent_10)
-    entropy = 0.0
+    # 9. Quant 10: Market Chaos & Shannon Entropy Gatekeeper (50-Round Macro + 10-Round Micro)
+    p_r = recent_50.count("RED") / len(recent_50)
+    p_g = recent_50.count("GREEN") / len(recent_50)
+    entropy_50 = 0.0
     for p in (p_r, p_g):
         if p > 0:
-            entropy -= p * math.log2(p)
-    if entropy >= 0.94 and streak_len == 1 and alt_len <= 2:
-        q10_ent = ("WAIT", 0.0, f"Peak Shannon Entropy ({entropy:.2f}) indicates chaotic chop; capital shield advised")
+            entropy_50 -= p * math.log2(p)
+
+    recent_10 = colors[-10:] if len(colors) >= 10 else colors
+    p10_r = recent_10.count("RED") / len(recent_10)
+    p10_g = recent_10.count("GREEN") / len(recent_10)
+    entropy_10 = 0.0
+    for p in (p10_r, p10_g):
+        if p > 0:
+            entropy_10 -= p * math.log2(p)
+
+    if (entropy_10 >= 0.94 or entropy_50 >= 0.98) and streak_len == 1 and alt_len <= 2:
+        q10_ent = ("WAIT", 0.0, f"Peak Shannon Entropy ({entropy_10:.2f} short / {entropy_50:.2f} 50-round) indicates chaotic chop; capital shield advised")
     else:
         ent_col = last_c if streak_len >= 2 else ("RED" if p_r >= p_g else "GREEN")
-        q10_ent = (ent_col, 62.0, f"Controlled entropy level ({entropy:.2f}); orderly structure")
+        q10_ent = (ent_col, 62.0, f"Controlled entropy level ({entropy_50:.2f} across 50 rounds); orderly structure")
 
     # 10. Quant 11: Violet (0 & 5) Dormancy & Outlier Specialist
     rounds_since_violet = 0
@@ -396,9 +407,9 @@ def detect_market_patterns(history_items):
     if violet_due:
         desc.append(f"🟣 Violet Overdue ({rounds_since_violet} rounds dormant)")
 
-    recent_12 = history_items[-12:] if len(history_items) >= 12 else history_items
+    recent_50_items = history_items[-50:] if len(history_items) >= 50 else history_items
     compact_parts = []
-    for it in recent_12:
+    for it in recent_50_items:
         num = int(it.get("num", 0))
         c_code = it.get("color", "")[:1]
         v_tag = "+V" if it.get("has_violet") or num in (0, 5) else ""
