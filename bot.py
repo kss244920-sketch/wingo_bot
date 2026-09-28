@@ -54,6 +54,7 @@ HEADERS = {
 # ☁️ ZERO-DEVICE-STORAGE (IN-MEMORY + LOCAL CACHE)
 # ====================================================
 MEMORY_HISTORY = []      # List of {"period": ..., "num": ..., "color": ..., "size": ..., "has_violet": ...}
+KNOWN_PERIODS = set()    # O(1) set to prevent duplicate iteration
 MEMORY_PREDICTIONS = {}  # {target_period: {"color": ..., "conf": ..., "reason": ..., "consensus": ..., "violet_alert": ...}}
 
 CURRENT_LOSS_STREAK = 0
@@ -62,8 +63,34 @@ TOTAL_LOSSES = 0
 TOTAL_SKIPS = 0
 CONSECUTIVE_SKIPS = 0
 
+def get_next_period(current_period):
+    """
+    WinGo 30S issueNumber structure:
+    YYYYMMDD + 10005 + 4-digit round index (0001 to 2880).
+    Properly handles midnight date rollover at round 2880!
+    """
+    if len(current_period) >= 17:
+        date_str = current_period[:8]
+        mid_code = current_period[8:13]
+        round_str = current_period[13:]
+        try:
+            round_num = int(round_str)
+            if round_num >= 2880:
+                import datetime
+                dt = datetime.datetime.strptime(date_str, "%Y%m%d") + datetime.timedelta(days=1)
+                next_date = dt.strftime("%Y%m%d")
+                return f"{next_date}{mid_code}0001"
+            else:
+                return f"{date_str}{mid_code}{round_num + 1:04d}"
+        except Exception:
+            pass
+    try:
+        return str(int(current_period) + 1)
+    except Exception:
+        return current_period
+
 def load_cache():
-    global MEMORY_HISTORY
+    global MEMORY_HISTORY, KNOWN_PERIODS
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -74,6 +101,7 @@ def load_cache():
                         item["size"] = "BIG" if num >= 5 else "SMALL"
                     if "has_violet" not in item:
                         item["has_violet"] = (num in (0, 5))
+                    KNOWN_PERIODS.add(str(item.get("period", "")))
                 print(f"📦 [RESTORED] Loaded {len(MEMORY_HISTORY)} historical rounds from memory cache!", flush=True)
         except Exception as e:
             print(f"[CACHE LOAD ERROR] {e}", flush=True)
@@ -102,11 +130,11 @@ def send_telegram_msg(chat_id, text, timeout=8, retries=1):
             raise
     return False
 
-def save_to_memory(period, number, raw_color):
-    global MEMORY_HISTORY
-    for item in MEMORY_HISTORY:
-        if item["period"] == period:
-            return
+def save_to_memory(period, number, raw_color, auto_save=True):
+    global MEMORY_HISTORY, KNOWN_PERIODS
+    p_str = str(period)
+    if p_str in KNOWN_PERIODS:
+        return False
 
     # In WinGo: 0 is RED+VIOLET, 5 is GREEN+VIOLET
     has_violet = (number in (0, 5)) or ("violet" in str(raw_color).lower())
@@ -119,15 +147,19 @@ def save_to_memory(period, number, raw_color):
 
     size = "BIG" if number >= 5 else "SMALL"
     MEMORY_HISTORY.append({
-        "period": period,
+        "period": p_str,
         "num": number,
         "color": base_color,
         "has_violet": has_violet,
         "size": size
     })
+    KNOWN_PERIODS.add(p_str)
     if len(MEMORY_HISTORY) > 10000:
         MEMORY_HISTORY = MEMORY_HISTORY[-10000:]
-    save_cache()
+        KNOWN_PERIODS = {it["period"] for it in MEMORY_HISTORY}
+    if auto_save:
+        save_cache()
+    return True
 
 # ====================================================
 # 📡 TELEGRAM STORAGE CHANNEL SYNC
@@ -511,8 +543,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
                 res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
                 decision = str(res_arb.get("final_color", "")).upper()
                 if decision in ("RED", "GREEN", "WAIT"):
-                    # Prevent consecutive skips even if LLM said WAIT
-                    if decision == "WAIT" and CONSECUTIVE_SKIPS >= 1:
+                    # Prevent skips unless in an active high loss streak (>= 3) and no consecutive skips
+                    if decision == "WAIT" and (current_loss_streak < 3 or CONSECUTIVE_SKIPS >= 1):
                         decision = "RED" if red_votes >= green_votes else "GREEN"
 
                     conf = float(res_arb.get("confidence", 85.0))
@@ -703,11 +735,16 @@ def run_live_bot():
             resp = requests.get(HISTORY_API_URL, headers=HEADERS, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                items = data.get("data", {}).get("list", [])
+                d_data = data.get("data")
+                items = d_data.get("list", []) if isinstance(d_data, dict) else []
 
                 if items:
                     latest_item = items[0]
-                    current_period = str(latest_item["issueNumber"])
+                    current_period = str(latest_item.get("issueNumber", ""))
+                    if not current_period:
+                        time.sleep(1.0)
+                        continue
+
                     raw_color = str(latest_item.get("color", ""))
                     num = int(latest_item.get("number", 0))
 
@@ -732,13 +769,34 @@ def run_live_bot():
                             pred = MEMORY_PREDICTIONS[current_period]
                             send_user_result(current_period, num, actual_color, pred)
                             del MEMORY_PREDICTIONS[current_period]
+                            time.sleep(0.4)  # Prevent Telegram burst rate limits
 
-                        # B. Sync batch of draws into RAM memory
+                        # Clean up any stale predictions older than current_period (prevents memory leak)
+                        try:
+                            cur_p_int = int(current_period)
+                            stale_keys = [k for k in list(MEMORY_PREDICTIONS.keys()) if int(k) < cur_p_int]
+                            for k in stale_keys:
+                                del MEMORY_PREDICTIONS[k]
+                        except Exception:
+                            pass
+
+                        # B. Sync batch of draws into RAM memory (Batch write)
+                        new_added = False
                         for item in reversed(items):
-                            p = str(item["issueNumber"])
+                            p = str(item.get("issueNumber", ""))
+                            if not p:
+                                continue
                             r_c = str(item.get("color", ""))
                             n = int(item.get("number", 0))
-                            save_to_memory(p, n, r_c)
+                            if save_to_memory(p, n, r_c, auto_save=False):
+                                new_added = True
+
+                        if new_added:
+                            try:
+                                MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
+                            except Exception:
+                                pass
+                            save_cache()
 
                         # C. Background async logging to Storage Channel
                         threading.Thread(
@@ -748,7 +806,7 @@ def run_live_bot():
                         ).start()
 
                         # D. Read in-memory history and trigger 12-AI Council Debate
-                        next_target_period = str(int(current_period) + 1)
+                        next_target_period = get_next_period(current_period)
 
                         if len(MEMORY_HISTORY) >= 6:
                             # 12 AI aapas me debate karke final prediction decide karte hain
