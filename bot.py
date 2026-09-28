@@ -116,14 +116,18 @@ def save_cache():
     except Exception:
         pass
 
-def send_telegram_msg(chat_id, text, timeout=8, retries=1):
+def send_telegram_msg(chat_id, text, timeout=8, retries=1, pin=False):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     for attempt in range(retries + 1):
         try:
             r = requests.post(url, json=payload, timeout=timeout)
             if r.status_code == 200:
-                return True
+                data = r.json()
+                msg_id = data.get("result", {}).get("message_id")
+                if pin and msg_id:
+                    pin_telegram_msg(chat_id, msg_id)
+                return msg_id or True
             else:
                 print(f"[TELEGRAM API ERROR] Status {r.status_code}: {r.text}", flush=True)
         except Exception:
@@ -131,6 +135,23 @@ def send_telegram_msg(chat_id, text, timeout=8, retries=1):
                 time.sleep(0.5)
                 continue
             raise
+    return False
+
+def pin_telegram_msg(chat_id, message_id, disable_notification=True):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/pinChatMessage"
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "disable_notification": disable_notification
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=6)
+        if r.status_code == 200:
+            return True
+        else:
+            print(f"[PIN ERROR] Status {r.status_code}: {r.text}", flush=True)
+    except Exception as e:
+        print(f"[PIN EXCEPTION] {e}", flush=True)
     return False
 
 def save_to_memory(period, number, raw_color, auto_save=True):
@@ -265,7 +286,11 @@ def detect_market_patterns(history_items):
             ng_conf = round(max(c2["RED"], c2["GREEN"]) / tot2 * 100, 1)
             q5_ngram = (ng_col, ng_conf, f"Order-2 state {last2} resolved to {ng_col} ({ng_conf}%)")
         else:
-            q5_ngram = (last_c, 55.0, "Low state occurrences; default momentum")
+            if alt_len >= 3:
+                ng_col = "GREEN" if last_c == "RED" else "RED"
+                q5_ngram = (ng_col, 65.0, f"Active 1-1 alternation ({alt_len} rounds); rhythm continuation")
+            else:
+                q5_ngram = (last_c, 55.0, "Low state occurrences; default momentum")
 
     # 5. Quant 6: Winning Number-to-Color Bayes + Mathematical Micro-Rules
     num_trans = defaultdict(lambda: {"RED": 0, "GREEN": 0})
@@ -324,73 +349,95 @@ def detect_market_patterns(history_items):
         else:
             q7_bs = (last_c, 55.0, "Composite neutral")
 
-    # 7. Quant 8: Rolling Mean-Reversion & Streak Termination Analysis (50-Round Scope)
-    # Empirical facts: 53.8% of 3-streaks terminate at 3; 65.3% of 4-streaks terminate at 4!
-    recent_50 = colors[-50:] if len(colors) >= 50 else colors
-    r_count = recent_50.count("RED")
-    g_count = recent_50.count("GREEN")
+    # 7. Quant 8: Full-Database Mean-Reversion & Imbalance Analysis (ALL DB Rounds)
+    tot_db = len(colors)
+    r_db = colors.count("RED")
+    g_db = colors.count("GREEN")
     rev_col = "GREEN" if last_c == "RED" else "RED"
 
-    if streak_len == 4:
-        q8_mr = (rev_col, 65.3, f"4-Round {last_c} streak hits 65.3% statistical termination boundary")
+    if alt_len >= 3:
+        # In an active 1-1 alternation, mean-reversion rhythm favors continuing the chop!
+        q8_mr = (rev_col, 68.0, f"Active 1-1 alternating chop ({alt_len} rounds); rhythm continuation favors {rev_col}")
+    elif streak_len == 4:
+        q8_mr = (rev_col, 65.3, f"4-Round {last_c} streak hits 65.3% statistical termination boundary across all {tot_db} DB records")
     elif streak_len == 3:
-        q8_mr = (rev_col, 53.8, f"3-Round {last_c} streak hits 53.8% mean-reversion inflection point")
-    elif r_count >= g_count + 8:
-        q8_mr = ("GREEN", 68.0, f"RED heavily overbought ({r_count} vs {g_count} in last 50); mean-reversion favors GREEN")
-    elif g_count >= r_count + 8:
-        q8_mr = ("RED", 68.0, f"GREEN heavily overbought ({g_count} vs {r_count} in last 50); mean-reversion favors RED")
+        q8_mr = (rev_col, 53.8, f"3-Round {last_c} streak hits 53.8% mean-reversion inflection point across all {tot_db} DB records")
+    elif r_db > g_db + (tot_db * 0.04):
+        q8_mr = ("GREEN", 66.0, f"RED overall overbought ({r_db}R vs {g_db}G across all {tot_db} DB rounds); macro balance favors GREEN")
+    elif g_db > r_db + (tot_db * 0.04):
+        q8_mr = ("RED", 66.0, f"GREEN overall overbought ({g_db}G vs {r_db}R across all {tot_db} DB rounds); macro balance favors RED")
     else:
-        q8_mr = (last_c, 52.0, f"Balanced 50-round distribution ({r_count}R / {g_count}G); trend maintained")
-
-    # 8. Quant 9: Micro-Cycle Periodicity & Rhythm (50-Round Lag-2 & Harmonic Autocorrelation)
-    recent_cycle = colors[-50:] if len(colors) >= 50 else colors
-    if len(recent_cycle) >= 6:
-        lag2_matches = sum(1 for i in range(2, len(recent_cycle)) if recent_cycle[i] == recent_cycle[i - 2])
-        lag2_total = len(recent_cycle) - 2
-        lag2_pct = (lag2_matches / lag2_total * 100) if lag2_total > 0 else 50.0
-        if lag2_pct >= 60.0:
-            rhy_col = recent_cycle[-2]
-            q9_rhy = (rhy_col, round(lag2_pct, 1), f"Strong Lag-2 cyclical harmonic active ({lag2_matches}/{lag2_total} matches | {lag2_pct:.1f}%)")
+        # Check rolling 30-round micro skew:
+        r_30 = colors[-30:].count("RED") if tot_db >= 30 else r_db
+        g_30 = colors[-30:].count("GREEN") if tot_db >= 30 else g_db
+        if r_30 >= g_30 + 5:
+            q8_mr = ("GREEN", 64.0, f"RED short-term overbought ({r_30} vs {g_30}); micro balance favors GREEN")
+        elif g_30 >= r_30 + 5:
+            q8_mr = ("RED", 64.0, f"GREEN short-term overbought ({g_30} vs {r_30}); micro balance favors RED")
         else:
-            q9_rhy = (last_c, 54.0, f"Micro-cycle rhythm in balance ({lag2_pct:.1f}% lag-2 across 50 rounds)")
+            q8_mr = (rev_col if alt_len >= 2 else (last_c if streak_len >= 2 else rev_col), 54.0, f"Balanced database distribution ({r_db}R / {g_db}G across {tot_db} rounds)")
+
+    # 8. Quant 9: Full-Database Micro-Cycle Periodicity & Harmonic Autocorrelation (ALL DB Rounds)
+    if tot_db >= 6:
+        lag2_matches = sum(1 for i in range(2, tot_db) if colors[i] == colors[i - 2])
+        lag2_total = tot_db - 2
+        lag2_pct = (lag2_matches / lag2_total * 100) if lag2_total > 0 else 50.0
+
+        rec20 = colors[-20:] if tot_db >= 20 else colors
+        rec_lag2 = sum(1 for i in range(2, len(rec20)) if rec20[i] == rec20[i - 2])
+        rec_pct = (rec_lag2 / (len(rec20) - 2) * 100) if len(rec20) > 2 else lag2_pct
+
+        if rec_pct >= 58.0 or lag2_pct >= 56.0:
+            rhy_col = colors[-2]
+            q9_rhy = (rhy_col, round(max(rec_pct, lag2_pct), 1), f"Strong Lag-2 harmonic active ({rec_lag2}/{len(rec20)-2} recent | {lag2_matches}/{lag2_total} all DB)")
+        elif alt_len >= 3:
+            q9_rhy = (rev_col, 65.0, f"1-1 Alternating harmonic active ({alt_len} rounds)")
+        else:
+            q9_rhy = (rev_col if alt_len >= 2 else (last_c if streak_len >= 2 else rev_col), 53.0, f"Harmonic in balance ({lag2_pct:.1f}% DB lag-2 across {tot_db} rounds)")
     else:
         q9_rhy = (last_c, 50.0, "Insufficient cycle span")
 
-    # 9. Quant 10: Market Chaos & Shannon Entropy Gatekeeper (50-Round Macro + 10-Round Micro)
-    p_r = recent_50.count("RED") / len(recent_50)
-    p_g = recent_50.count("GREEN") / len(recent_50)
-    entropy_50 = 0.0
-    for p in (p_r, p_g):
+    # 9. Quant 10: Multi-Scale Shannon Entropy Gatekeeper (ALL DB Macro + 12-Round Micro)
+    p_r_db = r_db / tot_db if tot_db > 0 else 0.5
+    p_g_db = g_db / tot_db if tot_db > 0 else 0.5
+    entropy_db = 0.0
+    for p in (p_r_db, p_g_db):
         if p > 0:
-            entropy_50 -= p * math.log2(p)
+            entropy_db -= p * math.log2(p)
 
-    recent_10 = colors[-10:] if len(colors) >= 10 else colors
-    p10_r = recent_10.count("RED") / len(recent_10)
-    p10_g = recent_10.count("GREEN") / len(recent_10)
-    entropy_10 = 0.0
-    for p in (p10_r, p10_g):
+    recent_12 = colors[-12:] if tot_db >= 12 else colors
+    p12_r = recent_12.count("RED") / len(recent_12)
+    p12_g = recent_12.count("GREEN") / len(recent_12)
+    entropy_12 = 0.0
+    for p in (p12_r, p12_g):
         if p > 0:
-            entropy_10 -= p * math.log2(p)
+            entropy_12 -= p * math.log2(p)
 
-    if (entropy_10 >= 0.94 or entropy_50 >= 0.98) and streak_len == 1 and alt_len <= 2:
-        q10_ent = ("WAIT", 0.0, f"Peak Shannon Entropy ({entropy_10:.2f} short / {entropy_50:.2f} 50-round) indicates chaotic chop; capital shield advised")
+    if entropy_12 >= 0.95 and streak_len == 1 and alt_len <= 2:
+        q10_ent = ("WAIT", 0.0, f"Peak Shannon Entropy ({entropy_12:.2f} micro / {entropy_db:.2f} DB) indicates chaotic chop; capital shield advised")
     else:
-        ent_col = last_c if streak_len >= 2 else ("RED" if p_r >= p_g else "GREEN")
-        q10_ent = (ent_col, 62.0, f"Controlled entropy level ({entropy_50:.2f} across 50 rounds); orderly structure")
+        ent_col = rev_col if alt_len >= 3 else (last_c if streak_len >= 2 else ("RED" if p_r_db >= p_g_db else "GREEN"))
+        q10_ent = (ent_col, 62.0, f"Orderly structure ({entropy_db:.2f} entropy across all {tot_db} DB rounds)")
 
-    # 10. Quant 11: Violet (0 & 5) Dormancy & Outlier Specialist
-    rounds_since_violet = 0
-    for it in reversed(history_items):
+    # 10. Quant 11: Full-Database Violet (0 & 5) Matrix (ALL DB Rounds)
+    violet_intervals = []
+    last_v_idx = None
+    for idx, it in enumerate(history_items):
         if it.get("has_violet", False) or int(it.get("num", -1)) in (0, 5):
-            break
-        rounds_since_violet += 1
-    # Average interval in WinGo is 10 draws. Alert only when overdue (>=14) AND last number is an empirical feeder (4, 9, 1, 6) or >= 18
-    violet_due = (rounds_since_violet >= 14 and last_num in (4, 9, 1, 6)) or (rounds_since_violet >= 18)
+            if last_v_idx is not None:
+                violet_intervals.append(idx - last_v_idx)
+            last_v_idx = idx
+
+    avg_v_interval = round(sum(violet_intervals) / len(violet_intervals), 1) if violet_intervals else 10.0
+    rounds_since_violet = (len(history_items) - 1 - last_v_idx) if last_v_idx is not None else 0
+
+    violet_due = (rounds_since_violet >= avg_v_interval * 1.3 and last_num in (4, 9, 1, 6)) or (rounds_since_violet >= avg_v_interval * 1.7)
     if violet_due:
         v_col = "RED" if last_num in (1, 2, 3, 4) else "GREEN"
-        q11_vio = (v_col, 75.0, f"Violet overdue ({rounds_since_violet} rounds dormant); hedge recommended on 0/5")
+        q11_vio = (v_col, 75.0, f"Violet overdue ({rounds_since_violet} rounds dormant vs {avg_v_interval} avg across all {len(violet_intervals)} DB cycles); hedge on 0/5")
     else:
-        q11_vio = (last_c, 55.0, f"Violet cycle normal ({rounds_since_violet} rounds dormant)")
+        v_flow = rev_col if alt_len >= 3 else last_c
+        q11_vio = (v_flow, 55.0, f"Violet normal ({rounds_since_violet} dormant vs {avg_v_interval} DB avg)")
 
     # Compile descriptive pattern tags
     desc = []
@@ -407,9 +454,9 @@ def detect_market_patterns(history_items):
     if violet_due:
         desc.append(f"🟣 Violet Overdue ({rounds_since_violet} rounds dormant)")
 
-    recent_50_items = history_items[-50:] if len(history_items) >= 50 else history_items
+    recent_80_items = history_items[-80:] if len(history_items) >= 80 else history_items
     compact_parts = []
-    for it in recent_50_items:
+    for it in recent_80_items:
         num = int(it.get("num", 0))
         c_code = it.get("color", "")[:1]
         v_tag = "+V" if it.get("has_violet") or num in (0, 5) else ""
@@ -574,18 +621,19 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     ]
 
     # Dynamic Weight Assignment based on Empirical Reliability
+    # Dynamic Weight Assignment based on Empirical Reliability
     weights = [
-        1.8 if streak_len >= 3 else 1.0,           # Agent 1: Dragon Momentum
-        1.8 if alt_len >= 3 else 1.0,              # Agent 2: 1-1 Chop
-        1.6 if is_double else 1.0,                 # Agent 3: 2-2 Symmetry
-        1.2,                                       # Agent 4: Contrarian Trap
-        1.8,                                       # Agent 5: Markov N-Gram Quant
-        1.9,                                       # Agent 6: Number-to-Color Bayes (67.1% on Num 4)
-        1.7,                                       # Agent 7: Big/Small Compound Matrix
-        1.4,                                       # Agent 8: Mean-Reversion Imbalance
-        1.2,                                       # Agent 9: Micro-Cycle Autocorrelation
-        1.4,                                       # Agent 10: Shannon Entropy Chaos Gatekeeper
-        1.2                                        # Agent 11: Violet 0/5 Specialist
+        2.5 if streak_len >= 4 else (1.5 if streak_len == 3 else 1.0), # Agent 1: Dragon Momentum
+        2.5 if alt_len >= 3 else 1.0,                                   # Agent 2: 1-1 Chop
+        1.8 if is_double else 1.0,                                      # Agent 3: 2-2 Symmetry
+        1.2,                                                            # Agent 4: Contrarian Trap
+        1.8,                                                            # Agent 5: Markov N-Gram Quant
+        2.0,                                                            # Agent 6: Number-to-Color Bayes (67.1% on Num 4)
+        1.7,                                                            # Agent 7: Big/Small Compound Matrix
+        1.5,                                                            # Agent 8: Mean-Reversion Imbalance [50 Rounds]
+        1.3,                                                            # Agent 9: Micro-Cycle Autocorrelation [50 Rounds]
+        1.5,                                                            # Agent 10: Shannon Entropy Chaos Gatekeeper [50 Rounds]
+        1.2                                                             # Agent 11: Violet 0/5 Specialist
     ]
 
     red_votes = sum(1 for s in all_11_specialists if s["color"] == "RED")
@@ -608,44 +656,38 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     weight_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     calc_conf = min(93.0, max(72.0, round(66.0 + (weight_ratio * 28.0), 1)))
 
-    # Determine Signal Grade:
-    is_grade_a = (w_v >= 8 and weight_ratio >= 0.66 and calc_conf >= 85.0)
+    # Determine Signal Grade (Requires clear majority: >=7 votes, >=60% weight):
+    is_grade_a = (w_v >= 7 and weight_ratio >= 0.60 and calc_conf >= 80.0)
     signal_grade = "GRADE_A"
 
     # --- Phase 3: 🛡️ DETERMINISTIC CAPITAL SHIELD & RISK ENGINE ---
-    # Rule 0: Cooldown after 2-Loss Stop-Loss
-    if COOLDOWN_ROUNDS > 0:
-        COOLDOWN_ROUNDS -= 1
-        shield_desc = f"Stop-Loss cooldown active ({COOLDOWN_ROUNDS + 1} rounds remaining). Letting adverse cycle pass to protect capital."
-        return "WAIT", 0.0, shield_desc, "🛑 Capital Shield (Stop-Loss Cooldown)", False, "SHIELD"
-
-    # Rule 1: HARD STOP-LOSS AT LEVEL 2 (User Mandate: Never allow Level 3 loss!)
+    # Trigger 1: HARD STOP-LOSS AT LEVEL 2 (User Mandate: Max 2 Losses, Never allow Level 3 loss!)
     if current_loss_streak >= 2:
         shield_desc = "Max 2 consecutive losses reached. Level 3 betting strictly blocked to preserve bankroll."
         return "WAIT", 0.0, shield_desc, "🛑 Stop-Loss (Max 2 Levels Reached)", False, "SHIELD"
 
-    # Rule 2: Level 2 Recovery Super-Sniper Guard (When current_loss_streak == 1)
+    # Trigger 2: Level 2 Recovery Guard (When current_loss_streak == 1)
     if current_loss_streak == 1:
-        # Recovery bet MUST be ultra-safe: require at least 9 votes and >=72% weight and no entropy chaos
-        if w_v < 9 or weight_ratio < 0.72 or calc_conf < 86.0 or abs(red_votes - green_votes) < 4:
-            shield_desc = f"Level 2 recovery active. Council consensus ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight) is below 9+ sniper threshold. Recovery bet skipped to prevent Level 2 loss."
-            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 2 Sniper Guard)", False, "SHIELD"
+        # Avoid deadlocked or uncertain recovery bets
+        if w_v < 7 or weight_ratio < 0.62 or abs(red_votes - green_votes) <= 1:
+            shield_desc = f"Level 2 recovery active. Council consensus ({w_v}-{l_v}) is deadlocked/uncertain. Skipping to protect capital."
+            return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Level 2 Recovery Guard)", False, "SHIELD"
 
-    # Rule 3: Deadlock 50/50 Split Filter (abs diff <= 2, e.g. 6-5, 5-5, 7-4)
-    if abs(red_votes - green_votes) <= 2:
+    # Trigger 3: Deadlock 50/50 Split Filter (Only skip if genuine 6-5 or 5-5 coin flip)
+    if abs(red_votes - green_votes) <= 1:
         shield_desc = f"Council specialists deadlocked ({red_votes}R vs {green_votes}G); 50/50 coin-flip risk filtered."
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Deadlock Filter)", False, "SHIELD"
 
-    # Rule 4: Peak Shannon Chaos Filter
+    # Trigger 4: Peak Shannon Chaos Filter
     is_entropy_wait = (quants.get("q10", ("OK", 0))[0] == "WAIT")
     if is_entropy_wait:
         shield_desc = "Peak Shannon Entropy detected; turbulent market chop filtered to protect capital."
         return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Chaos Filter)", False, "SHIELD"
 
-    # Rule 5: GRADE-A SNIPER ONLY (Strictly NO Grade-B bets! Grade-B caused 86 losses today!)
-    if not is_grade_a or w_v < 8:
-        shield_desc = f"Council plurality only ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Sub-80% setup filtered to protect win rate."
-        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Sniper Only)", False, "SHIELD"
+    # Trigger 5: Minimum Consensus Filter
+    if not is_grade_a or w_v < 7:
+        shield_desc = f"Council consensus split ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight). Setup filtered to protect win rate."
+        return "WAIT", 0.0, shield_desc, "🛡️ Capital Shield (Consensus Filter)", False, "SHIELD"
 
     # --- Phase 4: Council Synthesis by Arbiter (Agent 12) ---
     spec_summary = "\n".join([
@@ -738,7 +780,7 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="12
         )
 
     try:
-        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1)
+        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=True)
         print(f"👉 [DM SIGNAL SENT] Period: ...{short_period} | {color} ({confidence:.1f}%) | {consensus_tag} | Grade: {signal_grade}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
@@ -806,9 +848,8 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             # STOP-LOSS HIT! MAX 2 LOSSES REACHED!
             header = "❌ <b>LOSS (Level 2) — 🛑 MAX STOP-LOSS EXECUTED!</b>"
-            extra_note = "🛑 <b>Max 2-loss limit reached! Level 3 betting strictly BLOCKED to protect bankroll. 2-round cooldown active. Resetting cycle to Level 1.</b>\n"
+            extra_note = "🛑 <b>Max 2-loss limit reached! Level 3 betting strictly BLOCKED to protect bankroll. Resetting cycle to Level 1.</b>\n"
             CURRENT_LOSS_STREAK = 0
-            COOLDOWN_ROUNDS = 2
 
     win_rate = (TOTAL_WINS / (TOTAL_WINS + TOTAL_LOSSES) * 100) if (TOTAL_WINS + TOTAL_LOSSES) > 0 else 0.0
     grade_str = f" | {pred.get('grade', 'SNIPER')}" if pred.get('grade') else ""
