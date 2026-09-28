@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+import json
+import time
+import requests
+from pathlib import Path
+
+APP_NAME = "Git r_y6SKa3r"
+APP_ID = 66236
+MCP_CONFIG = Path.home() / ".gemini/config/mcp_config.json"
+
+def get_headers():
+    if MCP_CONFIG.exists():
+        with open(MCP_CONFIG) as f:
+            cfg = json.load(f)
+            return {
+                "X-User-Identity": cfg["mcpServers"]["justrunmy.app"]["headers"]["X-User-Identity"],
+                "Content-Type": "application/json"
+            }
+    raise RuntimeError("mcp_config.json not found")
+
+def call_mcp(method_name, arguments=None):
+    headers = get_headers()
+    payload = {
+        "jsonrpc": "2.0",
+        "id": int(time.time()),
+        "method": "tools/call",
+        "params": {
+            "name": method_name,
+            "arguments": arguments or {}
+        }
+    }
+    r = requests.post("https://justrunmy.app/api/mcp", headers=headers, json=payload, timeout=20)
+    for line in r.text.splitlines():
+        if line.startswith("data: "):
+            d = json.loads(line[6:])
+            content = d.get("result", {}).get("content", [])
+            if content and "text" in content[0]:
+                try:
+                    return json.loads(content[0]["text"])
+                except Exception:
+                    return content[0]["text"]
+    return None
+
+def check_and_renew():
+    try:
+        apps = call_mcp("jrnm_get_user_apps")
+        items = apps.get("result", {}).get("items", []) if isinstance(apps, dict) else []
+        target = None
+        for it in items:
+            if it.get("id") == APP_ID:
+                target = it
+                break
+
+        if not target:
+            print(f"[{time.ctime()}] App {APP_ID} not found in account!")
+            return
+
+        is_started = target.get("isStarted", False)
+        ping_left = None
+        for p in target.get("properties", []):
+            if p.get("name") == "com.jrnm.computed.ping_left":
+                ping_left = p.get("value")
+                break
+
+        print(f"[{time.ctime()}] WinGo Cloud App: isStarted={is_started}, Lease Left={ping_left}")
+
+        # If stopped, restart immediately
+        if not is_started:
+            print(f"[{time.ctime()}] App is stopped! Triggering restart...")
+            call_mcp("jrnm_start_or_restart_app", {"appId": APP_ID})
+            print(f"[{time.ctime()}] Restart command sent!")
+    except Exception as e:
+        print(f"[{time.ctime()}] Keep-alive error: {e}")
+
+if __name__ == "__main__":
+    check_and_renew()
