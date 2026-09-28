@@ -1108,6 +1108,17 @@ def run_live_bot():
                     actual_size = "BIG" if num >= 5 else "SMALL"
 
                     # 2. When a round finishes:
+                    if last_processed_period is None:
+                        last_processed_period = current_period
+                        for item in reversed(items):
+                            p = str(item.get("issueNumber", ""))
+                            if p:
+                                save_to_memory(p, int(item.get("number", 0)), str(item.get("color", "")), auto_save=False)
+                        save_cache()
+                        print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Awaiting next live round...", flush=True)
+                        time.sleep(1.0)
+                        continue
+
                     if current_period != last_processed_period:
                         last_processed_period = current_period
                         v_tag = "+VIOLET" if has_violet else ""
