@@ -1018,19 +1018,19 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
 
     v_tip_line = ""
     if jackpot_tip:
-        v_tip_line = f"🟣 <b>Jackpot Tip</b> : <b>{to_bold(jackpot_tip)}</b>\n"
+        v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold(jackpot_tip)}</b>"
     elif violet_alert:
-        v_tip_line = f"🟣 <b>Jackpot Tip</b> : <b>{to_bold('Number 0 or 5 (Violet 4.5X)')}</b>\n"
+        v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Number 0 or 5 (Violet 4.5X)')}</b>"
 
     msg = (
         f"{banner}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+        f"<blockquote>"
+        f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
         f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
-        f"📊 <b>Stage</b>      : <b>{stage_str}</b>\n"
-        f"🔥 <b>Intensity</b>  : <b>{intensity_str}</b>\n"
-        f"{v_tip_line}"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>Stage</b> : <b>{stage_str}</b>\n"
+        f"🔥 <b>Intensity</b> : <b>{intensity_str}</b>"
+        f"{v_tip_line}\n"
+        f"</blockquote>\n"
         f"{footer}"
     )
 
@@ -1100,20 +1100,20 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         bonus_violet = ""
         if actual_number in (0, 5) and (pred.get("violet_alert") or pred.get("jackpot_tip")):
-            bonus_violet = f"🟣 <b>Bonus Hit</b>  : <b>{to_bold('VIOLET 0/5 [4.5X HIT]')}</b>\n"
+            bonus_violet = f"\n🟣 <b>Bonus Hit</b> : <b>{to_bold('VIOLET 0/5 [4.5X HIT]')}</b>"
 
         status_str = to_bold("WIN ✅ (PROFIT SECURED)")
 
         msg = (
             f"{win_banner}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+            f"<blockquote>"
+            f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
             f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
-            f"🎲 <b>Result</b>     : <b>{c_display} | {s_display}</b>\n"
-            f"🏆 <b>Status</b>     : <b>{status_str}</b>\n"
-            f"📊 <b>Stage</b>      : <b>{win_stage}</b>\n"
-            f"{bonus_violet}"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
+            f"🏆 <b>Status</b> : <b>{status_str}</b>\n"
+            f"📊 <b>Stage</b> : <b>{win_stage}</b>"
+            f"{bonus_violet}\n"
+            f"</blockquote>\n"
             f"{sub}"
         )
 
@@ -1129,13 +1129,13 @@ def send_user_result(period, actual_number, actual_color, pred):
             loss_stage = to_bold(f"LEVEL {loss_level} (STOP-LOSS)")
             msg = (
                 f"{stop_banner}\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+                f"<blockquote>"
+                f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
                 f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
-                f"🎲 <b>Result</b>     : <b>{c_display} | {s_display}</b>\n"
-                f"⚠️ <b>Status</b>     : <b>{status_str}</b>\n"
-                f"📊 <b>Stage</b>      : <b>{loss_stage}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
+                f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
+                f"📊 <b>Stage</b> : <b>{loss_stage}</b>\n"
+                f"</blockquote>\n"
                 f"🔄 <i>Max safety level reached. Resetting fresh to LEVEL 1 (1X)!</i>"
             )
             CYCLE_LOSSES += 1
@@ -1150,14 +1150,14 @@ def send_user_result(period, actual_number, actual_color, pred):
             intensity_str = to_bold("1001% SURE-SHOT UPGRADE")
             msg = (
                 f"{loss_banner}\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+                f"<blockquote>"
+                f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
                 f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
-                f"🎲 <b>Result</b>     : <b>{c_display} | {s_display}</b>\n"
-                f"⚠️ <b>Status</b>     : <b>{status_str}</b>\n"
+                f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
+                f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
                 f"⚡ <b>Next Stage</b> : <b>{next_stage_str}</b>\n"
-                f"🔥 <b>Intensity</b>  : <b>{intensity_str}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔥 <b>Intensity</b> : <b>{intensity_str}</b>\n"
+                f"</blockquote>\n"
                 f"⚡ <i>Loss in round ...{short_period}. Escalating to Level {next_level} ({mult}X) for full recovery. Stay ready!</i>"
             )
 
