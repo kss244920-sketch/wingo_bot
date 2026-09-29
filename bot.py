@@ -93,7 +93,7 @@ def get_next_period(current_period):
         return current_period
 
 def load_cache():
-    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES
+    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -119,7 +119,10 @@ def load_cache():
                 TOTAL_CYCLES = st.get("total_cycles", 0)
                 CYCLE_WINS = st.get("cycle_wins", 0)
                 CYCLE_LOSSES = st.get("cycle_losses", 0)
-                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L", flush=True)
+                saved_preds = st.get("memory_predictions", {})
+                if isinstance(saved_preds, dict):
+                    MEMORY_PREDICTIONS.update(saved_preds)
+                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
         except Exception as e:
             print(f"[STATE LOAD ERROR] {e}", flush=True)
 
@@ -141,7 +144,8 @@ def save_cache():
             "total_losses": TOTAL_LOSSES,
             "total_cycles": TOTAL_CYCLES,
             "cycle_wins": CYCLE_WINS,
-            "cycle_losses": CYCLE_LOSSES
+            "cycle_losses": CYCLE_LOSSES,
+            "memory_predictions": MEMORY_PREDICTIONS
         }
         with open(tmp_st, "w") as f:
             json.dump(st, f)
@@ -1035,8 +1039,8 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
     )
 
     try:
-        # Silent pin so it doesn't annoy user with buzzing sounds
-        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=True)
+        # Send without pin so channel is not spammed with pinned message notifications
+        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
         print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Level {level}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
@@ -1247,17 +1251,32 @@ def run_live_bot():
                         v_tag = "+VIOLET" if has_violet else ""
                         print(f"\n[ROUND COMPLETE] Season ID: {current_period} | Result: {actual_color}{v_tag} | {actual_size} ({num})", flush=True)
 
-                        # A. Evaluate Previous Prediction Result
-                        if current_period in MEMORY_PREDICTIONS:
-                            pred = MEMORY_PREDICTIONS[current_period]
-                            send_user_result(current_period, num, actual_color, pred)
-                            del MEMORY_PREDICTIONS[current_period]
-                            time.sleep(0.4)  # Prevent Telegram burst rate limits
+                        # A. Evaluate Previous Prediction Result (check recent items so no result is ever missed)
+                        evaluated_any = False
+                        for itm in reversed(items[:5]):
+                            p_chk = str(itm.get("issueNumber", ""))
+                            if p_chk in MEMORY_PREDICTIONS:
+                                p_num = int(itm.get("number", 0))
+                                p_raw = str(itm.get("color", ""))
+                                if p_num == 0:
+                                    p_col = "RED"
+                                elif p_num == 5:
+                                    p_col = "GREEN"
+                                else:
+                                    p_col = "RED" if "red" in p_raw.lower() else "GREEN"
+                                pred = MEMORY_PREDICTIONS[p_chk]
+                                send_user_result(p_chk, p_num, p_col, pred)
+                                del MEMORY_PREDICTIONS[p_chk]
+                                evaluated_any = True
+                                time.sleep(0.4)
 
-                        # Clean up any stale predictions older than current_period
+                        if evaluated_any:
+                            save_cache()
+
+                        # Clean up any stale predictions older than 5 rounds
                         try:
                             cur_p_int = int(current_period)
-                            stale_keys = [k for k in list(MEMORY_PREDICTIONS.keys()) if int(k) < cur_p_int]
+                            stale_keys = [k for k in list(MEMORY_PREDICTIONS.keys()) if int(k) < (cur_p_int - 5)]
                             for k in stale_keys:
                                 del MEMORY_PREDICTIONS[k]
                         except Exception:
