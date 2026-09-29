@@ -530,7 +530,7 @@ def detect_market_patterns(history_items):
     bayes_conf = round(max(post_mean, 1.0 - post_mean) * 100, 1)
     q15_bayes = (bayes_fav, min(85.0, max(55.0, bayes_conf)), f"Bayesian Exponential Posterior favors {bayes_fav} ({bayes_conf}%)")
 
-    # 15. Predicted Size (BIG / SMALL) Engine
+    # 15. Predicted Size (BIG / SMALL) Engine with Multi-Quant Scoring
     last_s = sizes[-1]
     opp_s = "SMALL" if last_s == "BIG" else "BIG"
     s_streak = 1
@@ -542,27 +542,94 @@ def detect_market_patterns(history_items):
         if sizes[k] != sizes[k - 1]: s_alt += 1
         else: break
 
+    is_s_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3])
+
+    s_score_big = 0.0
+    s_score_small = 0.0
+
+    # 1. Size Alternation Chop (Continuation)
     if s_alt >= 3:
-        pred_size = opp_s  # Follow size alternation
-        pred_size_conf = 78.0
+        if opp_s == "BIG": s_score_big += 4.2
+        else: s_score_small += 4.2
+    # 2. Size 2-2 Symmetry (Double Double)
+    elif is_s_2_2:
+        if opp_s == "BIG": s_score_big += 3.5
+        else: s_score_small += 3.5
+    # 3. Size 2-3 Streak Break (Mean-reversion)
     elif s_streak in (2, 3):
-        pred_size = opp_s  # Pair/Triple size break
-        pred_size_conf = 75.0
+        if opp_s == "BIG": s_score_big += 3.0
+        else: s_score_small += 3.0
+    # 4. Confirmed Monster Dragon Size (5+ streak)
     elif s_streak >= 5:
-        pred_size = last_s  # Ride monster size dragon
-        pred_size_conf = 76.0
+        if last_s == "BIG": s_score_big += 3.5
+        else: s_score_small += 3.5
     else:
-        b20 = sizes[-20:].count("BIG") if len(sizes) >= 20 else sizes.count("BIG")
-        s20 = sizes[-20:].count("SMALL") if len(sizes) >= 20 else sizes.count("SMALL")
-        if b20 >= 13:
-            pred_size = "SMALL"
-            pred_size_conf = 74.0
-        elif s20 >= 13:
-            pred_size = "BIG"
-            pred_size_conf = 74.0
-        else:
-            pred_size = opp_s
-            pred_size_conf = 68.0
+        if opp_s == "BIG": s_score_big += 1.5
+        else: s_score_small += 1.5
+
+    # 5. Rolling 20-Round Micro Imbalance for Size
+    b20 = sizes[-20:].count("BIG") if len(sizes) >= 20 else sizes.count("BIG")
+    s20 = sizes[-20:].count("SMALL") if len(sizes) >= 20 else sizes.count("SMALL")
+    if b20 >= 13:
+        s_score_small += 3.2
+    elif s20 >= 13:
+        s_score_big += 3.2
+    elif b20 >= 12:
+        s_score_small += 1.8
+    elif s20 >= 12:
+        s_score_big += 1.8
+
+    # 6. Winning Number to Size Bayes Prior
+    num_to_size = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 1):
+        num_to_size[nums[i]][sizes[i + 1]] += 1
+    c_ns = num_to_size.get(last_num, {"BIG": 0, "SMALL": 0})
+    tot_ns = c_ns["BIG"] + c_ns["SMALL"]
+    if tot_ns >= 5:
+        if c_ns["BIG"] > c_ns["SMALL"]:
+            s_score_big += 2.5
+        elif c_ns["SMALL"] > c_ns["BIG"]:
+            s_score_small += 2.5
+
+    # 7. Size Markov 3-Gram Transitions
+    t3_s = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(sizes) - 3):
+        t3_s[tuple(sizes[i:i + 3])][sizes[i + 3]] += 1
+    last3_s = tuple(sizes[-3:]) if len(sizes) >= 3 else ()
+    c3_s = t3_s.get(last3_s, {"BIG": 0, "SMALL": 0})
+    tot3_s = c3_s["BIG"] + c3_s["SMALL"]
+    if tot3_s >= 4:
+        if c3_s["BIG"] > c3_s["SMALL"]:
+            s_score_big += 2.8
+        elif c3_s["SMALL"] > c3_s["BIG"]:
+            s_score_small += 2.8
+
+    pred_size = "BIG" if s_score_big >= s_score_small else "SMALL"
+    size_edge = abs(s_score_big - s_score_small)
+    tot_s = s_score_big + s_score_small
+    size_ratio = (max(s_score_big, s_score_small) / tot_s) if tot_s > 0 else 0.5
+    size_margin_pct = round((size_edge / tot_s * 100), 1) if tot_s > 0 else 0.0
+    pred_size_conf = min(96.0, max(76.0, round(65.0 + (size_ratio * 30.0), 1)))
+
+    # 16. Number Frequency & Transition Engine (Violet & Number Tip)
+    num_next_counts = defaultdict(int)
+    for i in range(len(nums) - 1):
+        if nums[i] == last_num:
+            num_next_counts[nums[i + 1]] += 1
+    tot_num_trans = sum(num_next_counts.values())
+    top_num = None
+    top_num_pct = 0.0
+    if tot_num_trans >= 3:
+        top_num, top_cnt = max(num_next_counts.items(), key=lambda x: x[1])
+        top_num_pct = round((top_cnt / tot_num_trans) * 100, 1)
+
+    jackpot_tip = None
+    if violet_due:
+        jackpot_tip = "Number 0 or 5 (Violet) [4.5X Payout]"
+    elif top_num in (0, 5) and top_num_pct >= 20.0:
+        jackpot_tip = f"Number {top_num} (Violet Special) [9X Payout]"
+    elif top_num is not None and top_num_pct >= 30.0:
+        jackpot_tip = f"Number {top_num} [9X High Payout]"
 
     # Compile descriptive pattern tags
     desc = []
@@ -601,7 +668,10 @@ def detect_market_patterns(history_items):
         "violet_due": violet_due,
         "rounds_since_violet": rounds_since_violet,
         "pred_size": pred_size,
+        "size_edge": size_edge,
+        "size_margin_pct": size_margin_pct,
         "pred_size_conf": pred_size_conf,
+        "jackpot_tip": jackpot_tip,
         "quants": {
             "q5": q5_ngram,
             "q6": q6_num,
@@ -796,19 +866,38 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         l_v = green_votes if w_col == "RED" else red_votes
         w_weight = red_weight if w_col == "RED" else green_weight
 
-    weight_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
-    calc_conf = min(96.0, max(76.0, round(65.0 + (weight_ratio * 30.0), 1)))
+    color_edge = abs(red_weight - green_weight)
+    color_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
+    color_margin_pct = round((color_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
+    calc_conf = min(96.0, max(76.0, round(65.0 + (color_ratio * 30.0), 1)))
+
+    # DECIDE SINGLE TARGET BET: COLOR vs SIZE
+    # User requirement: "bet ek par lgayi jaye situation ki hisab se like color se jyada big/small ka chance h to vo predciton de agar color ka jyada chance h to vo prediciton de"
+    size_margin_pct = p_info.get("size_margin_pct", 0.0)
+    pred_size = p_info.get("pred_size", "BIG")
+    size_conf = p_info.get("pred_size_conf", 78.0)
+
+    if size_margin_pct > color_margin_pct:
+        target_type = "SIZE"
+        target_val = pred_size
+        target_conf = size_conf
+        target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%) > COLOR edge ({color_margin_pct:.0f}%)"
+    else:
+        target_type = "COLOR"
+        target_val = w_col
+        target_conf = calc_conf
+        target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%) >= SIZE edge ({size_margin_pct:.0f}%)"
 
     # Dynamic Signal Grade mapped to Active Level
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
     if w_v >= 13:
-        consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
+        consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {target_edge_desc})"
     elif w_v >= 10:
-        consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
+        consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {target_edge_desc})"
     else:
-        consensus_tag = f"🎯 Council Solid Majority ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
+        consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
 
     # --- Phase 4: Council Synthesis by Arbiter (Agent 16) ---
     spec_summary = "\n".join([
@@ -821,12 +910,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         f"Sequence: {recent_str[-40:]}\n"
         f"Structure: {pattern_str}\n"
         f"Specialists:\n{spec_summary}\n"
-        f"Ruling Color: {w_col} ({w_v}-{l_v})\n"
+        f"Color Consensus: {w_col} ({color_margin_pct:.0f}% edge)\n"
+        f"Size Consensus: {pred_size} ({size_margin_pct:.0f}% edge)\n"
+        f"Chosen Best Bet: {target_type} -> {target_val}\n"
         f"Return JSON ONLY:\n"
-        f'{{"final_color": "{w_col}", "confidence": {calc_conf}, "debate_summary": "1 sharp concise sentence explaining why {w_col} wins."}}'
+        f'{{"final_target": "{target_val}", "confidence": {target_conf}, "debate_summary": "1 sharp concise sentence explaining why {target_val} has highest edge."}}'
     )
 
-    final_summary = f"16-Agent Council confirmed {w_col} based on {pattern_str.split('|')[0].strip()} ({w_v}-{l_v} consensus)."
+    final_summary = f"Selected {target_type} {target_val} based on {pattern_str.split('|')[0].strip()} ({target_edge_desc})."
     v_alert = bool(violet_due)
 
     # Arbiter consultation (ultra-fast 2.5s)
@@ -846,15 +937,34 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         except Exception:
             continue
 
-    return w_col, calc_conf, final_summary, consensus_tag, v_alert, signal_grade, pred_size
+    jackpot_tip = p_info.get("jackpot_tip")
+    return {
+        "target_type": target_type,
+        "target_val": target_val,
+        "target_conf": target_conf,
+        "color": w_col,
+        "size": pred_size,
+        "reason": final_summary,
+        "consensus_tag": consensus_tag,
+        "violet_alert": v_alert,
+        "jackpot_tip": jackpot_tip,
+        "signal_grade": signal_grade
+    }
 
 # ====================================================
 # 🚀 USER SIGNALS (CLEAN VIP CARD WITH 1001% INTENSITY)
 # ====================================================
-def send_user_signal(target_period, color, confidence, reason, consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", predicted_size="BIG"):
+def send_user_signal(target_period, target_type, target_val, confidence, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
-    c_emoji = "🔴 RED" if color == "RED" else "🟢 GREEN"
-    s_emoji = "🐘 BIG (5-9)" if predicted_size == "BIG" else "🐜 SMALL (0-4)"
+
+    if target_type == "COLOR":
+        c_emoji = "🔴 RED" if target_val == "RED" else "🟢 GREEN"
+        target_line = f"🎨 <b>Target Bet</b> : <b>{c_emoji}</b>"
+        bet_label = target_val
+    else:
+        s_emoji = "🐘 BIG [5-9]" if target_val == "BIG" else "🐜 SMALL [0-4]"
+        target_line = f"📏 <b>Target Bet</b> : <b>{s_emoji}</b>"
+        bet_label = target_val
 
     level = CURRENT_LOSS_STREAK + 1
 
@@ -863,44 +973,44 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="16
         banner = "👑 <b>WINGO 30S VIP SIGNAL</b> 👑"
         stage_badge = "🎯 <b>LEVEL 1 (1X)</b>"
         intensity = "🔥 <b>Sure-Shot</b>: <code>98% Standard Edge</code>"
-        footer = "💡 <i>Place 1X Base Bet. Stick to Martingale!</i>"
+        footer = f"💡 <i>Place 1X Base Bet on {bet_label}. Stick to Martingale!</i>"
     elif level == 2:
         banner = "⚡ <b>LEVEL 2 RECOVERY SIGNAL</b> ⚡"
         stage_badge = "⚡ <b>LEVEL 2 (3X)</b>"
         intensity = "🔥 <b>Intensity</b>: <code>250% RECOVERY HIT</code>"
-        footer = "💰 <i>Triple your stake (3X) for full recovery + profit!</i>"
+        footer = f"💰 <i>Triple your stake (3X) on {bet_label} for full recovery + profit!</i>"
     elif level == 3:
         banner = "💎 <b>LEVEL 3 ULTRA SURE-SHOT</b> 💎"
         stage_badge = "💎 <b>LEVEL 3 (9X)</b>"
         intensity = "🔥 <b>Intensity</b>: <code>500% HIGH CONVICTION</code>"
-        footer = "🚨 <i>Super strong setup! Recover all previous rounds!</i>"
+        footer = f"🚨 <i>Super strong setup on {bet_label}! Recover all previous rounds!</i>"
     elif level == 4:
         banner = "👑👑 <b>LEVEL 4 MEGA JACKPOT</b> 👑👑"
         stage_badge = "👑 <b>LEVEL 4 (27X)</b>"
         intensity = "🔥 <b>Intensity</b>: <code>800% MEGA SURE-SHOT</code>"
-        footer = "💥 <i>Massive turnaround round! Bet with full confidence!</i>"
+        footer = f"💥 <i>Massive turnaround round! Bet {bet_label} with full confidence!</i>"
     else:
         # Level 5 or higher: 1001% GOD-LEVEL!
         banner = "💣💥 <b>1001% GOD-LEVEL SURE-SHOT</b> 💥💣"
         mult = 3 ** (level - 1)
         stage_badge = f"💥 <b>LEVEL {level} ({mult}X ALL-IN)</b>"
         intensity = "🔥 <b>Intensity</b>: <b>1001% GUARANTEED HIT 🔥</b>"
-        footer = "🏆 <i>1001% ACCURACY ACTIVATED! MAXIMUM RECOVERY!</i>"
+        footer = f"🏆 <i>1001% ACCURACY ACTIVATED! MAXIMUM RECOVERY ON {bet_label}!</i>"
 
-    v_alert_line = ""
-    if violet_alert:
-        target_num = "0" if color == "RED" else "5"
-        v_alert_line = f"🟣 <b>Violet Watch</b> : ⚠️ <i>High chance of {target_num} (Violet)!</i>\n"
+    v_tip_line = ""
+    if jackpot_tip:
+        v_tip_line = f"🟣 <b>Jackpot Tip</b> : <i>{jackpot_tip}</i>\n"
+    elif violet_alert:
+        v_tip_line = "🟣 <b>Jackpot Tip</b> : ⚠️ <i>Number 0 or 5 (Violet) [4.5X Payout]!</i>\n"
 
     msg = (
         f"{banner}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏳ <b>Period</b>   : <code>...{short_period}</code>\n"
-        f"🎨 <b>Color</b>    : <b>{c_emoji}</b>\n"
-        f"📏 <b>Size</b>     : <b>{s_emoji}</b>\n"
-        f"📊 <b>Stage</b>    : {stage_badge}\n"
+        f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+        f"{target_line}\n"
+        f"📊 <b>Stage</b>      : {stage_badge}\n"
         f"{intensity}\n"
-        f"{v_alert_line}"
+        f"{v_tip_line}"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{footer}"
     )
@@ -908,7 +1018,7 @@ def send_user_signal(target_period, color, confidence, reason, consensus_tag="16
     try:
         # Silent pin so it doesn't annoy user with buzzing sounds
         send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=True)
-        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | {color} | {predicted_size} | Level {level}", flush=True)
+        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Level {level}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
@@ -931,11 +1041,17 @@ def send_user_result(period, actual_number, actual_color, pred):
     actual_size = "BIG" if actual_number >= 5 else "SMALL"
     s_display = f"🐘 BIG ({actual_number})" if actual_size == "BIG" else f"🐜 SMALL ({actual_number})"
 
-    predicted_color = pred.get("color", "")
-    predicted_size = pred.get("size", "")
-    color_win = (predicted_color == actual_color)
+    target_type = pred.get("target_type", "COLOR")
+    target_val = pred.get("target_val", pred.get("color", "RED"))
 
-    if color_win:
+    if target_type == "COLOR":
+        is_win = (target_val == actual_color)
+        t_display = "🔴 RED" if target_val == "RED" else "🟢 GREEN"
+    else:
+        is_win = (target_val == actual_size)
+        t_display = "🐘 BIG" if target_val == "BIG" else "🐜 SMALL"
+
+    if is_win:
         win_level = CURRENT_LOSS_STREAK + 1
         CYCLE_WINS += 1
         TOTAL_CYCLES += 1
@@ -958,12 +1074,17 @@ def send_user_result(period, actual_number, actual_color, pred):
             win_banner = f"💣💥 <b>LEVEL {win_level} 1001% GOD-WINNER!</b> 🏆🍾🎉"
             sub = "👑 <i>1001% SURE-SHOT DELIVERED! Full profit secured! Reset to Level 1.</i>"
 
+        bonus_violet = ""
+        if actual_number in (0, 5) and (pred.get("violet_alert") or pred.get("jackpot_tip")):
+            bonus_violet = "🟣 <b>JACKPOT NUMBER 0/5 HIT! [4.5X BONUS WIN]</b> 🤑🍾\n"
+
         msg = (
             f"{win_banner}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
             f"🎲 <b>Result</b>     : <b>{c_display}</b> | <b>{s_display}</b>\n"
-            f"🎯 <b>Predicted</b>  : <b>{predicted_color}</b> ({predicted_size}) (HIT 🔥)\n"
+            f"🎯 <b>Target Bet</b> : <b>{t_display} (HIT 🔥)</b>\n"
+            f"{bonus_violet}"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{sub}"
         )
@@ -980,6 +1101,7 @@ def send_user_result(period, actual_number, actual_color, pred):
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
                 f"🎲 <b>Result</b>     : <b>{c_display}</b> | <b>{s_display}</b>\n"
+                f"🎯 <b>Target Bet</b> : <b>{t_display} (MISSED)</b>\n"
                 f"🛡️ <b>Notice</b>     : <i>Max recovery level reached. Bankroll protected.</i>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔄 <i>Resetting fresh to LEVEL 1 Base Bet (1X)!</i>"
@@ -990,14 +1112,16 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
+            intensity_tag = "1001% GOD-LEVEL" if next_level >= 5 else f"{[0, 98, 250, 500, 800][min(next_level, 4)]}%"
             msg = (
                 f"❌ <b>LEVEL {loss_level} MISSED</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
                 f"🎲 <b>Result</b>     : <b>{c_display}</b> | <b>{s_display}</b>\n"
+                f"🎯 <b>Target Bet</b> : <b>{t_display} (MISSED)</b>\n"
                 f"⚡ <b>Next Stage</b> : <b>LEVEL {next_level} ({mult}X) RECOVERY</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔥 <i>Stay ready! 1001% Sureshot Intensity upgrading to Level {next_level}...</i>"
+                f"🔥 <i>Stay ready! {intensity_tag} Sureshot upgrading to Level {next_level}...</i>"
             )
 
     save_cache()
@@ -1131,24 +1255,36 @@ def run_live_bot():
                         next_target_period = get_next_period(current_period)
 
                         if len(MEMORY_HISTORY) >= 6:
-                            pred_color, final_conf, reason, consensus_tag, violet_alert, signal_grade, pred_size = ask_12_ai_council(
-                                MEMORY_HISTORY, CURRENT_LOSS_STREAK
-                            )
+                            decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK)
+                            t_type = decision["target_type"]
+                            t_val = decision["target_val"]
+                            t_conf = decision["target_conf"]
+                            pred_color = decision["color"]
+                            pred_size = decision["size"]
+                            reason = decision["reason"]
+                            consensus_tag = decision["consensus_tag"]
+                            violet_alert = decision["violet_alert"]
+                            jackpot_tip = decision.get("jackpot_tip")
+                            signal_grade = decision["signal_grade"]
 
                             v_flag = " [🟣 VIOLET ALERT]" if violet_alert else ""
-                            print(f"🏛️ Council Verdict: {pred_color} | {pred_size} ({final_conf:.1f}%) | {consensus_tag}{v_flag} | {signal_grade} | {reason}", flush=True)
+                            j_flag = f" [🎰 TIP: {jackpot_tip}]" if jackpot_tip else ""
+                            print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag} | {signal_grade}", flush=True)
 
                             # Save & Dispatch ONE final decision to User DM
                             MEMORY_PREDICTIONS[next_target_period] = {
+                                "target_type": t_type,
+                                "target_val": t_val,
                                 "color": pred_color,
                                 "size": pred_size,
-                                "conf": final_conf,
+                                "conf": t_conf,
                                 "reason": reason,
                                 "consensus": consensus_tag,
                                 "violet_alert": violet_alert,
+                                "jackpot_tip": jackpot_tip,
                                 "grade": signal_grade
                             }
-                            send_user_signal(next_target_period, pred_color, final_conf, reason, consensus_tag, violet_alert, signal_grade, pred_size)
+                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip)
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
