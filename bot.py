@@ -955,63 +955,82 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
 # ====================================================
 # 🚀 USER SIGNALS (CLEAN VIP CARD WITH 1001% INTENSITY)
 # ====================================================
+def to_bold(text):
+    """Converts ASCII letters and digits to Mathematical Sans-Serif Bold for crystal-clear Telegram bold rendering."""
+    out = []
+    for ch in str(text):
+        code = ord(ch)
+        if 65 <= code <= 90:  # A-Z
+            out.append(chr(0x1D5D4 + (code - 65)))
+        elif 97 <= code <= 122:  # a-z
+            out.append(chr(0x1D5EE + (code - 97)))
+        elif 48 <= code <= 57:  # 0-9
+            out.append(chr(0x1D7EC + (code - 48)))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+# ====================================================
+# 🚀 USER SIGNALS (HIGH-VISIBILITY BOLD VIP CARDS)
+# ====================================================
 def send_user_signal(target_period, target_type, target_val, confidence, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
     if target_type == "COLOR":
-        c_emoji = "🔴 RED" if target_val == "RED" else "🟢 GREEN"
+        c_name = to_bold(target_val)
+        c_emoji = f"🔴 {c_name}" if target_val == "RED" else f"🟢 {c_name}"
         target_code = c_emoji
         bet_label = target_val
     else:
-        s_emoji = "🐘 BIG [5-9]" if target_val == "BIG" else "🐜 SMALL [0-4]"
+        s_name = to_bold("BIG [5-9]") if target_val == "BIG" else to_bold("SMALL [0-4]")
+        s_emoji = f"🐘 {s_name}" if target_val == "BIG" else f"🐜 {s_name}"
         target_code = s_emoji
         bet_label = target_val
 
     level = CURRENT_LOSS_STREAK + 1
 
-    # Clean, professional VIP tiers with 1001% Sureshot conviction
     if level == 1:
-        banner = "👑 <b>WINGO 30S VIP PREDICTION</b>"
-        stage_str = "LEVEL 1 (1X)"
-        intensity_str = "1001% SURE-SHOT ENTRY"
+        banner = f"👑 <b>{to_bold('WINGO 30S VIP PREDICTION')}</b> 👑"
+        stage_str = to_bold("LEVEL 1 (1X)")
+        intensity_str = to_bold("1001% SURE-SHOT ENTRY")
         footer = f"💡 <i>Place 1X Base Bet on {bet_label}. High Probability Setup!</i>"
     elif level == 2:
-        banner = "⚡ <b>WINGO 30S RECOVERY SIGNAL</b>"
-        stage_str = "LEVEL 2 (3X)"
-        intensity_str = "1001% RECOVERY HIT"
+        banner = f"⚡ <b>{to_bold('WINGO 30S RECOVERY SIGNAL')}</b> ⚡"
+        stage_str = to_bold("LEVEL 2 (3X)")
+        intensity_str = to_bold("1001% RECOVERY HIT")
         footer = f"💰 <i>Triple your stake (3X) on {bet_label}! Full capital + profit recovery!</i>"
     elif level == 3:
-        banner = "💎 <b>WINGO 30S ULTRA SIGNAL</b>"
-        stage_str = "LEVEL 3 (9X)"
-        intensity_str = "1001% ULTRA SURE-SHOT"
+        banner = f"💎 <b>{to_bold('WINGO 30S ULTRA SIGNAL')}</b> 💎"
+        stage_str = to_bold("LEVEL 3 (9X)")
+        intensity_str = to_bold("1001% ULTRA SURE-SHOT")
         footer = f"🚨 <i>High conviction setup on {bet_label}! Bet 9X for full recovery!</i>"
     elif level == 4:
-        banner = "🔥 <b>WINGO 30S MAX RECOVERY</b>"
-        stage_str = "LEVEL 4 (27X)"
-        intensity_str = "1001% MAXIMUM RECOVERY"
+        banner = f"🔥 <b>{to_bold('WINGO 30S MAX RECOVERY')}</b> 🔥"
+        stage_str = to_bold("LEVEL 4 (27X)")
+        intensity_str = to_bold("1001% MAXIMUM RECOVERY")
         footer = f"💥 <i>Maximum recovery setup on {bet_label}! Recover all previous rounds!</i>"
     else:
         mult = 3 ** (level - 1)
-        banner = "🏆 <b>WINGO 30S CRITICAL SIGNAL</b>"
-        stage_str = f"LEVEL {level} ({mult}X)"
-        intensity_str = "1001% CRITICAL SURE-SHOT"
+        banner = f"🏆 <b>{to_bold('WINGO 30S CRITICAL SIGNAL')}</b> 🏆"
+        stage_str = to_bold(f"LEVEL {level} ({mult}X)")
+        intensity_str = to_bold("1001% CRITICAL SURE-SHOT")
         footer = f"🏆 <i>Critical recovery hit on {bet_label}! Final turnaround!</i>"
 
     v_tip_line = ""
     if jackpot_tip:
-        v_tip_line = f"\n<b>Jackpot Tip</b>: <code>{jackpot_tip}</code>"
+        v_tip_line = f"🟣 <b>Jackpot Tip</b> : <b>{to_bold(jackpot_tip)}</b>\n"
     elif violet_alert:
-        v_tip_line = "\n<b>Jackpot Tip</b>: <code>Number 0 or 5 (Violet 4.5X)</code>"
+        v_tip_line = f"🟣 <b>Jackpot Tip</b> : <b>{to_bold('Number 0 or 5 (Violet 4.5X)')}</b>\n"
 
     msg = (
         f"{banner}\n"
-        f"<blockquote>\n"
-        f"<b>Period</b>     : <code>...{short_period}</code>\n"
-        f"<b>Prediction</b> : <code>{target_code}</code>\n"
-        f"<b>Stage</b>      : <code>{stage_str}</code>\n"
-        f"<b>Intensity</b>  : <code>{intensity_str}</code>"
-        f"{v_tip_line}\n"
-        f"</blockquote>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+        f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
+        f"📊 <b>Stage</b>      : <b>{stage_str}</b>\n"
+        f"🔥 <b>Intensity</b>  : <b>{intensity_str}</b>\n"
+        f"{v_tip_line}"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{footer}"
     )
 
@@ -1023,33 +1042,35 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
 # ====================================================
-# 🎯 RESULT EVALUATION (CLEAN VIP FORMAT & CONTINUOUS ESCALATION)
+# 🎯 RESULT EVALUATION (PROMINENT BOLD WIN & LOSS CARDS)
 # ====================================================
 def send_user_result(period, actual_number, actual_color, pred):
     global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL
     short_period = period[-4:] if len(period) >= 4 else period
 
+    bold_c_name = to_bold(actual_color)
     if actual_number == 0:
-        c_display = "🔴 RED + 🟣 VIOLET (0)"
+        c_display = f"🔴 {to_bold('RED')} + 🟣 {to_bold('VIOLET')} ({actual_number})"
     elif actual_number == 5:
-        c_display = "🟢 GREEN + 🟣 VIOLET (5)"
+        c_display = f"🟢 {to_bold('GREEN')} + 🟣 {to_bold('VIOLET')} ({actual_number})"
     elif actual_color == "RED":
-        c_display = f"🔴 RED ({actual_number})"
+        c_display = f"🔴 {bold_c_name} ({actual_number})"
     else:
-        c_display = f"🟢 GREEN ({actual_number})"
+        c_display = f"🟢 {bold_c_name} ({actual_number})"
 
     actual_size = "BIG" if actual_number >= 5 else "SMALL"
-    s_display = f"🐘 BIG ({actual_number})" if actual_size == "BIG" else f"🐜 SMALL ({actual_number})"
+    bold_size_name = to_bold("BIG") if actual_size == "BIG" else to_bold("SMALL")
+    s_display = f"🐘 {bold_size_name} ({actual_number})" if actual_size == "BIG" else f"🐜 {bold_size_name} ({actual_number})"
 
     target_type = pred.get("target_type", "COLOR")
     target_val = pred.get("target_val", pred.get("color", "RED"))
 
     if target_type == "COLOR":
         is_win = (target_val == actual_color)
-        t_display = "🔴 RED" if target_val == "RED" else "🟢 GREEN"
+        t_display = f"🔴 {to_bold('RED')}" if target_val == "RED" else f"🟢 {to_bold('GREEN')}"
     else:
         is_win = (target_val == actual_size)
-        t_display = "🐘 BIG [5-9]" if target_val == "BIG" else "🐜 SMALL [0-4]"
+        t_display = f"🐘 {to_bold('BIG [5-9]')}" if target_val == "BIG" else f"🐜 {to_bold('SMALL [0-4]')}"
 
     if is_win:
         win_level = CURRENT_LOSS_STREAK + 1
@@ -1059,38 +1080,40 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_LOSS_STREAK = 0  # WIN! Reset to Level 1!
 
         mult = 3 ** (win_level - 1)
-        win_stage = f"LEVEL {win_level} ({mult}X)"
+        win_stage = to_bold(f"LEVEL {win_level} ({mult}X)")
 
         if win_level == 1:
-            win_banner = "🟢 <b>ROUND RESULT : LEVEL 1 WIN ✅</b>"
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 1 WIN ✅')}</b> 🟢"
             sub = "💰 <i>Direct win secured! Next round resets to Level 1 (1X).</i>"
         elif win_level == 2:
-            win_banner = "🟢 <b>ROUND RESULT : LEVEL 2 RECOVERY WIN ✅</b>"
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 2 RECOVERY WIN ✅')}</b> 🟢"
             sub = "💸 <i>Recovery win secured! Capital + profit restored to Level 1.</i>"
         elif win_level == 3:
-            win_banner = "🟢 <b>ROUND RESULT : LEVEL 3 ULTRA WIN ✅</b>"
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 3 ULTRA WIN ✅')}</b> 🟢"
             sub = "🤑 <i>Ultra recovery delivered! Turnaround secured, resetting to Level 1.</i>"
         elif win_level == 4:
-            win_banner = "🟢 <b>ROUND RESULT : LEVEL 4 MAX WIN ✅</b>"
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 4 MAX WIN ✅')}</b> 🟢"
             sub = "🏆 <i>27X mega recovery booked! Profit secured, resetting to Level 1.</i>"
         else:
-            win_banner = f"🟢 <b>ROUND RESULT : LEVEL {win_level} WIN ✅</b>"
+            win_banner = f"🟢 <b>{to_bold(f'ROUND RESULT : LEVEL {win_level} WIN ✅')}</b> 🟢"
             sub = "👑 <i>Critical recovery win! Cycle complete, resetting to Level 1.</i>"
 
         bonus_violet = ""
         if actual_number in (0, 5) and (pred.get("violet_alert") or pred.get("jackpot_tip")):
-            bonus_violet = "\n<b>Bonus Hit</b>  : <code>🟣 VIOLET 0/5 [4.5X HIT]</code>"
+            bonus_violet = f"🟣 <b>Bonus Hit</b>  : <b>{to_bold('VIOLET 0/5 [4.5X HIT]')}</b>\n"
+
+        status_str = to_bold("WIN ✅ (PROFIT SECURED)")
 
         msg = (
             f"{win_banner}\n"
-            f"<blockquote>\n"
-            f"<b>Period</b>     : <code>...{short_period}</code>\n"
-            f"<b>Prediction</b> : <code>{t_display}</code>\n"
-            f"<b>Result</b>     : <code>{c_display} | {s_display}</code>\n"
-            f"<b>Status</b>     : <code>WIN ✅ (PROFIT SECURED)</code>\n"
-            f"<b>Stage</b>      : <code>{win_stage}</code>"
-            f"{bonus_violet}\n"
-            f"</blockquote>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+            f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
+            f"🎲 <b>Result</b>     : <b>{c_display} | {s_display}</b>\n"
+            f"🏆 <b>Status</b>     : <b>{status_str}</b>\n"
+            f"📊 <b>Stage</b>      : <b>{win_stage}</b>\n"
+            f"{bonus_violet}"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{sub}"
         )
 
@@ -1101,15 +1124,18 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
             # Reached max safety limit (Level 8)
+            stop_banner = f"🛑 <b>{to_bold('ROUND RESULT : STOP-LOSS REACHED')}</b> 🛑"
+            status_str = to_bold("STOP-LOSS (CYCLE RESET)")
+            loss_stage = to_bold(f"LEVEL {loss_level} (STOP-LOSS)")
             msg = (
-                f"🛑 <b>ROUND RESULT : STOP-LOSS REACHED 🛑</b>\n"
-                f"<blockquote>\n"
-                f"<b>Period</b>     : <code>...{short_period}</code>\n"
-                f"<b>Prediction</b> : <code>{t_display}</code>\n"
-                f"<b>Result</b>     : <code>{c_display} | {s_display}</code>\n"
-                f"<b>Status</b>     : <code>STOP-LOSS (CYCLE RESET)</code>\n"
-                f"<b>Stage</b>      : <code>LEVEL {loss_level} (STOP-LOSS)</code>\n"
-                f"</blockquote>\n"
+                f"{stop_banner}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+                f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
+                f"🎲 <b>Result</b>     : <b>{c_display} | {s_display}</b>\n"
+                f"⚠️ <b>Status</b>     : <b>{status_str}</b>\n"
+                f"📊 <b>Stage</b>      : <b>{loss_stage}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔄 <i>Max safety level reached. Resetting fresh to LEVEL 1 (1X)!</i>"
             )
             CYCLE_LOSSES += 1
@@ -1118,16 +1144,20 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
+            loss_banner = f"🔴 <b>{to_bold(f'ROUND RESULT : LEVEL {loss_level} LOSS ❌')}</b> 🔴"
+            status_str = to_bold("LOSS ❌ (TRY RECOVERY)")
+            next_stage_str = to_bold(f"LEVEL {next_level} ({mult}X RECOVERY)")
+            intensity_str = to_bold("1001% SURE-SHOT UPGRADE")
             msg = (
-                f"🔴 <b>ROUND RESULT : LEVEL {loss_level} LOSS ❌</b>\n"
-                f"<blockquote>\n"
-                f"<b>Period</b>     : <code>...{short_period}</code>\n"
-                f"<b>Prediction</b> : <code>{t_display}</code>\n"
-                f"<b>Result</b>     : <code>{c_display} | {s_display}</code>\n"
-                f"<b>Status</b>     : <code>LOSS ❌ (TRY RECOVERY)</code>\n"
-                f"<b>Next Stage</b> : <code>LEVEL {next_level} ({mult}X RECOVERY)</code>\n"
-                f"<b>Intensity</b>  : <code>1001% SURE-SHOT UPGRADE</code>\n"
-                f"</blockquote>\n"
+                f"{loss_banner}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+                f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
+                f"🎲 <b>Result</b>     : <b>{c_display} | {s_display}</b>\n"
+                f"⚠️ <b>Status</b>     : <b>{status_str}</b>\n"
+                f"⚡ <b>Next Stage</b> : <b>{next_stage_str}</b>\n"
+                f"🔥 <b>Intensity</b>  : <b>{intensity_str}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚡ <i>Loss in round ...{short_period}. Escalating to Level {next_level} ({mult}X) for full recovery. Stay ready!</i>"
             )
 
