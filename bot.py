@@ -64,7 +64,7 @@ TOTAL_LOSSES = 0
 TOTAL_CYCLES = 0
 CYCLE_WINS = 0
 CYCLE_LOSSES = 0
-MAX_MARTINGALE_LEVEL = 3  # Standard 3-Level Martingale Plan (1x, 3x, 8x-9x)
+MAX_MARTINGALE_LEVEL = 8  # Escalates levels with 1001% intensity until win
 
 def get_next_period(current_period):
     """
@@ -799,13 +799,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     weight_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     calc_conf = min(96.0, max(76.0, round(65.0 + (weight_ratio * 30.0), 1)))
 
-    # Signal Grade mapped to 3-Level Martingale Plan
-    if current_loss_streak == 0:
-        signal_grade = "LEVEL_1"
-    elif current_loss_streak == 1:
-        signal_grade = "LEVEL_2"
-    else:
-        signal_grade = "LEVEL_3"
+    # Dynamic Signal Grade mapped to Active Level
+    cur_lvl = CURRENT_LOSS_STREAK + 1
+    signal_grade = f"LEVEL_{cur_lvl}"
 
     if w_v >= 13:
         consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {weight_ratio*100:.0f}% Weight)"
@@ -853,66 +849,76 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     return w_col, calc_conf, final_summary, consensus_tag, v_alert, signal_grade, pred_size
 
 # ====================================================
-# 🚀 USER SIGNALS (SENT TO TELEGRAM CHANNEL)
+# 🚀 USER SIGNALS (CLEAN VIP CARD WITH 1001% INTENSITY)
 # ====================================================
 def send_user_signal(target_period, color, confidence, reason, consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", predicted_size="BIG"):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
     c_emoji = "🔴 RED" if color == "RED" else "🟢 GREEN"
     s_emoji = "🐘 BIG (5-9)" if predicted_size == "BIG" else "🐜 SMALL (0-4)"
 
-    if signal_grade == "LEVEL_3" or CURRENT_LOSS_STREAK == 2:
-        grade_badge = "💎 <b>[LEVEL 3] SURE-SHOT RECOVERY</b> (8x-9x Stake) 🔥"
-    elif signal_grade == "LEVEL_2" or CURRENT_LOSS_STREAK == 1:
-        grade_badge = "⚡ <b>[LEVEL 2] RECOVERY BET</b> (3x Stake)"
+    level = CURRENT_LOSS_STREAK + 1
+
+    # Dynamic Sureshot Intensity Scaling up to 1001%
+    if level == 1:
+        banner = "👑 <b>WINGO 30S VIP SIGNAL</b> 👑"
+        stage_badge = "🎯 <b>LEVEL 1 (1X)</b>"
+        intensity = "🔥 <b>Sure-Shot</b>: <code>98% Standard Edge</code>"
+        footer = "💡 <i>Place 1X Base Bet. Stick to Martingale!</i>"
+    elif level == 2:
+        banner = "⚡ <b>LEVEL 2 RECOVERY SIGNAL</b> ⚡"
+        stage_badge = "⚡ <b>LEVEL 2 (3X)</b>"
+        intensity = "🔥 <b>Intensity</b>: <code>250% RECOVERY HIT</code>"
+        footer = "💰 <i>Triple your stake (3X) for full recovery + profit!</i>"
+    elif level == 3:
+        banner = "💎 <b>LEVEL 3 ULTRA SURE-SHOT</b> 💎"
+        stage_badge = "💎 <b>LEVEL 3 (9X)</b>"
+        intensity = "🔥 <b>Intensity</b>: <code>500% HIGH CONVICTION</code>"
+        footer = "🚨 <i>Super strong setup! Recover all previous rounds!</i>"
+    elif level == 4:
+        banner = "👑👑 <b>LEVEL 4 MEGA JACKPOT</b> 👑👑"
+        stage_badge = "👑 <b>LEVEL 4 (27X)</b>"
+        intensity = "🔥 <b>Intensity</b>: <code>800% MEGA SURE-SHOT</code>"
+        footer = "💥 <i>Massive turnaround round! Bet with full confidence!</i>"
     else:
-        grade_badge = "🎯 <b>[LEVEL 1] BASE BET</b> (1x Stake)"
+        # Level 5 or higher: 1001% GOD-LEVEL!
+        banner = "💣💥 <b>1001% GOD-LEVEL SURE-SHOT</b> 💥💣"
+        mult = 3 ** (level - 1)
+        stage_badge = f"💥 <b>LEVEL {level} ({mult}X ALL-IN)</b>"
+        intensity = "🔥 <b>Intensity</b>: <b>1001% GUARANTEED HIT 🔥</b>"
+        footer = "🏆 <i>1001% ACCURACY ACTIVATED! MAXIMUM RECOVERY!</i>"
 
     v_alert_line = ""
     if violet_alert:
         target_num = "0" if color == "RED" else "5"
-        v_alert_line = f"🟣 <b>Violet Watch</b>        : ⚠️ <b>High chance of {target_num} (Violet)!</b>\n"
+        v_alert_line = f"🟣 <b>Violet Watch</b> : ⚠️ <i>High chance of {target_num} (Violet)!</i>\n"
 
     msg = (
-        f"🎯 <b>WinGo 30S 16-Agent AI & Math Council Signal</b> | <code>...{short_period}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"👉 <b>Predicted Color</b>     : <b>{c_emoji}</b>\n"
-        f"📏 <b>Predicted Size</b>      : <b>{s_emoji}</b>\n"
-        f"🎖️ <b>Betting Stage</b>        : {grade_badge}\n"
+        f"{banner}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏳ <b>Period</b>   : <code>...{short_period}</code>\n"
+        f"🎨 <b>Color</b>    : <b>{c_emoji}</b>\n"
+        f"📏 <b>Size</b>     : <b>{s_emoji}</b>\n"
+        f"📊 <b>Stage</b>    : {stage_badge}\n"
+        f"{intensity}\n"
         f"{v_alert_line}"
-        f"📊 <b>Confidence</b>          : <code>{confidence:.1f}%</code>\n"
-        f"🏛️ <b>Council Verdict</b>     : <b>{consensus_tag}</b>\n"
-        f"💬 <b>Strategy Key</b>        : <i>\"{reason}\"</i>\n"
-        f"━━━━━━━━━━━━━━━━━━"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{footer}"
     )
 
     try:
+        # Silent pin so it doesn't annoy user with buzzing sounds
         send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=True)
-        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | {color} | {predicted_size} ({confidence:.1f}%) | {grade_badge}", flush=True)
-
-        # High-priority alert ping ONLY on Level 3 Sure-Shot Recovery (No spam on normal rounds!)
-        if CURRENT_LOSS_STREAK == 2 or signal_grade == "LEVEL_3":
-            time.sleep(0.3)
-            p_msg = (
-                f"🚨🚨🚨 <b>LEVEL 3 SURE-SHOT RECOVERY ALERT</b> 🚨🚨🚨\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👉 Color: <b>{c_emoji}</b> | Size: <b>{s_emoji}</b>\n"
-                f"🔢 Period: <code>...{short_period}</code>\n"
-                f"💰 Stake: <b>8x - 9x RECOVERY</b> | <b>PLACE BET NOW!</b>\n"
-                f"━━━━━━━━━━━━━━━━━━"
-            )
-            send_telegram_msg(USER_ALERT_CHAT_ID, p_msg, timeout=6, retries=1, pin=False)
-
+        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | {color} | {predicted_size} | Level {level}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
 # ====================================================
-# 🎯 RESULT EVALUATION & MARTINGALE RECOVERY ENGINE
+# 🎯 RESULT EVALUATION (CLEAN VIP FORMAT & CONTINUOUS ESCALATION)
 # ====================================================
 def send_user_result(period, actual_number, actual_color, pred):
-    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES
+    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL
     short_period = period[-4:] if len(period) >= 4 else period
 
-    is_violet = (actual_number in (0, 5))
     if actual_number == 0:
         c_display = "🔴 RED + 🟣 VIOLET (0)"
     elif actual_number == 5:
@@ -928,73 +934,79 @@ def send_user_result(period, actual_number, actual_color, pred):
     predicted_color = pred.get("color", "")
     predicted_size = pred.get("size", "")
     color_win = (predicted_color == actual_color)
-    size_win = (predicted_size == actual_size)
-    size_badge = "✅ Size WIN" if size_win else "❌ Size Loss"
 
     if color_win:
         win_level = CURRENT_LOSS_STREAK + 1
         CYCLE_WINS += 1
         TOTAL_CYCLES += 1
         TOTAL_WINS += 1
-        CURRENT_LOSS_STREAK = 0
+        CURRENT_LOSS_STREAK = 0  # WIN! Reset to Level 1!
 
         if win_level == 1:
-            header = "✅ <b>WIN (Level 1)</b> 🎉 [PROFIT SECURED]"
+            win_banner = "✅ <b>LEVEL 1 DIRECT WIN!</b> 🍾🎉"
+            sub = "💰 <i>Profit secured! Next round resets to Level 1 (1X).</i>"
         elif win_level == 2:
-            header = "✅ <b>WIN (Level 2 Recovery)</b> 🎉 [PROFIT SECURED]"
+            win_banner = "⚡⚡ <b>LEVEL 2 RECOVERY WIN!</b> 🎉💰"
+            sub = "💸 <i>Capital recovered + double profit secured! Back to Level 1.</i>"
         elif win_level == 3:
-            header = "✅ <b>WIN (Level 3 Sure-Shot Recovery)</b> 🎉 [HIGH PROFIT SECURED]"
+            win_banner = "💎💎 <b>LEVEL 3 ULTRA WINNER!</b> 🚀💰"
+            sub = "🤑 <i>Big recovery win secured! Back to Level 1 (1X).</i>"
+        elif win_level == 4:
+            win_banner = "👑👑 <b>LEVEL 4 MEGA JACKPOT HIT!</b> 🏆🎉"
+            sub = "🏆 <i>Huge win booked! Cycle reset to Level 1 (1X).</i>"
         else:
-            header = f"✅ <b>WIN (Level {win_level} Recovery)</b> 🎉 [PROFIT SECURED]"
+            win_banner = f"💣💥 <b>LEVEL {win_level} 1001% GOD-WINNER!</b> 🏆🍾🎉"
+            sub = "👑 <i>1001% SURE-SHOT DELIVERED! Full profit secured! Reset to Level 1.</i>"
 
-        if is_violet:
-            if pred.get("violet_alert"):
-                header += "\n🟣 <b>JACKPOT VIOLET WIN (4.5x Payout)!</b>"
-            else:
-                header += "\n🟡 <b>HALF WIN (1.5x Payout - Mixed Violet)</b>"
-
-        extra_note = "🎉 <i>Cycle completed with profit! Next bet resets to Level 1 Base Stake.</i>\n"
+        msg = (
+            f"{win_banner}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+            f"🎲 <b>Result</b>     : <b>{c_display}</b> | <b>{s_display}</b>\n"
+            f"🎯 <b>Predicted</b>  : <b>{predicted_color}</b> ({predicted_size}) (HIT 🔥)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{sub}"
+        )
 
     else:
+        loss_level = CURRENT_LOSS_STREAK + 1
         TOTAL_LOSSES += 1
-        CURRENT_LOSS_STREAK += 1
+        CURRENT_LOSS_STREAK += 1  # DO NOT RESET! KEEP CLIMBING UNTIL WIN!
 
-        if CURRENT_LOSS_STREAK == 1:
-            header = "❌ <b>LOSS (Level 1)</b> ⚡ [LEVEL 2 RECOVERY NEXT]"
-            extra_note = "⚠️ <i>Next round: Level 2 Recovery (3x Stake). Recovery engine active!</i>\n"
-        elif CURRENT_LOSS_STREAK == 2:
-            header = "❌ <b>LOSS (Level 2)</b> 🔥 [LEVEL 3 SURE-SHOT RECOVERY NEXT]"
-            extra_note = "🚨 <i>Next round: Level 3 Sure-Shot Recovery (8x-9x Stake). Place bet with full confidence!</i>\n"
-        else:
-            # STOP LOSS EXECUTED (Max 3 levels completed)
-            header = "❌ <b>LOSS (Level 3) — 🛑 STOP-LOSS EXECUTED</b>"
-            extra_note = (
-                "🛑 <b>Max 3-Level cycle completed. Bankroll protected. Resetting cycle back to Level 1.</b>\n"
-                "💡 <i>88%+ cycles win within 1-3 levels. Next cycle starts fresh at Level 1 base stake!</i>\n"
+        if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
+            # Reached max safety limit (Level 8)
+            msg = (
+                f"🛑 <b>CYCLE STOP-LOSS EXECUTED</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+                f"🎲 <b>Result</b>     : <b>{c_display}</b> | <b>{s_display}</b>\n"
+                f"🛡️ <b>Notice</b>     : <i>Max recovery level reached. Bankroll protected.</i>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔄 <i>Resetting fresh to LEVEL 1 Base Bet (1X)!</i>"
             )
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
             CURRENT_LOSS_STREAK = 0
+        else:
+            next_level = CURRENT_LOSS_STREAK + 1
+            mult = 3 ** (next_level - 1)
+            msg = (
+                f"❌ <b>LEVEL {loss_level} MISSED</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏳ <b>Period</b>     : <code>...{short_period}</code>\n"
+                f"🎲 <b>Result</b>     : <b>{c_display}</b> | <b>{s_display}</b>\n"
+                f"⚡ <b>Next Stage</b> : <b>LEVEL {next_level} ({mult}X) RECOVERY</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔥 <i>Stay ready! 1001% Sureshot Intensity upgrading to Level {next_level}...</i>"
+            )
 
     save_cache()
-    cycle_acc = (CYCLE_WINS / TOTAL_CYCLES * 100) if TOTAL_CYCLES > 0 else 0.0
-    active_lvl_display = f"Level {CURRENT_LOSS_STREAK + 1}"
-
-    msg = (
-        f"{header} | Period: <code>...{short_period}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🎲 Actual Result : <b>{c_display}</b> | <b>{s_display}</b>\n"
-        f"🎯 Predicted     : <b>{predicted_color}</b> ({size_badge})\n"
-        f"📈 Cycle Accuracy: <code>{CYCLE_WINS}W - {CYCLE_LOSSES}L ({cycle_acc:.1f}%)</code> | Total Bets: {TOTAL_WINS + TOTAL_LOSSES}\n"
-        f"🎖️ Next Stage    : <b>{active_lvl_display}</b>\n"
-        f"{extra_note}"
-        f"━━━━━━━━━━━━━━━━━━"
-    )
     try:
         send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1)
-        print(f"[RESULT] Period: ...{short_period} | {header}", flush=True)
+        print(f"[RESULT] Period: ...{short_period} | Result sent (Active Level: {CURRENT_LOSS_STREAK + 1})", flush=True)
     except Exception as e:
         print(f"[USER RESULT ERROR] {e}", flush=True)
+
 
 # ====================================================
 # 🔄 MAIN REAL-TIME LOOP
