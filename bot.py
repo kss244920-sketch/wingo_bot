@@ -969,34 +969,34 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
 
     level = CURRENT_LOSS_STREAK + 1
 
-    # Dynamic Sureshot Intensity Scaling: Level 3 is 1001% God-Level
+    # Dynamic Sureshot Intensity Scaling: Supercharged Aggressive Conviction
     if level == 1:
-        banner = "👑 <b>WINGO 30S VIP SIGNAL</b> 👑"
+        banner = "👑 <b>WINGO 30S VIP SURE-SHOT</b> 👑"
         stage_badge = "🎯 <b>LEVEL 1 (1X)</b>"
-        intensity = "🔥 <b>Sure-Shot</b>: <code>100% STANDARD ENTRY</code>"
-        footer = f"💡 <i>Place 1X Base Bet on {bet_label}. Stick to Martingale!</i>"
+        intensity = "🔥 <b>Sure-Shot</b>: <code>⚡ 1001% ENTRY SURE-SHOT ⚡</code>"
+        footer = f"💡 <i>Place 1X Base Bet on {bet_label}. High Probability Setup!</i>"
     elif level == 2:
-        banner = "⚡ <b>LEVEL 2 RECOVERY SIGNAL</b> ⚡"
+        banner = "⚡⚡ <b>LEVEL 2 POWER RECOVERY</b> ⚡⚡"
         stage_badge = "⚡ <b>LEVEL 2 (3X)</b>"
-        intensity = "🔥 <b>Intensity</b>: <code>500% ULTRA RECOVERY HIT</code> 🔥"
-        footer = f"💰 <i>Triple your stake (3X) on {bet_label} for full recovery + profit!</i>"
+        intensity = "🔥 <b>Intensity</b>: <code>💣💥 2001% ULTRA RECOVERY HIT 💥💣</code>"
+        footer = f"💰 <i>Triple your stake (3X) on {bet_label}! Full capital + profit recovery!</i>"
     elif level == 3:
-        banner = "💎💎 <b>1001% GOD-LEVEL SURE-SHOT</b> 💎💎"
+        banner = "💎💎💎 <b>5001% GOD-LEVEL SURE-SHOT</b> 💎💎💎"
         stage_badge = "💎 <b>LEVEL 3 (9X ALL-IN)</b>"
-        intensity = "🔥 <b>Intensity</b>: <b>1001% GUARANTEED HIT 🔥</b>"
-        footer = f"🚨 <i>1001% SURE-SHOT ACTIVATED ON {bet_label}! MAXIMUM RECOVERY!</i>"
+        intensity = "🔥 <b>Intensity</b>: <b>👑🔥 5001% GOD-LEVEL HIT (100% UNBEATABLE) 🔥👑</b>"
+        footer = f"🚨 <i>5001% SURE-SHOT ACTIVATED ON {bet_label}! MUST BET 9X! FULL TURNAROUND!</i>"
     elif level == 4:
-        banner = "👑👑 <b>2000% MEGA JACKPOT</b> 👑👑"
+        banner = "💣💥 <b>10001% SUPREME JACKPOT HIT</b> 💥💣"
         stage_badge = "👑 <b>LEVEL 4 (27X)</b>"
-        intensity = "🔥 <b>Intensity</b>: <b>2000% MEGA SURE-SHOT 🔥</b>"
-        footer = f"💥 <i>Massive turnaround round! Bet {bet_label} with full confidence!</i>"
+        intensity = "🔥 <b>Intensity</b>: <b>🏆💣 10001% SUPREME GOD-TIER ACCURACY 💣🏆</b>"
+        footer = f"💥 <i>MASSIVE JACKPOT SETUP ON {bet_label}! RECOVER ALL PREVIOUS LOSSES!</i>"
     else:
         # Level 5 or higher
         mult = 3 ** (level - 1)
-        banner = "💣💥 <b>5000% SUPREME SNIPER</b> 💥💣"
+        banner = "🏆👑 <b>50000% INFINITE GOD-MODE</b> 👑🏆"
         stage_badge = f"💥 <b>LEVEL {level} ({mult}X MAXIMUM)</b>"
-        intensity = "🔥 <b>Intensity</b>: <b>5000% UNBEATABLE ACCURACY 🔥</b>"
-        footer = f"🏆 <i>MAXIMUM RECOVERY ACTIVATED ON {bet_label}!</i>"
+        intensity = "🔥 <b>Intensity</b>: <b>🌌 50000% INFINITE GOD-MODE SURE-SHOT 🌌</b>"
+        footer = f"🏆 <i>100% CYCLE CLOSER ON {bet_label}! MAXIMUM RECOVERY HIT!</i>"
 
     v_tip_line = ""
     if jackpot_tip:
@@ -1063,17 +1063,17 @@ def send_user_result(period, actual_number, actual_color, pred):
             win_banner = "✅ <b>LEVEL 1 DIRECT WIN!</b> 🍾🎉"
             sub = "💰 <i>Profit secured! Next round resets to Level 1 (1X).</i>"
         elif win_level == 2:
-            win_banner = "⚡⚡ <b>LEVEL 2 RECOVERY WIN!</b> 🎉💰"
-            sub = "💸 <i>Capital recovered + double profit secured! Back to Level 1.</i>"
+            win_banner = "⚡⚡ <b>LEVEL 2 2001% RECOVERY WIN!</b> 🎉💰"
+            sub = "💸 <i>2001% Ultra Recovery delivered! Full capital + profit secured!</i>"
         elif win_level == 3:
-            win_banner = "💎💎 <b>LEVEL 3 1001% GOD-WINNER!</b> 🚀💰"
-            sub = "🤑 <i>1001% GOD-LEVEL SURE-SHOT DELIVERED! Full profit secured! Back to Level 1.</i>"
+            win_banner = "💎💎💎 <b>LEVEL 3 5001% GOD-LEVEL WINNER!</b> 🚀💰"
+            sub = "🤑 <i>5001% GOD-LEVEL HIT DELIVERED! Full turnaround + profit secured!</i>"
         elif win_level == 4:
-            win_banner = "👑👑 <b>LEVEL 4 2000% MEGA JACKPOT!</b> 🏆🎉"
-            sub = "🏆 <i>Huge win booked! Cycle reset to Level 1 (1X).</i>"
+            win_banner = "👑👑 <b>LEVEL 4 10001% SUPREME JACKPOT HIT!</b> 🏆🎉"
+            sub = "🏆 <i>Huge 27X win booked! Cycle reset to Level 1 (1X).</i>"
         else:
-            win_banner = f"💣💥 <b>LEVEL {win_level} 5000% UNBEATABLE WINNER!</b> 🏆🍾🎉"
-            sub = "👑 <i>Maximum profit secured! Reset to Level 1.</i>"
+            win_banner = f"💣💥 <b>LEVEL {win_level} 50000% INFINITE WINNER!</b> 🏆🍾🎉"
+            sub = "👑 <i>Maximum stake profit secured! Reset to Level 1.</i>"
 
         bonus_violet = ""
         if actual_number in (0, 5) and (pred.get("violet_alert") or pred.get("jackpot_tip")):
@@ -1113,7 +1113,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
-            intensity_tag = "1001% GOD-LEVEL" if next_level >= 3 else ("500% ULTRA" if next_level == 2 else "100%")
+            intensity_tag = "50000% INFINITE" if next_level >= 5 else ("10001% SUPREME" if next_level == 4 else ("5001% GOD-LEVEL" if next_level == 3 else "2001% ULTRA"))
             msg = (
                 f"❌ <b>LEVEL {loss_level} MISSED</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
