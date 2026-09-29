@@ -124,13 +124,14 @@ def load_cache():
             print(f"[STATE LOAD ERROR] {e}", flush=True)
 
 def save_cache():
-    try:
-        tmp_file = f"{CACHE_FILE}.tmp"
-        with open(tmp_file, "w") as f:
-            json.dump(MEMORY_HISTORY, f)
-        os.replace(tmp_file, CACHE_FILE)
-    except Exception:
-        pass
+    if len(MEMORY_HISTORY) > 0:
+        try:
+            tmp_file = f"{CACHE_FILE}.tmp"
+            with open(tmp_file, "w") as f:
+                json.dump(MEMORY_HISTORY, f)
+            os.replace(tmp_file, CACHE_FILE)
+        except Exception:
+            pass
 
     try:
         tmp_st = f"{STATE_FILE}.tmp"
