@@ -954,6 +954,130 @@ def detect_market_patterns(history_items):
         compact_parts.append(f"{c_code}{v_tag}({num})")
     recent_compact = ", ".join(compact_parts)
 
+    # Dedicated Size Quants (BIG vs SMALL)
+    q5_s = ("BIG" if c3_s["BIG"] >= c3_s["SMALL"] else "SMALL", 68.0, "Size Markov 3-Gram")
+    q6_s = ("BIG" if c_ns["BIG"] >= c_ns["SMALL"] else "SMALL", 66.0, f"Number {last_num} to Size Bayes")
+    q7_s = ("SMALL" if b20 > s20 else "BIG", 65.0, f"20-Round Size Imbalance ({b20}B vs {s20}S)")
+
+    # Quant 8 (Size): Mean-Reversion & Trend Continuation
+    if s_streak >= 2:
+        s_q8_mr = (last_s, min(90.0, 72.0 + s_streak * 3.0), f"Confirmed {last_s} size dragon ({s_streak} rounds); riding momentum")
+    elif s_alt >= 2:
+        s_q8_mr = (opp_s, min(88.0, 70.0 + s_alt * 3.0), f"Active 1-1 alternating size chop ({s_alt} rounds); favors {opp_s}")
+    elif is_s_2_2:
+        s_q8_mr = (last_s, 76.0, "2-2 paired double size step")
+    else:
+        if b20 >= 13:
+            s_q8_mr = ("SMALL", 67.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
+        elif s20 >= 13:
+            s_q8_mr = ("BIG", 67.0, f"SMALL short-term overbought ({s20}S vs {b20}B); mean-reversion favors BIG")
+        else:
+            s_q8_mr = (opp_s, 56.0, "Size micro-balance favors alternation")
+
+    # Quant 9 (Size): Micro-Cycle Autocorrelation Rhythm (Lag-2 & Lag-3)
+    if len(sizes) >= 6:
+        rec20_s = sizes[-20:] if len(sizes) >= 20 else sizes
+        rec_lag2_s = sum(1 for i in range(2, len(rec20_s)) if rec20_s[i] == rec20_s[i - 2])
+        rec_pct_s = (rec_lag2_s / (len(rec20_s) - 2) * 100) if len(rec20_s) > 2 else 50.0
+        if rec_pct_s >= 55.0:
+            rhy_s = sizes[-2]
+            s_q9_rhy = (rhy_s, round(rec_pct_s, 1), f"Size Lag-2 harmonic active ({rec_lag2_s}/{len(rec20_s)-2}); wave favors {rhy_s}")
+        elif s_alt >= 2:
+            s_q9_rhy = (opp_s, 66.0, f"Size alternating harmonic favors {opp_s}")
+        else:
+            s_q9_rhy = (opp_s, 54.0, "Size harmonic balance")
+    else:
+        s_q9_rhy = (opp_s, 50.0, "Size neutral cycle")
+
+    # Quant 10 (Size): Multi-Scale Shannon Entropy Gatekeeper
+    recent_12_s = sizes[-12:] if len(sizes) >= 12 else sizes
+    p12_b = recent_12_s.count("BIG") / len(recent_12_s)
+    p12_s = recent_12_s.count("SMALL") / len(recent_12_s)
+    entropy_12_s = 0.0
+    for p in (p12_b, p12_s):
+        if p > 0:
+            entropy_12_s -= p * math.log2(p)
+    if entropy_12_s >= 0.92:
+        ent_s = opp_s
+        s_q10_ent = (ent_s, 63.0, f"High size entropy ({entropy_12_s:.2f}); chop rhythm favors {ent_s}")
+    else:
+        ent_s = last_s if s_streak >= 3 else opp_s
+        s_q10_ent = (ent_s, 64.0, f"Structured size entropy ({entropy_12_s:.2f}); favors {ent_s}")
+
+    # Quant 11 (Size): Range Boundary & Extreme Outlier Specialist
+    if last_num in (0, 1):
+        ext_fav = "BIG" if c_ns["BIG"] >= c_ns["SMALL"] else "SMALL"
+        s_q11_ext = (ext_fav, 65.0, f"Extreme low number {last_num} bounce distribution")
+    elif last_num in (8, 9):
+        ext_fav = "SMALL" if c_ns["SMALL"] >= c_ns["BIG"] else "BIG"
+        s_q11_ext = (ext_fav, 65.0, f"Extreme high number {last_num} bounce distribution")
+    elif last_num in (4, 5):
+        ext_fav = "BIG" if last_num == 4 else "SMALL"
+        s_q11_ext = (ext_fav, 62.0, f"Median border transition ({last_num})")
+    else:
+        s_q11_ext = (opp_s if s_alt >= 2 else last_s, 55.0, f"Standard distribution ({last_num})")
+
+    s_streaks = []
+    if len(sizes) >= 2:
+        cur_sz = sizes[0]
+        cur_l = 1
+        for s in sizes[1:]:
+            if s == cur_sz: cur_l += 1
+            else:
+                s_streaks.append((cur_sz, cur_l))
+                cur_sz = s
+                cur_l = 1
+        s_streaks.append((cur_sz, cur_l))
+    if s_streak >= 2:
+        s_q12_hazard = (last_s, min(88.0, 70.0 + s_streak * 2.5), f"Weibull size streak survival favors {last_s} ({s_streak} rounds)")
+    elif s_alt >= 2:
+        s_q12_hazard = (opp_s, min(86.0, 68.0 + s_alt * 2.5), f"Alternation survival favors {opp_s} chop ({s_alt} rounds)")
+    else:
+        s_q12_hazard = (opp_s, 55.0, f"Hazard regime favors {opp_s}")
+
+    n_fs = min(len(sizes), 64)
+    if n_fs >= 8:
+        x_fs = [1.0 if s == "BIG" else -1.0 for s in sizes[-n_fs:]]
+        best_p, best_k, best_ph = -1.0, 1, 0.0
+        for k in range(1, n_fs // 2):
+            X_k = sum(x_fs[j] * cmath.exp(-2j * cmath.pi * j * k / n_fs) for j in range(n_fs))
+            pwr = (X_k.real**2 + X_k.imag**2) / n_fs
+            if pwr > best_p:
+                best_p, best_k, best_ph = pwr, k, cmath.phase(X_k)
+        dom_period_s = round(n_fs / best_k, 1)
+        next_ph_s = (2 * math.pi * best_k * n_fs / n_fs) + best_ph
+        f_val_s = math.cos(next_ph_s)
+        f_size = "BIG" if f_val_s >= 0 else "SMALL"
+        f_conf_s = min(88.0, max(56.0, round(50.0 + (abs(f_val_s) * 36.0), 1)))
+        s_q13_fourier = (f_size, f_conf_s, f"Fourier DFT dominant {dom_period_s}-round wave favors {f_size}")
+    else:
+        s_q13_fourier = (opp_s, 50.0, "Fourier baseline")
+
+    n_ks = min(len(sizes), 60)
+    if n_ks >= 10:
+        seq_str_s = "".join(["B" if s == "BIG" else "S" for s in sizes[-n_ks:]])
+        comp_b = len(zlib.compress((seq_str_s + "B").encode("utf-8"), level=9))
+        comp_s = len(zlib.compress((seq_str_s + "S").encode("utf-8"), level=9))
+        if comp_b < comp_s:
+            s_q14_kolmo = ("BIG", 66.0, "Kolmogorov compressibility favors BIG")
+        elif comp_s < comp_b:
+            s_q14_kolmo = ("SMALL", 66.0, "Kolmogorov compressibility favors SMALL")
+        else:
+            k_s = opp_s if s_alt >= 2 else (last_s if s_streak >= 3 else opp_s)
+            s_q14_kolmo = (k_s, 54.0, f"Kolmogorov balanced; favors {k_s}")
+    else:
+        s_q14_kolmo = (opp_s, 50.0, "Kolmogorov baseline")
+
+    alpha_s, beta_s = 1.0, 1.0
+    for s in sizes:
+        alpha_s = (alpha_s * 0.96) + (1.0 if s == "BIG" else 0.0)
+        beta_s = (beta_s * 0.96) + (1.0 if s == "SMALL" else 0.0)
+    tot_pseudo_s = alpha_s + beta_s
+    post_mean_s = alpha_s / tot_pseudo_s
+    bayes_fav_s = "BIG" if post_mean_s >= 0.50 else "SMALL"
+    bayes_conf_s = round(max(post_mean_s, 1.0 - post_mean_s) * 100, 1)
+    s_q15_bayes = (bayes_fav_s, min(85.0, max(55.0, bayes_conf_s)), f"Bayesian Posterior favors {bayes_fav_s} ({bayes_conf_s}%)")
+
     return {
         "streak_color": last_c,
         "streak_len": streak_len,
@@ -989,6 +1113,20 @@ def detect_market_patterns(history_items):
             "q13": q13_fourier,
             "q14": q14_kolmo,
             "q15": q15_bayes
+        },
+        "s_quants": {
+            "s_q4": (s_pred_val, s_pred_conf, s_pattern_desc),
+            "s_q5": q5_s,
+            "s_q6": q6_s,
+            "s_q7": q7_s,
+            "s_q8": s_q8_mr,
+            "s_q9": s_q9_rhy,
+            "s_q10": s_q10_ent,
+            "s_q11": s_q11_ext,
+            "s_q12": s_q12_hazard,
+            "s_q13": s_q13_fourier,
+            "s_q14": s_q14_kolmo,
+            "s_q15": s_q15_bayes
         }
     }
 
@@ -997,170 +1135,137 @@ def detect_market_patterns(history_items):
 # ====================================================
 def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0):
     """
-    16-Agent AI & Math Quant Council:
+    16-Agent AI & Math Quant Council (100% Size Locked: BIG [5-9] vs SMALL [0-4]):
+    - Zero violet payout cut penalty (0 is pure SMALL, 5 is pure BIG)
+    - Eliminates color/size whipsaws by maintaining single-domain discipline
     - 4 Neural LLM Specialists in Parallel (Qwen & GPT)
-    - 11 Deterministic Pure-Math Quants (Database Transition, Fourier, Weibull, Bayes, Entropy, N-Gram)
-    - 1 Supreme Arbiter (GPT-120B Flagship / Qwen)
+    - 11 Deterministic Pure-Math Size Quants (Markov N-Gram, Number-to-Size Bayes, Fourier DFT, Weibull Hazard, Kolmogorov, Beta-Binomial)
+    - 1 Supreme Master AI Arbiter (Qwen-27B / GPT-120B / Allam-7B Failover)
     - Dual-Layer Sniper Filter: Skips chaotic 50/50 noise; executes high-probability Pinterest roadmaps!
     - Delivers direct Level 1 accuracy.
     """
     p_info = detect_market_patterns(history_items)
     recent_str = p_info["recent_compact"]
     pattern_str = p_info["pattern_desc"]
-    last_color = p_info["streak_color"]
-    opp_color = "GREEN" if last_color == "RED" else "RED"
-    streak_len = p_info["streak_len"]
-    alt_len = p_info.get("alt_len", 1)
-    is_double = p_info.get("is_double", False)
-    violet_due = p_info["violet_due"]
-    quants = p_info.get("quants", {})
-    pred_size = p_info.get("pred_size", "BIG")
     last_s = p_info.get("last_s", "BIG")
+    opp_s = p_info.get("opp_s", "SMALL" if last_s == "BIG" else "BIG")
     s_streak = p_info.get("s_streak", 1)
     s_alt = p_info.get("s_alt", 1)
-    c_pred_val = p_info.get("c_pred_val", opp_color)
-    colors = [it.get("color", "") for it in history_items]
-    sizes = [it.get("size", "") for it in history_items]
+    s_pred_val = p_info.get("s_pred_val", opp_s)
+    s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
+    is_s_2_2 = (len(history_items) >= 4 and history_items[-1].get("size") == history_items[-2].get("size") and history_items[-3].get("size") == history_items[-4].get("size") and history_items[-1].get("size") != history_items[-3].get("size")) or ("2-2 Double-Step" in s_pattern_desc)
+    s_quants = p_info.get("s_quants", {})
+    sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
-    # --- Phase 1: 12 Deterministic Pure-Math Quants (Instant 0ms, Zero Quota Consumption) ---
-    c_dragon = last_color if streak_len >= 3 else (opp_color if streak_len < 2 else last_color)
-    c_chop = opp_color if alt_len >= 4 else (last_color if streak_len >= 3 else opp_color)
-    c_22 = c_pred_val if is_double else opp_color
-    c_contrarian = opp_color if streak_len >= 4 else last_color
+    # --- Phase 1: 16 Deterministic Pure-Math Size Quants (Instant 0ms, Zero Quota Consumption) ---
+    s_dragon = last_s if s_streak >= 3 else (opp_s if s_streak < 2 else last_s)
+    s_chop = opp_s if s_alt >= 4 else (last_s if s_streak >= 3 else opp_s)
+    s_22 = s_pred_val if is_s_2_2 else opp_s
+    s_contrarian = opp_s if s_streak >= 4 else last_s
 
-    q4 = quants.get("q4", (opp_color, 75.0, "Pinterest Roadmap"))
-    q5 = quants.get("q5", (opp_color, 60.0, "N-Gram model"))
-    q6 = quants.get("q6", (opp_color, 65.0, "Number transition"))
-    q7 = quants.get("q7", (opp_color, 58.0, "Compound Matrix"))
-    q8 = quants.get("q8", (opp_color, 68.0, "Mean-Reversion"))
-    q9 = quants.get("q9", (opp_color, 56.0, "Periodicity"))
-    q10 = quants.get("q10", (opp_color, 60.0, "Entropy"))
-    q11 = quants.get("q11", (opp_color, 55.0, "Violet Engine"))
-    q12 = quants.get("q12", (opp_color, 65.0, "Weibull Hazard"))
-    q13 = quants.get("q13", (opp_color, 60.0, "Fourier DFT"))
-    q14 = quants.get("q14", (opp_color, 55.0, "Kolmogorov Complexity"))
-    q15 = quants.get("q15", (opp_color, 58.0, "Bayesian Decay"))
+    s_q4 = s_quants.get("s_q4", (s_pred_val, 75.0, "Pinterest Size Roadmap"))
+    s_q5 = s_quants.get("s_q5", (opp_s, 60.0, "Size Markov 3-Gram"))
+    s_q6 = s_quants.get("s_q6", (opp_s, 65.0, "Number-to-Size Bayes"))
+    s_q7 = s_quants.get("s_q7", (opp_s, 58.0, "20-Round Size Imbalance"))
+    s_q8 = s_quants.get("s_q8", (opp_s, 68.0, "Size Mean-Reversion"))
+    s_q9 = s_quants.get("s_q9", (opp_s, 56.0, "Size Periodicity"))
+    s_q10 = s_quants.get("s_q10", (opp_s, 60.0, "Size Entropy"))
+    s_q11 = s_quants.get("s_q11", (opp_s, 55.0, "Size Boundary Outlier"))
+    s_q12 = s_quants.get("s_q12", (opp_s, 65.0, "Weibull Size Hazard"))
+    s_q13 = s_quants.get("s_q13", (opp_s, 60.0, "Fourier DFT Size"))
+    s_q14 = s_quants.get("s_q14", (opp_s, 55.0, "Kolmogorov Size Complexity"))
+    s_q15 = s_quants.get("s_q15", (opp_s, 58.0, "Bayesian Decay Size"))
 
     all_specialists = [
-        {"name": "Agent 1 (Dragon Momentum Quant)", "color": c_dragon, "conf": 80.0 if streak_len >= 3 else 50.0, "arg": f"Streak len: {streak_len}"},
-        {"name": "Agent 2 (1-1 Chop Quant)", "color": c_chop, "conf": 80.0 if alt_len >= 4 else 50.0, "arg": f"Chop len: {alt_len}"},
-        {"name": "Agent 3 (2-2 Symmetry Quant)", "color": c_22, "conf": 75.0 if is_double else 50.0, "arg": "Pair symmetry"},
-        {"name": "Agent 4 (Mean-Reversion Quant)", "color": c_contrarian, "conf": 75.0, "arg": "Anti-exhaustion balance"},
-        {"name": "Agent 4B (Pinterest Roadmap Quant)", "color": q4[0], "conf": q4[1], "arg": q4[2]},
-        {"name": "Agent 5 (N-Gram Markov Quant)", "color": q5[0], "conf": q5[1], "arg": q5[2]},
-        {"name": "Agent 6 (Number-to-Color Bayes)", "color": q6[0], "conf": q6[1], "arg": q6[2]},
-        {"name": "Agent 7 (Big/Small Compound Matrix)", "color": q7[0], "conf": q7[1], "arg": q7[2]},
-        {"name": "Agent 8 (Mean-Reversion Imbalance Quant)", "color": q8[0], "conf": q8[1], "arg": q8[2]},
-        {"name": "Agent 9 (Micro-Cycle Periodicity Quant)", "color": q9[0], "conf": q9[1], "arg": q9[2]},
-        {"name": "Agent 10 (Shannon Entropy Gatekeeper)", "color": q10[0], "conf": q10[1], "arg": q10[2]},
-        {"name": "Agent 11 (Violet 0/5 Outlier Specialist)", "color": q11[0], "conf": q11[1], "arg": q11[2]},
-        {"name": "Agent 12 (Weibull Hazard & Survival Quant)", "color": q12[0], "conf": q12[1], "arg": q12[2]},
-        {"name": "Agent 13 (Fourier Spectral Wave Quant)", "color": q13[0], "conf": q13[1], "arg": q13[2]},
-        {"name": "Agent 14 (Kolmogorov Complexity Quant)", "color": q14[0], "conf": q14[1], "arg": q14[2]},
-        {"name": "Agent 15 (Exponential Bayesian Quant)", "color": q15[0], "conf": q15[1], "arg": q15[2]}
+        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 80.0 if s_streak >= 3 else 50.0, "arg": f"Size streak len: {s_streak}"},
+        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 80.0 if s_alt >= 4 else 50.0, "arg": f"Size chop len: {s_alt}"},
+        {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 75.0 if is_s_2_2 else 50.0, "arg": "Size 2-2 pair symmetry"},
+        {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 75.0, "arg": "Anti-exhaustion balance"},
+        {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4[0], "conf": s_q4[1], "arg": s_q4[2]},
+        {"name": "Agent 5 (Size N-Gram Markov Quant)", "val": s_q5[0], "conf": s_q5[1], "arg": s_q5[2]},
+        {"name": "Agent 6 (Number-to-Size Bayes)", "val": s_q6[0], "conf": s_q6[1], "arg": s_q6[2]},
+        {"name": "Agent 7 (20-Round Size Imbalance)", "val": s_q7[0], "conf": s_q7[1], "arg": s_q7[2]},
+        {"name": "Agent 8 (Size Mean-Reversion Imbalance)", "val": s_q8[0], "conf": s_q8[1], "arg": s_q8[2]},
+        {"name": "Agent 9 (Size Micro-Cycle Periodicity)", "val": s_q9[0], "conf": s_q9[1], "arg": s_q9[2]},
+        {"name": "Agent 10 (Size Shannon Entropy Gatekeeper)", "val": s_q10[0], "conf": s_q10[1], "arg": s_q10[2]},
+        {"name": "Agent 11 (Size Boundary Outlier Specialist)", "val": s_q11[0], "conf": s_q11[1], "arg": s_q11[2]},
+        {"name": "Agent 12 (Weibull Size Hazard & Survival)", "val": s_q12[0], "conf": s_q12[1], "arg": s_q12[2]},
+        {"name": "Agent 13 (Fourier Spectral Wave Quant)", "val": s_q13[0], "conf": s_q13[1], "arg": s_q13[2]},
+        {"name": "Agent 14 (Kolmogorov Complexity Quant)", "val": s_q14[0], "conf": s_q14[1], "arg": s_q14[2]},
+        {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15[0], "conf": s_q15[1], "arg": s_q15[2]}
     ]
 
     # Dynamic Weight Assignment based on Empirical Win Rates
     weights = [
-        3.5 if streak_len >= 3 else 1.0,                                # Agent 1: Dragon Trend Momentum
-        3.2 if alt_len >= 4 else 1.0,                                   # Agent 2: 1-1 Chop
+        3.5 if s_streak >= 3 else 1.0,                                 # Agent 1: Dragon Trend Momentum
+        3.2 if s_alt >= 4 else 1.0,                                    # Agent 2: 1-1 Chop
         2.2,                                                            # Agent 3: 2-2 Symmetry
         1.2,                                                            # Agent 4: Mean-Reversion
-        3.5 if q4[1] >= 85.0 else 2.2,                                  # Agent 4B: Pinterest 9-Roadmap Engine
+        3.5 if s_q4[1] >= 85.0 else 2.2,                               # Agent 4B: Pinterest Size 9-Roadmap Engine
         2.5,                                                            # Agent 5: Markov N-Gram
-        2.5,                                                            # Agent 6: Number-to-Color Bayes
-        2.0,                                                            # Agent 7: Big/Small Matrix
+        2.5,                                                            # Agent 6: Number-to-Size Bayes
+        2.0,                                                            # Agent 7: 20-Round Size Imbalance
         2.0,                                                            # Agent 8: Mean-Reversion Imbalance
         1.5,                                                            # Agent 9: Autocorrelation
         1.4,                                                            # Agent 10: Entropy
-        1.2,                                                            # Agent 11: Violet
+        1.2,                                                            # Agent 11: Boundary Outlier
         2.0,                                                            # Agent 12: Weibull Hazard
         1.6,                                                            # Agent 13: Fourier DFT
         1.3,                                                            # Agent 14: Kolmogorov
         1.8                                                             # Agent 15: Bayesian Decay
     ]
 
-    red_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["color"] == "RED")
-    green_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["color"] == "GREEN")
-    red_votes = sum(1 for s in all_specialists if s["color"] == "RED")
-    green_votes = sum(1 for s in all_specialists if s["color"] == "GREEN")
-    total_active_weight = red_weight + green_weight
+    big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
+    small_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "SMALL")
+    big_votes = sum(1 for s in all_specialists if s["val"] == "BIG")
+    small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
+    total_active_weight = big_weight + small_weight
 
-    # Decisive Winning Color Selection (No Deadlocks, No Artificial Skips!)
-    if red_weight > green_weight:
-        w_col = "RED"
-        w_v, l_v = red_votes, green_votes
-        w_weight = red_weight
-    elif green_weight > red_weight:
-        w_col = "GREEN"
-        w_v, l_v = green_votes, red_votes
-        w_weight = green_weight
+    # Decisive Winning Size Selection (No Deadlocks, No Artificial Skips!)
+    if big_weight > small_weight:
+        w_size = "BIG"
+        w_v, l_v = big_votes, small_votes
+        w_weight = big_weight
+    elif small_weight > big_weight:
+        w_size = "SMALL"
+        w_v, l_v = small_votes, big_votes
+        w_weight = small_weight
     else:
-        # Exact tie-breaker: ride dragon continuation or chop rhythm
-        w_col = last_color if streak_len >= 2 else (opp_color if alt_len >= 2 else last_color)
-        w_v = red_votes if w_col == "RED" else green_votes
-        l_v = green_votes if w_col == "RED" else red_votes
-        w_weight = red_weight if w_col == "RED" else green_weight
+        # Tie-breaker: ride size dragon continuation or chop rhythm
+        w_size = last_s if s_streak >= 2 else (opp_s if s_alt >= 2 else last_s)
+        w_v = big_votes if w_size == "BIG" else small_votes
+        l_v = small_votes if w_size == "BIG" else big_votes
+        w_weight = big_weight if w_size == "BIG" else small_weight
 
-    color_edge = abs(red_weight - green_weight)
-    color_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
-    color_margin_pct = round((color_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-    calc_conf = min(96.0, max(76.0, round(65.0 + (color_ratio * 30.0), 1)))
+    size_edge = abs(big_weight - small_weight)
+    size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
+    size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
+    calc_conf = min(96.0, max(76.0, round(65.0 + (size_ratio * 30.0), 1)))
 
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
     # ====================================================
-    # Protect established dragons (streak >= 3) against counter-trend bets (no artificial vote inflation)
-    if streak_len >= 3 and w_col != last_color:
-        w_col = last_color
-    if s_streak >= 3 and pred_size != last_s:
-        pred_size = last_s
+    # Protect established dragons (streak >= 3) against counter-trend bets
+    if s_streak >= 3 and w_size != last_s:
+        w_size = last_s
 
     # ====================================================
-    # 🎯 2. DECIDE SINGLE TARGET BET: PATTERN PRIORITY OVER NOISE
+    # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
     # ====================================================
-    size_margin_pct = p_info.get("size_margin_pct", 0.0)
-    size_conf = p_info.get("pred_size_conf", 78.0)
-    c_pattern_desc = p_info.get("c_pattern_desc", "Momentum Flow")
-    s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
+    target_type = "SIZE"
+    target_val = w_size
+    target_conf = calc_conf
+    target_margin = size_margin_pct
+    target_pattern = s_pattern_desc
+    target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    # High-Conviction Structural Signals (Genuine Trends Only)
-    c_strong_dragon = ("Dragon Trend" in c_pattern_desc and streak_len >= 3)
     s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
-    c_strong_chop = ("1-1 Chop" in c_pattern_desc and alt_len >= 4)
     s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 4)
-    c_strong_22 = ("2-2 Double-Step" in c_pattern_desc and "Pair" in c_pattern_desc and len(colors) >= 4)
     s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and "Pair" in s_pattern_desc and len(sizes) >= 4)
-
-    c_has_pattern = (c_strong_dragon or c_strong_chop or c_strong_22)
-    s_has_pattern = (s_strong_dragon or s_strong_chop or s_strong_22)
-
-    # If Color has a confirmed structural pattern (e.g. Dragon/Chop) but Size does not, Color MUST be chosen!
-    if c_has_pattern and not s_has_pattern:
-        use_color = True
-    elif s_has_pattern and not c_has_pattern:
-        use_color = False
-    else:
-        use_color = (color_margin_pct >= size_margin_pct)
-
-    if use_color:
-        target_type = "COLOR"
-        target_val = w_col
-        target_conf = calc_conf
-        target_margin = color_margin_pct
-        target_pattern = c_pattern_desc
-        target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%)"
-    else:
-        target_type = "SIZE"
-        target_val = pred_size
-        target_conf = size_conf
-        target_margin = size_margin_pct
-        target_pattern = s_pattern_desc
-        target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
-
-    has_confirmed_structure = (c_has_pattern if target_type == "COLOR" else s_has_pattern)
+    s_strong_stair = ("Staircase" in s_pattern_desc or "Mountain" in s_pattern_desc)
+    has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
     # ====================================================
     # 🎯 3. QUALIFICATION ENGINE (Balanced Sniper)
@@ -1174,7 +1279,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     )
 
     # 🛡️ Level 2+ Recovery Protection:
-    # Requires confirmed structure OR super-majority (w_v >= 11 and margin >= 35%)
     if current_loss_streak >= 1:
         if not (has_confirmed_structure or (w_v >= 11 and target_margin >= 35.0)):
             is_qualified_bet = False
@@ -1191,28 +1295,28 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # --- Phase 4: Master AI Arbiter Consultation (Groq with Automatic Model Failover) ---
     spec_summary = "\n".join([
-        f"- {s['name']}: {s['color']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
+        f"- {s['name']}: {s['val']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
         for s in all_specialists[:8]
     ])
 
-    final_summary = f"Selected {target_type} {target_val} based on {pattern_str.split('|')[0].strip()} ({target_edge_desc})."
-    v_alert = bool(violet_due)
+    final_summary = f"Selected SIZE {target_val} based on {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
+    v_alert = False
     arbiter_wants_skip = False
 
     # Only invoke Master AI if mathematically qualified (saves daily Groq tokens, executes in 0ms on noise)
     if is_qualified_bet:
         prompt_arbiter = (
             f"You are Supreme Master Arbiter presiding over the 16-Agent AI & Math WinGo Council.\n"
+            f"Prediction Domain: STRICTLY SIZE (BIG [5-9] vs SMALL [0-4]). Zero violet payout penalty.\n"
             f"Recent History Window: {recent_str[-50:]}\n"
-            f"Market Roadmaps: Color=[{c_pattern_desc}], Size=[{s_pattern_desc}]\n"
+            f"Size Market Roadmap: [{s_pattern_desc}]\n"
             f"Specialists Assessments:\n{spec_summary}\n"
-            f"Color Consensus: {w_col} ({w_v} vs {l_v} votes | {color_margin_pct:.0f}% edge)\n"
-            f"Size Consensus: {pred_size} ({size_margin_pct:.0f}% edge)\n"
-            f"Preliminary Target: {target_type} -> {target_val}\n\n"
+            f"Size Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)\n"
+            f"Preliminary Target: SIZE -> {target_val}\n\n"
             f"STRICT SNIPER ACCURACY DIRECTIVE:\n"
             f"The user requires maximum sniper accuracy and direct Level 1 wins.\n"
-            f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks.\n"
-            f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on both Color and Size: you MUST output action 'SKIP'.\n"
+            f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks on BIG vs SMALL.\n"
+            f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on Size: you MUST output action 'SKIP'.\n"
             f"3. If a clear edge exists: output action 'BET'.\n\n"
             f"Return JSON ONLY:\n"
             f'{{"action": "BET" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
@@ -1236,7 +1340,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                         summary_txt = res_arb.get("reason", "")
                         if summary_txt:
                             final_summary = summary_txt
-                        print(f"🧠 [MASTER AI: {model_name}] ✅ BET CONFIRMED: {target_type} {target_val} | {final_summary}", flush=True)
+                        print(f"🧠 [MASTER AI: {model_name}] ✅ BET CONFIRMED: SIZE {target_val} | {final_summary}", flush=True)
                     break
                 elif r_arb.status_code == 429:
                     print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429), failing over to next model...", flush=True)
@@ -1251,8 +1355,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 4. FINAL SNIPER FILTER (Real Skips on Noise)
     # ====================================================
-    # Strictly SKIP if not a qualified high-conviction bet or Arbiter flagged noise!
-    # UNLIMITED skips allowed - NEVER bet into 50/50 noise!
     opposite_nums_tip = None
     if not is_qualified_bet or arbiter_wants_skip:
         target_type = "SKIP"
@@ -1265,50 +1367,30 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     else:
         detected_pattern_name = target_pattern
         # High-Conviction Sure-Shot Number Engine (9X Payout)
-        # ONLY trigger when Council has super-majority (>= 12 agents) AND statistical peak exists!
-        jackpot_tip = None
-        if CURRENT_LOSS_STREAK <= 1 and w_v >= 12:
-            if w_col == "RED" and pred_size == "SMALL":
-                cand_nums = [2, 4, 0] if not v_alert else [0, 2, 4]
-            elif w_col == "RED" and pred_size == "BIG":
-                cand_nums = [6, 8]
-            elif w_col == "GREEN" and pred_size == "SMALL":
-                cand_nums = [1, 3]
-            else:
-                cand_nums = [7, 9, 5] if not v_alert else [5, 7, 9]
-
-            nums_list = [int(it.get("num", 0)) for it in history_items]
-            last_num = nums_list[-1] if nums_list else 0
-            num_next_counts = defaultdict(int)
-            for i in range(len(nums_list) - 1):
-                if nums_list[i] == last_num:
-                    num_next_counts[nums_list[i + 1]] += 1
-
-            cand_transitions = sum(num_next_counts[n] for n in cand_nums)
-            if cand_transitions >= 8:
-                sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
-                top_cand = sorted_cands[0]
-                top_ratio = num_next_counts[top_cand] / cand_transitions
-                # Sure-shot peak: Dominant transition >= 40% (or violet outlier)
-                if top_ratio >= 0.40 or v_alert:
-                    top_shots = sorted_cands[:2]
-                    jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
-
-        # 🔥 Fire X Elite "Opposite Nums (Hedge)" Engine
-        # Calculates top 2 most probable candidate numbers from the opposite side as safety hedge
+        cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
         nums_list = [int(it.get("num", 0)) for it in history_items]
         last_num = nums_list[-1] if nums_list else 0
+        num_next_counts = defaultdict(int)
+        for i in range(len(nums_list) - 1):
+            if nums_list[i] == last_num:
+                num_next_counts[nums_list[i + 1]] += 1
+
+        cand_transitions = sum(num_next_counts[n] for n in cand_nums)
+        jackpot_tip = None
+        if CURRENT_LOSS_STREAK <= 1 and w_v >= 12 and cand_transitions >= 6:
+            sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
+            top_cand = sorted_cands[0]
+            top_ratio = num_next_counts[top_cand] / cand_transitions if cand_transitions > 0 else 0
+            if top_ratio >= 0.35:
+                top_shots = sorted_cands[:2]
+                jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
+
+        # 🔥 Fire X Elite "Opposite Nums (Hedge)" Engine
+        opp_pool = [0, 1, 2, 3, 4] if target_val == "BIG" else [5, 6, 7, 8, 9]
         opp_next_counts = defaultdict(int)
         for i in range(len(nums_list) - 1):
             if nums_list[i] == last_num:
                 opp_next_counts[nums_list[i + 1]] += 1
-
-        if target_type == "SIZE":
-            opp_pool = [0, 1, 2, 3, 4] if target_val == "BIG" else [5, 6, 7, 8, 9]
-        elif target_type == "COLOR":
-            opp_pool = [1, 3, 5, 7, 9] if target_val == "RED" else [0, 2, 4, 6, 8]
-        else:
-            opp_pool = [0, 1, 2, 3, 4] if pred_size == "BIG" else [5, 6, 7, 8, 9]
 
         sorted_opp = sorted(opp_pool, key=lambda n: opp_next_counts[n], reverse=True)
         opposite_nums_tip = f"{sorted_opp[0]}, {sorted_opp[1]}"
@@ -1317,11 +1399,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         "target_type": target_type,
         "target_val": target_val,
         "target_conf": target_conf,
-        "color": w_col,
-        "size": pred_size,
+        "color": p_info.get("streak_color", "RED"),
+        "size": target_val if target_val != "SKIP" else w_size,
         "reason": final_summary,
         "consensus_tag": consensus_tag,
-        "violet_alert": v_alert,
+        "violet_alert": False,
         "jackpot_tip": jackpot_tip,
         "opposite_nums": opposite_nums_tip,
         "signal_grade": signal_grade,
