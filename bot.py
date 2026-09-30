@@ -1119,60 +1119,64 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         pred_size = last_s
 
     # ====================================================
-    # 🎯 2. DECIDE SINGLE TARGET BET: COLOR vs SIZE
+    # 🎯 2. DECIDE SINGLE TARGET BET: PATTERN PRIORITY OVER NOISE
     # ====================================================
     size_margin_pct = p_info.get("size_margin_pct", 0.0)
     size_conf = p_info.get("pred_size_conf", 78.0)
     c_pattern_desc = p_info.get("c_pattern_desc", "Momentum Flow")
     s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
 
-    if size_margin_pct > color_margin_pct:
-        target_type = "SIZE"
-        target_val = pred_size
-        target_conf = size_conf
-        target_margin = size_margin_pct
-        target_pattern = s_pattern_desc
-        target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%) > COLOR edge ({color_margin_pct:.0f}%)"
-    else:
-        target_type = "COLOR"
-        target_val = w_col
-        target_conf = calc_conf
-        target_margin = color_margin_pct
-        target_pattern = c_pattern_desc
-        target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%) >= SIZE edge ({size_margin_pct:.0f}%)"
-
-    # ====================================================
-    # 🎯 3. ULTRA-STRICT MAX INTENSITY QUALIFICATION ENGINE
-    # ====================================================
     # High-Conviction Structural Signals (Genuine Trends Only)
-    # A true Dragon must be AT LEAST 3 or 4 in a row!
     c_strong_dragon = ("Dragon Trend" in c_pattern_desc and streak_len >= 3)
     s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
-    # A true Chop must be AT LEAST 4 consecutive alternations!
     c_strong_chop = ("1-1 Chop" in c_pattern_desc and alt_len >= 4)
     s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 4)
     c_strong_22 = ("2-2 Double-Step" in c_pattern_desc and "Pair" in c_pattern_desc and len(colors) >= 4)
     s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and "Pair" in s_pattern_desc and len(sizes) >= 4)
 
-    has_confirmed_structure = (
-        (target_type == "COLOR" and (c_strong_dragon or c_strong_chop or c_strong_22)) or
-        (target_type == "SIZE" and (s_strong_dragon or s_strong_chop or s_strong_22))
-    )
+    c_has_pattern = (c_strong_dragon or c_strong_chop or c_strong_22)
+    s_has_pattern = (s_strong_dragon or s_strong_chop or s_strong_22)
 
-    # MAX INTENSITY SURE-SHOT RULES:
-    # (A) Super-majority consensus (w_v >= 13 out of 16) AND target margin >= 50%
+    # If Color has a confirmed structural pattern (e.g. Dragon/Chop) but Size does not, Color MUST be chosen!
+    if c_has_pattern and not s_has_pattern:
+        use_color = True
+    elif s_has_pattern and not c_has_pattern:
+        use_color = False
+    else:
+        use_color = (color_margin_pct >= size_margin_pct)
+
+    if use_color:
+        target_type = "COLOR"
+        target_val = w_col
+        target_conf = calc_conf
+        target_margin = color_margin_pct
+        target_pattern = c_pattern_desc
+        target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%)"
+    else:
+        target_type = "SIZE"
+        target_val = pred_size
+        target_conf = size_conf
+        target_margin = size_margin_pct
+        target_pattern = s_pattern_desc
+        target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
+
+    has_confirmed_structure = (c_has_pattern if target_type == "COLOR" else s_has_pattern)
+
+    # ====================================================
+    # 🎯 3. QUALIFICATION ENGINE (Balanced Sniper)
+    # ====================================================
+    # (A) Super-majority consensus (w_v >= 11 out of 16) AND target margin >= 35%
     # OR
-    # (B) Confirmed structural pattern (Dragon >= 3, Chop >= 4, 2-2 Pair) AND w_v >= 12 AND target margin >= 38%
+    # (B) Confirmed structural pattern (Dragon >= 3, Chop >= 4, 2-2 Pair) AND w_v >= 10 AND target margin >= 25%
     is_qualified_bet = (
-        (w_v >= 13 and target_margin >= 50.0) or
-        (has_confirmed_structure and w_v >= 12 and target_margin >= 38.0)
+        (w_v >= 11 and target_margin >= 35.0) or
+        (has_confirmed_structure and w_v >= 10 and target_margin >= 25.0)
     )
 
-    # 🛡️ IRONCLAD RECOVERY PROTECTION (Level 2 & Level 3+):
-    # When capital is at 3X or 9X risk, NEVER bet on weak/average setups!
-    # MUST have confirmed structure AND w_v >= 13 AND margin >= 50%, otherwise CONTINUE SKIPPING!
+    # 🛡️ Level 2+ Recovery Protection:
+    # Requires confirmed structure OR super-majority (w_v >= 11 and margin >= 35%)
     if current_loss_streak >= 1:
-        if not (has_confirmed_structure and w_v >= 13 and target_margin >= 50.0):
+        if not (has_confirmed_structure or (w_v >= 11 and target_margin >= 35.0)):
             is_qualified_bet = False
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
@@ -1744,6 +1748,9 @@ def run_live_bot():
 
                             if t_type == "SKIP" or t_val == "SKIP":
                                 CONSECUTIVE_SKIPS += 1
+                                if CONSECUTIVE_SKIPS >= 3 and CURRENT_LOSS_STREAK > 0:
+                                    print(f"🔄 [COOLDOWN RESET] {CONSECUTIVE_SKIPS} skips elapsed. Resetting Martingale from Level {CURRENT_LOSS_STREAK + 1} back to Level 1 base!", flush=True)
+                                    CURRENT_LOSS_STREAK = 0
                                 save_cache()
                                 send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
                                 print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Martingale streak preserved.", flush=True)
