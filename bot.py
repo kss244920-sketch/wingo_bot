@@ -1470,15 +1470,9 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     elif level == 2:
         banner = f"⚡ <b>{to_bold('WINGO 30S RECOVERY SIGNAL')}</b> ⚡"
         footer = f"💰 <i>Place 3X Bet on {bet_label}! Full capital + profit recovery!</i>"
-    elif level == 3:
-        banner = f"🔥 <b>{to_bold('WINGO 30S LEVEL 3 RECOVERY')}</b> 🔥"
-        footer = f"🚀 <i>Place 9X Bet on {bet_label}! High conviction recovery round!</i>"
-    elif level == 4:
-        banner = f"💎 <b>{to_bold('WINGO 30S LEVEL 4 RECOVERY')}</b> 💎"
-        footer = f"🚨 <i>Place 27X Bet on {bet_label}! Strong turnaround recovery!</i>"
     else:
-        banner = f"🛡️ <b>{to_bold('WINGO 30S LEVEL 5 FINAL RECOVERY')}</b> 🛡️"
-        footer = f"🎯 <i>Place 81X Bet on {bet_label}! Ultimate safety recovery!</i>"
+        banner = f"🔥 <b>{to_bold('WINGO 30S LEVEL 3 FINAL RECOVERY')}</b> 🔥"
+        footer = f"🚀 <i>Place 9X Bet on {bet_label}! Final recovery stage (Hard Stop-Loss protected).</i>"
 
     v_tip_line = ""
     if jackpot_tip:
@@ -1597,9 +1591,9 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_LOSS_STREAK += 1  # DO NOT RESET! KEEP CLIMBING UNTIL WIN!
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
-            # Reached max safety limit (5-Level Stop-Loss)
+            # Reached max safety limit (3-Level Hard Stop-Loss)
             stop_banner = f"🛑 <b>{to_bold('ROUND RESULT : STOP-LOSS CAPITAL GUARD')}</b> 🛑"
-            status_str = to_bold("STOP-LOSS (LEVEL 5 HARD CAP)")
+            status_str = to_bold("STOP-LOSS (LEVEL 3 HARD CAP)")
             loss_stage = to_bold(f"LEVEL {loss_level} (STOP-LOSS)")
             msg = (
                 f"{stop_banner}\n"
@@ -1610,7 +1604,7 @@ def send_user_result(period, actual_number, actual_color, pred):
                 f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
                 f"📊 <b>Stage</b> : <b>{loss_stage}</b>\n"
                 f"</blockquote>\n"
-                f"🛡️ <i>5-Level safety cap reached. Resetting fresh to LEVEL 1 (1X) to start new cycle.</i>"
+                f"🛡️ <i>Strict 3-Level safety stop-loss triggered to protect capital from wipeout. Resetting to LEVEL 1 (1X) base for fresh cycle.</i>"
             )
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
@@ -1830,12 +1824,9 @@ def run_live_bot():
 
                             if t_type == "SKIP" or t_val == "SKIP":
                                 CONSECUTIVE_SKIPS += 1
-                                if CONSECUTIVE_SKIPS >= 3 and CURRENT_LOSS_STREAK > 0:
-                                    print(f"🔄 [COOLDOWN RESET] {CONSECUTIVE_SKIPS} skips elapsed. Resetting Martingale from Level {CURRENT_LOSS_STREAK + 1} back to Level 1 base!", flush=True)
-                                    CURRENT_LOSS_STREAK = 0
                                 save_cache()
                                 send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
-                                print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Martingale streak preserved.", flush=True)
+                                print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Level {CURRENT_LOSS_STREAK + 1} recovery preserved.", flush=True)
                             else:
                                 CONSECUTIVE_SKIPS = 0
                                 # Save & Dispatch ONE final decision to User DM
