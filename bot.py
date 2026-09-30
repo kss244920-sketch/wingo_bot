@@ -18,10 +18,10 @@ STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
-# 5-AI Council Models
-MODEL_QWEN = "qwen/qwen3.8-27b"            # High-speed specialized reasoning
-MODEL_GPT20B = "qwen/qwen3.8-27b"           # Structural & Quant pattern reasoning
-MODEL_GPT120B = "openai/gpt-oss-120b"      # Supreme Arbiter & Multi-Agent Synthesizer
+# 16-Agent AI & Math Council Models (Max Thinking Capacity)
+MODEL_QWEN = "qwen/qwen3.8-27b"            # 27B parameter deep neural specialist
+MODEL_GPT20B = "openai/gpt-oss-20b"        # 20B parameter structural quant specialist
+MODEL_GPT120B = "openai/gpt-oss-120b"      # 120B parameter supreme arbiter (Flagship reasoning engine)
 
 HISTORY_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -421,31 +421,43 @@ def detect_market_patterns(history_items):
     q4_roadmap = (c_pred_val, c_pred_conf, f"Pinterest Roadmap: {c_pattern_desc}")
     is_double = ("2-2 Double-Step" in c_pattern_desc) or (len(colors) >= 4 and colors[-1] == colors[-2] and colors[-3] == colors[-4] and colors[-1] != colors[-3]) or (len(colors) >= 3 and colors[-1] != colors[-2] and colors[-2] == colors[-3])
 
-    # 4. Quant 5: Markov N-gram Transitions
-    t3 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
-    for i in range(len(colors) - 3):
-        t3[tuple(colors[i:i + 3])][colors[i + 3]] += 1
-    last3 = tuple(colors[-3:]) if len(colors) >= 3 else ()
-    c3 = t3.get(last3, {"RED": 0, "GREEN": 0})
-    tot3 = c3["RED"] + c3["GREEN"]
-    if tot3 >= 2:
-        ng_col = "RED" if c3["RED"] >= c3["GREEN"] else "GREEN"
-        ng_conf = round(max(c3["RED"], c3["GREEN"]) / tot3 * 100, 1)
-        q5_ngram = (ng_col, ng_conf, f"Database state {last3} resolved to {ng_col} ({ng_conf}%)")
+    # 4. Quant 5: Multi-Order Markov N-gram Deep Ground Truth (Order 4, 3, 2)
+    last4 = tuple(colors[-4:]) if len(colors) >= 4 else ()
+    t4 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
+    for i in range(len(colors) - 4):
+        t4[tuple(colors[i:i + 4])][colors[i + 4]] += 1
+    c4 = t4.get(last4, {"RED": 0, "GREEN": 0})
+    tot4 = c4["RED"] + c4["GREEN"]
+
+    if tot4 >= 2:
+        ng_col = "RED" if c4["RED"] >= c4["GREEN"] else "GREEN"
+        ng_conf = round(max(c4["RED"], c4["GREEN"]) / tot4 * 100, 1)
+        q5_ngram = (ng_col, min(95.0, ng_conf), f"Order-4 state {last4} resolved to {ng_col} ({ng_conf}%)")
     else:
-        t2 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
-        for i in range(len(colors) - 2):
-            t2[tuple(colors[i:i + 2])][colors[i + 2]] += 1
-        last2 = tuple(colors[-2:]) if len(colors) >= 2 else ()
-        c2 = t2.get(last2, {"RED": 0, "GREEN": 0})
-        tot2 = c2["RED"] + c2["GREEN"]
-        if tot2 >= 2:
-            ng_col = "RED" if c2["RED"] >= c2["GREEN"] else "GREEN"
-            ng_conf = round(max(c2["RED"], c2["GREEN"]) / tot2 * 100, 1)
-            q5_ngram = (ng_col, ng_conf, f"Order-2 state {last2} resolved to {ng_col} ({ng_conf}%)")
+        t3 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
+        for i in range(len(colors) - 3):
+            t3[tuple(colors[i:i + 3])][colors[i + 3]] += 1
+        last3 = tuple(colors[-3:]) if len(colors) >= 3 else ()
+        c3 = t3.get(last3, {"RED": 0, "GREEN": 0})
+        tot3 = c3["RED"] + c3["GREEN"]
+        if tot3 >= 2:
+            ng_col = "RED" if c3["RED"] >= c3["GREEN"] else "GREEN"
+            ng_conf = round(max(c3["RED"], c3["GREEN"]) / tot3 * 100, 1)
+            q5_ngram = (ng_col, ng_conf, f"Order-3 state {last3} resolved to {ng_col} ({ng_conf}%)")
         else:
-            ng_col = opp_c if alt_len >= 2 else last_c
-            q5_ngram = (ng_col, 65.0, f"Rhythm continuation favors {ng_col}")
+            t2 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
+            for i in range(len(colors) - 2):
+                t2[tuple(colors[i:i + 2])][colors[i + 2]] += 1
+            last2 = tuple(colors[-2:]) if len(colors) >= 2 else ()
+            c2 = t2.get(last2, {"RED": 0, "GREEN": 0})
+            tot2 = c2["RED"] + c2["GREEN"]
+            if tot2 >= 2:
+                ng_col = "RED" if c2["RED"] >= c2["GREEN"] else "GREEN"
+                ng_conf = round(max(c2["RED"], c2["GREEN"]) / tot2 * 100, 1)
+                q5_ngram = (ng_col, ng_conf, f"Order-2 state {last2} resolved to {ng_col} ({ng_conf}%)")
+            else:
+                ng_col = opp_c if alt_len >= 2 else last_c
+                q5_ngram = (ng_col, 65.0, f"Rhythm continuation favors {ng_col}")
 
     # 5. Quant 6: Winning Number-to-Color Bayes + Empirical Micro-Rules
     num_trans = defaultdict(lambda: {"RED": 0, "GREEN": 0})
@@ -1021,27 +1033,30 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
 
     prompt_arbiter = (
         f"You are Agent 16 (Supreme Arbiter) presiding over the 16-Agent AI & Math WinGo Council.\n"
-        f"Sequence: {recent_str[-40:]}\n"
-        f"Structure: {pattern_str}\n"
-        f"Specialists:\n{spec_summary}\n"
+        f"Recent History Window: {recent_str[-50:]}\n"
+        f"Market Roadmap Structure: {pattern_str}\n"
+        f"Specialists Assessments:\n{spec_summary}\n"
         f"Color Consensus: {w_col} ({color_margin_pct:.0f}% edge)\n"
         f"Size Consensus: {pred_size} ({size_margin_pct:.0f}% edge)\n"
-        f"Chosen Best Bet: {target_type} -> {target_val}\n"
-        f"Return JSON ONLY:\n"
-        f'{{"final_target": "{target_val}", "confidence": {target_conf}, "debate_summary": "1 sharp concise sentence explaining why {target_val} has highest edge."}}'
+        f"Chosen Best Bet: {target_type} -> {target_val}\n\n"
+        f"Instructions for Maximum Thinking Capacity:\n"
+        f"1. Conduct step-by-step reasoning on trend momentum vs contrarian fakeout risk.\n"
+        f"2. Confirm if the Pinterest roadmap (Dragon, Chop, 2-2, 3-2-1) guarantees edge.\n"
+        f"3. Return JSON ONLY:\n"
+        f'{{"thinking_process": "2 sentences of deep quant reasoning", "final_target": "{target_val}", "confidence": {target_conf}, "debate_summary": "1 sharp decisive sentence explaining why {target_val} has highest edge."}}'
     )
 
     final_summary = f"Selected {target_type} {target_val} based on {pattern_str.split('|')[0].strip()} ({target_edge_desc})."
     v_alert = bool(violet_due)
 
-    # Arbiter consultation (ultra-fast 2.5s)
-    for arb_model in [MODEL_QWEN, MODEL_GPT120B]:
+    # Arbiter consultation with Flagship 120B model first (3.5s timeout for deep thinking)
+    for arb_model in [MODEL_GPT120B, MODEL_QWEN]:
         try:
             r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                 "model": arb_model,
                 "messages": [{"role": "user", "content": prompt_arbiter}],
                 "response_format": {"type": "json_object"}
-            }, timeout=2.5)
+            }, timeout=3.5)
             if r_arb.status_code == 200:
                 res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
                 summary_txt = res_arb.get("debate_summary", "")
