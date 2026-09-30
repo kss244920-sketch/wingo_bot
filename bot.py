@@ -609,32 +609,39 @@ def detect_market_patterns(history_items):
     size_margin_pct = round((size_edge / tot_s * 100), 1) if tot_s > 0 else 0.0
     pred_size_conf = min(96.0, max(76.0, round(65.0 + (size_ratio * 30.0), 1)))
 
-    # 16. Number Frequency & Transition Engine (Violet & Number Tip)
+    # 16. High-Conviction Number Shots Engine (9X Payout Selection)
+    # Color + Size matrix mapping:
+    # RED + SMALL -> 0, 2, 4
+    # RED + BIG -> 6, 8
+    # GREEN + SMALL -> 1, 3
+    # GREEN + BIG -> 5, 7, 9
+    c_cand = last_c if streak_len >= 2 else (opp_c if alt_len >= 2 else last_c)
+    s_cand = pred_size
+
+    if c_cand == "RED" and s_cand == "SMALL":
+        cand_nums = [2, 4, 0] if not violet_due else [0, 2, 4]
+    elif c_cand == "RED" and s_cand == "BIG":
+        cand_nums = [6, 8]
+    elif c_cand == "GREEN" and s_cand == "SMALL":
+        cand_nums = [1, 3]
+    else: # GREEN + BIG
+        cand_nums = [7, 9, 5] if not violet_due else [5, 7, 9]
+
+    # Rank candidate numbers by historical transition from last_num
     num_next_counts = defaultdict(int)
     for i in range(len(nums) - 1):
         if nums[i] == last_num:
             num_next_counts[nums[i + 1]] += 1
-    tot_num_trans = sum(num_next_counts.values())
-    top_num = None
-    top_num_pct = 0.0
-    if tot_num_trans >= 3:
-        top_num, top_cnt = max(num_next_counts.items(), key=lambda x: x[1])
-        top_num_pct = round((top_cnt / tot_num_trans) * 100, 1)
 
-    jackpot_tip = None
-    if violet_due:
-        jackpot_tip = "Number 0 or 5 (Violet) [4.5X Payout]"
-    elif top_num in (0, 5) and top_num_pct >= 20.0:
-        jackpot_tip = f"Number {top_num} (Violet Special) [9X Payout]"
-    elif top_num is not None and top_num_pct >= 30.0:
-        jackpot_tip = f"Number {top_num} [9X High Payout]"
+    sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts.get(n, 0), reverse=True)
+    top_number_shots = sorted_cands[:2]
+    number_shots_str = ", ".join(str(n) for n in top_number_shots)
+    jackpot_tip = f"{number_shots_str} [9X Payout]"
 
     # Compile descriptive pattern tags
     desc = []
-    if streak_len >= 5:
+    if streak_len >= 2:
         desc.append(f"🔥 Dragon Trend ({last_c} x {streak_len})")
-    elif streak_len in (2, 3):
-        desc.append(f"⚡ Streak Break Setup ({last_c} x {streak_len} -> {opp_c})")
 
     if alt_len >= 3:
         desc.append(f"⚡ 1-1 Alternating Chop ({alt_len} rounds)")
@@ -1004,9 +1011,9 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
 
     v_tip_line = ""
     if jackpot_tip:
-        v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold(jackpot_tip)}</b>"
+        v_tip_line = f"\n🎯 <b>Number Shots (9X)</b> : <b>{to_bold(jackpot_tip)}</b>"
     elif violet_alert:
-        v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Number 0 or 5 (Violet 4.5X)')}</b>"
+        v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
 
     msg = (
         f"{banner}\n"
@@ -1078,9 +1085,14 @@ def send_user_result(period, actual_number, actual_color, pred):
             win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 3 ULTRA WIN ✅')}</b> 🟢"
             sub = "🤑 <i>Ultra recovery delivered! Turnaround secured, resetting to Level 1.</i>"
 
-        bonus_violet = ""
-        if actual_number in (0, 5) and (pred.get("violet_alert") or pred.get("jackpot_tip")):
-            bonus_violet = f"\n🟣 <b>Bonus Hit</b> : <b>{to_bold('VIOLET 0/5 [4.5X HIT]')}</b>"
+        bonus_hit = ""
+        tip_str = str(pred.get("jackpot_tip") or "")
+        import re
+        tip_numbers = re.findall(r"\b\d\b", tip_str)
+        if str(actual_number) in tip_numbers:
+            bonus_hit = f"\n🚀 <b>Jackpot Hit</b> : <b>{to_bold(f'NUMBER {actual_number} [9X WIN! 🎉]')}</b>"
+        elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
+            bonus_hit = f"\n🟣 <b>Bonus Hit</b> : <b>{to_bold('VIOLET 0/5 [4.5X HIT]')}</b>"
 
         status_str = to_bold("WIN ✅ (PROFIT SECURED)")
 
@@ -1092,7 +1104,7 @@ def send_user_result(period, actual_number, actual_color, pred):
             f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
             f"🏆 <b>Status</b> : <b>{status_str}</b>\n"
             f"📊 <b>Stage</b> : <b>{win_stage}</b>"
-            f"{bonus_violet}\n"
+            f"{bonus_hit}\n"
             f"</blockquote>\n"
             f"{sub}"
         )
