@@ -621,6 +621,9 @@ def reset_user_session(chat_id, user_id):
             [
                 {"text": "💰 ₹2,000", "callback_data": "start_2000"},
                 {"text": "💰 ₹5,000", "callback_data": "start_5000"}
+            ],
+            [
+                {"text": "🏛️ ₹10,000 (Base ₹1)", "callback_data": "start_10000"}
             ]
         ]
     }
@@ -664,9 +667,9 @@ def send_welcome_menu(chat_id, user_id, user_name):
         f"Apna personal session shuru karne ke liye apna <b>Wallet Balance</b> enter karein:\n\n"
         f"👉 Niche <b>Quick Buttons</b> chunein, ya direct balance likhein jaise: <code>1000</code> ya <code>/start 1000</code>.\n\n"
         f"⚙️ <b>Architecture Rules:</b>\n"
-        f"• <b>Target Profit</b>: +20% (e.g. ₹200 on ₹1,000)\n"
-        f"• <b>Base Unit (1X)</b>: ₹10 (Level 1: ₹10 | Level 2: ₹30 | Level 3: ₹90)\n"
-        f"• <b>Strict Stop-Loss</b>: Hard Cap at Level 3 (-₹130 max loss)\n"
+        f"• <b>Target Profit</b>: +20% (e.g. ₹200 on ₹1,000 | +₹500 on ₹10k)\n"
+        f"• <b>Base Unit (1X)</b>: ₹10 (L1: ₹10 | L2: ₹30 | L3: ₹90) ya Custom ₹1\n"
+        f"• <b>Strict Stop-Loss</b>: Hard Cap at Level 3 (-₹130 max loss) & 5% Overall Guard\n"
         f"• <b>2% Tax Engine</b>: Real WinGo platform tax accounting\n"
         f"• <b>Greed Killer</b>: 12-Hour auto-lock upon hitting target\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -681,6 +684,9 @@ def send_welcome_menu(chat_id, user_id, user_name):
             [
                 {"text": "💰 ₹2,000 (Base ₹20)", "callback_data": "start_2000"},
                 {"text": "💰 ₹5,000 (Base ₹50)", "callback_data": "start_5000"}
+            ],
+            [
+                {"text": "🏛️ ₹10,000 Buffer (Base ₹1)", "callback_data": "start_10000"}
             ],
             [
                 {"text": "📊 Live Status", "callback_data": "status"},
@@ -780,6 +786,9 @@ def handle_telegram_callback(query):
     elif data == "start_5000":
         answer_telegram_callback(query_id, "Activating ₹5,000 Session...")
         start_user_session(user_id, chat_id, user_name, wallet_amount=5000.0, target_profit=1000.0, base_unit=50.0)
+    elif data == "start_10000":
+        answer_telegram_callback(query_id, "Activating ₹10,000 Session (Base ₹1)...")
+        start_user_session(user_id, chat_id, user_name, wallet_amount=10000.0, target_profit=500.0, base_unit=1.0)
     elif data == "status":
         answer_telegram_callback(query_id, "Fetching Status...")
         send_status_message(chat_id, user_id)
@@ -1023,6 +1032,36 @@ def _send_single_user_result(user_id, period, actual_number, actual_color, actua
                 curr_s["wallet_current"] = round(curr_s["wallet_current"] - stake, 2)
                 curr_s["pending_bet"] = None
                 wallet_current = curr_s["wallet_current"]
+                wallet_start = curr_s.get("wallet_start", 1000.0)
+
+        # Check Overall Session 5% Hard Stop-Loss Guardrail (Module 3)
+        max_overall_stop_loss = round(wallet_start * 0.05, 2)
+        total_session_loss = round(wallet_start - wallet_current, 2)
+        if total_session_loss >= max_overall_stop_loss:
+            with SESSIONS_LOCK:
+                if str(user_id) in USER_SESSIONS:
+                    curr_s = USER_SESSIONS[str(user_id)]
+                    curr_s["session_status"] = "STOP_LOSS"
+                    curr_s["current_level"] = 1
+            save_user_sessions()
+
+            session_stop_msg = (
+                f"🛑 <b>OVERALL 5% HARD STOP-LOSS REACHED</b> 🛑\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎲 <b>Draw Result</b>  : {draw_res_display}\n"
+                f"💸 <b>Session Loss</b> : -₹{total_session_loss:,.2f} (5% Cap Reached)\n"
+                f"💼 <b>Safe Wallet</b>  : ₹{wallet_current:,.2f} (95% Capital Protected)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🛡️ <i>Dual-Safety Guardrail Triggered! Session terminated to freeze remaining ₹{wallet_current:,.2f}.</i>\n"
+                f"💡 <i>Take a break to clear your mind. Send /start or /reset when ready.</i>"
+            )
+            markup = {
+                "inline_keyboard": [
+                    [{"text": "🔄 Reset & Start Fresh", "callback_data": "reset"}]
+                ]
+            }
+            send_telegram_msg(chat_id, session_stop_msg, reply_markup=markup)
+            return
 
         next_level = level + 1
 
@@ -1975,19 +2014,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
     # ====================================================
-    # 🎯 3. QUALIFICATION ENGINE (Balanced Sniper)
+    # 🎯 3. MAXIMUM INTENSITY ULTRA-SNIPER QUALIFICATION
     # ====================================================
-    # (A) Super-majority consensus (w_v >= 11 out of 16) AND target margin >= 35%
-    # OR
-    # (B) Confirmed structural pattern (Dragon >= 3, Chop >= 4, 2-2 Pair) AND w_v >= 10 AND target margin >= 25%
+    # Absolute Zero-Loss Directive:
+    # 1. Require Super-Majority (12+ out of 16 votes = 75%+) AND confirmed structure AND margin >= 38%
+    # OR Golden Unanimity (13+ votes = 81%+) AND margin >= 48%
     is_qualified_bet = (
-        (w_v >= 11 and target_margin >= 35.0) or
-        (has_confirmed_structure and w_v >= 10 and target_margin >= 25.0)
+        (has_confirmed_structure and w_v >= 12 and target_margin >= 38.0) or
+        (w_v >= 13 and target_margin >= 48.0)
     )
 
-    # 🛡️ Level 2+ Recovery Protection:
+    # 🛡️ Level 2+ Recovery Extreme Protection:
+    # Under loss recovery, NEVER take chances on loose patterns; require BOTH verified structure AND 12+ consensus
     if current_loss_streak >= 1:
-        if not (has_confirmed_structure or (w_v >= 11 and target_margin >= 35.0)):
+        if not (has_confirmed_structure and w_v >= 12 and target_margin >= 40.0):
             is_qualified_bet = False
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
@@ -1995,7 +2035,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     if w_v >= 13:
         consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 10:
+    elif w_v >= 12:
         consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {target_edge_desc})"
     else:
         consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
@@ -2020,13 +2060,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             f"Specialists Assessments:\n{spec_summary}\n"
             f"Size Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)\n"
             f"Preliminary Target: SIZE -> {target_val}\n\n"
-            f"STRICT SNIPER ACCURACY DIRECTIVE:\n"
-            f"The user requires maximum sniper accuracy and direct Level 1 wins.\n"
+            f"MAX INTENSITY ZERO-LOSS ULTRA-SNIPER DIRECTIVE:\n"
+            f"The user requires MAXIMUM INTENSITY with zero tolerance for loss.\n"
             f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks on BIG vs SMALL.\n"
-            f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on Size: you MUST output action 'SKIP'.\n"
-            f"3. If a clear edge exists: output action 'BET'.\n\n"
+            f"2. If there is ANY ambiguity, chop conflict, dragon breakdown risk, or disagreement between momentum and Bayesian quants: you MUST output action 'SKIP'.\n"
+            f"3. ONLY approve 'BET' when the setup is an undisputed, high-conviction sniper execution with overwhelming structural probability.\n\n"
             f"Return JSON ONLY:\n"
-            f'{{"action": "BET" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
+            f'{{"action": "BET" or "SKIP", "confidence": 90, "reason": "1 decisive sentence explaining the decision"}}'
         )
 
         for model_name in MASTER_AI_MODELS:
