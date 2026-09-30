@@ -58,12 +58,13 @@ MEMORY_HISTORY = []      # List of {"period": ..., "num": ..., "color": ..., "si
 KNOWN_PERIODS = set()    # O(1) set to prevent duplicates
 MEMORY_PREDICTIONS = {}  # {target_period: {"color": ..., "size": ..., "conf": ..., "reason": ..., "consensus": ..., "violet_alert": ..., "grade": ...}}
 
-CURRENT_LOSS_STREAK = 0  # 0 = Level 1, 1 = Level 2, 2 = Level 3
+CURRENT_LOSS_STREAK = 0  # 0 = Level 1, 1 = Level 2, 2 = Level 3, 3 = Level 4, 4 = Level 5
 TOTAL_WINS = 0
 TOTAL_LOSSES = 0
 TOTAL_CYCLES = 0
 CYCLE_WINS = 0
-MAX_MARTINGALE_LEVEL = 3  # Strict 3-Level Hard Cap (Never exceeds Level 3!)
+CYCLE_LOSSES = 0
+MAX_MARTINGALE_LEVEL = 5  # 5-Level Martingale Recovery Ladder (1X, 3X, 9X, 27X, 81X)
 
 def get_next_period(current_period):
     """
@@ -259,6 +260,109 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size):
         print(f"[STORAGE ERROR] {e}", flush=True)
 
 # ====================================================
+# 📌 PINTEREST & BACCARAT 9-ROADMAP PATTERN RECOGNITION
+# ====================================================
+def detect_sequence_pattern(seq, item_type="COLOR"):
+    """
+    Detects 9 classic Pinterest, Scribd & Baccarat chart roadmaps:
+    1. 3-2-1 Staircase (Pyramid/Countdown)
+    2. 1-2-3 Reverse Staircase
+    3. 3-3 Triplet (AAABBB)
+    4. 2-2 Double-Step (AABB)
+    5. 1-2 Single-Double (ABB ABB)
+    6. 2-1 Double-Single (AAB AAB)
+    7. ABBA Mirror Pattern (Sandwich Symmetry)
+    8. Dragon Continuation (Streak >= 2)
+    9. 1-1 Chop / Alternation (AB AB >= 2)
+    """
+    if not seq:
+        default_val = "RED" if item_type == "COLOR" else "BIG"
+        return default_val, 65.0, "Baseline Flow"
+
+    last_val = seq[-1]
+    opp_val = ("GREEN" if last_val == "RED" else "RED") if item_type == "COLOR" else ("SMALL" if last_val == "BIG" else "BIG")
+
+    # Streak calculation
+    streak_len = 1
+    for x in reversed(seq[:-1]):
+        if x == last_val:
+            streak_len += 1
+        else:
+            break
+
+    # Alternation calculation
+    alt_len = 1
+    for i in range(len(seq) - 1, 0, -1):
+        if seq[i] != seq[i - 1]:
+            alt_len += 1
+        else:
+            break
+
+    # 1. 3-2-1 Staircase (3 A's -> 2 B's -> predicts 1 A)
+    if len(seq) >= 5:
+        a = seq[-5]
+        b = seq[-1]
+        if a != b and seq[-4] == a and seq[-3] == a and seq[-2] == b:
+            return a, 92.5, f"3-2-1 Staircase ({a} Peak)"
+
+    # 2. 1-2-3 Reverse Staircase (1 A -> 2 B's -> 1 A -> predicts A to reach 3)
+    if len(seq) >= 4:
+        a = seq[-4]
+        b = seq[-3]
+        if a != b and seq[-2] == b and seq[-1] == a:
+            return a, 90.0, f"1-2-3 Staircase ({a} Extension)"
+
+    # 3. 3-3 Triplet (3 A's -> 3 B's -> predicts A reset)
+    if len(seq) >= 6:
+        a = seq[-6]
+        b = seq[-1]
+        if a != b and seq[-5] == a and seq[-4] == a and seq[-3] == b and seq[-2] == b:
+            return a, 88.5, f"3-3 Triplet ({a} Reset)"
+
+    # 4. 2-2 Double-Step (AABB)
+    if len(seq) >= 3:
+        a = seq[-3]
+        b = seq[-1]
+        if a != b and seq[-2] == a:
+            # AA followed by B -> complete 2nd pair B!
+            return b, 92.0, f"2-2 Double-Step ({b} Pair)"
+    if len(seq) >= 4:
+        a = seq[-4]
+        b = seq[-1]
+        if a != b and seq[-3] == a and seq[-2] == b:
+            # AABB completed -> shift to new pair A!
+            return a, 89.0, f"2-2 Double-Step ({a} Shift)"
+
+    # 5. 1-2 Single-Double (ABB ABB)
+    if len(seq) >= 4:
+        a = seq[-4]
+        b = seq[-3]
+        if a != b and seq[-2] == b and seq[-1] == a:
+            return b, 88.5, f"1-2 Single-Double ({b} Double)"
+    if len(seq) >= 3:
+        a = seq[-3]
+        b = seq[-2]
+        if a != b and seq[-1] == b:
+            return a, 88.0, f"1-2 Single-Double ({a} Single)"
+
+    # 6. ABBA Mirror Pattern (Sandwich Symmetry: A -> BB -> A)
+    if len(seq) >= 3:
+        a = seq[-3]
+        b = seq[-2]
+        if a != b and seq[-1] == b:
+            return a, 88.5, f"ABBA Mirror ({a} Symmetry)"
+
+    # 7. Dragon Momentum (Streak >= 2) - Follow the Trend! Never cut a dragon!
+    if streak_len >= 2:
+        return last_val, min(95.0, 79.0 + streak_len * 3.0), f"Dragon Trend ({last_val} x{streak_len})"
+
+    # 8. 1-1 Alternating Chop (AB AB >= 2)
+    if alt_len >= 2:
+        return opp_val, min(93.0, 76.0 + alt_len * 3.0), f"1-1 Chop ({alt_len}x Alternation)"
+
+    return opp_val if alt_len >= 2 else last_val, 68.0, "Momentum Flow"
+
+# ====================================================
 # 📊 MATHEMATICAL MARKET STRUCTURE & PATTERN ENGINE
 # ====================================================
 def detect_market_patterns(history_items):
@@ -311,13 +415,11 @@ def detect_market_patterns(history_items):
         else:
             break
 
-    # 3. Double-Double (2-2 pattern: RR-GG-RR)
-    is_double = False
-    if len(colors) >= 4 and colors[-1] == colors[-2] and colors[-3] == colors[-4] and colors[-1] != colors[-3]:
-        is_double = True
-    elif len(colors) >= 3 and colors[-1] != colors[-2] and colors[-2] == colors[-3]:
-        # Paired step setup: RR followed by G -> predict G to complete 2-2!
-        is_double = True
+    # 3. Pinterest 9-Roadmap Sequence Engine (Colors & Sizes)
+    c_pred_val, c_pred_conf, c_pattern_desc = detect_sequence_pattern(colors, item_type="COLOR")
+    s_pred_val, s_pred_conf, s_pattern_desc = detect_sequence_pattern(sizes, item_type="SIZE")
+    q4_roadmap = (c_pred_val, c_pred_conf, f"Pinterest Roadmap: {c_pattern_desc}")
+    is_double = ("2-2 Double-Step" in c_pattern_desc) or (len(colors) >= 4 and colors[-1] == colors[-2] and colors[-3] == colors[-4] and colors[-1] != colors[-3]) or (len(colors) >= 3 and colors[-1] != colors[-2] and colors[-2] == colors[-3])
 
     # 4. Quant 5: Markov N-gram Transitions
     t3 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
@@ -676,8 +778,12 @@ def detect_market_patterns(history_items):
         "size_edge": size_edge,
         "size_margin_pct": size_margin_pct,
         "pred_size_conf": pred_size_conf,
-        "jackpot_tip": jackpot_tip,
+        "c_pattern_desc": c_pattern_desc,
+        "s_pattern_desc": s_pattern_desc,
+        "c_pred_val": c_pred_val,
+        "s_pred_val": s_pred_val,
         "quants": {
+            "q4": q4_roadmap,
             "q5": q5_ngram,
             "q6": q6_num,
             "q7": q7_bs,
@@ -800,6 +906,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         llm_specialists = list(executor.map(query_specialist, specialist_tasks))
 
     # --- Phase 2: Compile All 15 Specialists (4 LLM + 11 Database & Pure Math Quants) ---
+    q4 = quants.get("q4", (opp_color, 75.0, "Pinterest Roadmap"))
     q5 = quants.get("q5", (opp_color, 60.0, "N-Gram model"))
     q6 = quants.get("q6", (opp_color, 65.0, "Number transition"))
     q7 = quants.get("q7", (opp_color, 58.0, "Compound Matrix"))
@@ -817,6 +924,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         llm_specialists[1],
         llm_specialists[2],
         llm_specialists[3],
+        {"name": "Agent 4B (Pinterest Roadmap Quant)", "color": q4[0], "conf": q4[1], "arg": q4[2]},
         {"name": "Agent 5 (N-Gram Markov Quant)", "color": q5[0], "conf": q5[1], "arg": q5[2]},
         {"name": "Agent 6 (Number-to-Color Bayes)", "color": q6[0], "conf": q6[1], "arg": q6[2]},
         {"name": "Agent 7 (Big/Small Compound Matrix)", "color": q7[0], "conf": q7[1], "arg": q7[2]},
@@ -834,12 +942,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     weights = [
         3.0 if streak_len >= 2 else 1.2,                                # Agent 1: Dragon Trend Momentum
         2.8 if alt_len >= 2 else 1.2,                                   # Agent 2: 1-1 Chop
-        2.2 if is_double else 1.0,                                      # Agent 3: 2-2 Symmetry
+        2.2,                                                            # Agent 3: 2-2 Symmetry
         1.2,                                                            # Agent 4: Contrarian
-        2.0,                                                            # Agent 5: Markov N-Gram
+        3.5 if q4[1] >= 85.0 else 2.2,                                  # Agent 4B: Pinterest 9-Roadmap Engine
+        2.2,                                                            # Agent 5: Markov N-Gram
         2.4,                                                            # Agent 6: Number-to-Color Bayes
         1.8,                                                            # Agent 7: Big/Small Matrix
-        2.2,                                                            # Agent 8: Mean-Reversion Imbalance
+        2.0,                                                            # Agent 8: Mean-Reversion Imbalance
         1.5,                                                            # Agent 9: Autocorrelation
         1.4,                                                            # Agent 10: Entropy
         1.2,                                                            # Agent 11: Violet
@@ -942,7 +1051,38 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         except Exception:
             continue
 
-    jackpot_tip = p_info.get("jackpot_tip")
+    # High-Conviction Sure-Shot Number Engine (9X Payout)
+    # ONLY trigger when Council has super-majority (>= 12 agents) AND statistical peak exists!
+    jackpot_tip = None
+    if CURRENT_LOSS_STREAK <= 1 and w_v >= 12:
+        if w_col == "RED" and pred_size == "SMALL":
+            cand_nums = [2, 4, 0] if not v_alert else [0, 2, 4]
+        elif w_col == "RED" and pred_size == "BIG":
+            cand_nums = [6, 8]
+        elif w_col == "GREEN" and pred_size == "SMALL":
+            cand_nums = [1, 3]
+        else:
+            cand_nums = [7, 9, 5] if not v_alert else [5, 7, 9]
+
+        nums_list = [int(it.get("num", 0)) for it in history_items]
+        last_num = nums_list[-1] if nums_list else 0
+        num_next_counts = defaultdict(int)
+        for i in range(len(nums_list) - 1):
+            if nums_list[i] == last_num:
+                num_next_counts[nums_list[i + 1]] += 1
+
+        cand_transitions = sum(num_next_counts[n] for n in cand_nums)
+        if cand_transitions >= 8:
+            sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
+            top_cand = sorted_cands[0]
+            top_ratio = num_next_counts[top_cand] / cand_transitions
+            # Sure-shot peak: Dominant transition >= 40% (or violet outlier)
+            if top_ratio >= 0.40 or v_alert:
+                top_shots = sorted_cands[:2]
+                jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
+
+    detected_pattern_name = p_info.get("c_pattern_desc") if target_type == "COLOR" else p_info.get("s_pattern_desc", "Trend Flow")
+
     return {
         "target_type": target_type,
         "target_val": target_val,
@@ -953,11 +1093,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         "consensus_tag": consensus_tag,
         "violet_alert": v_alert,
         "jackpot_tip": jackpot_tip,
-        "signal_grade": signal_grade
+        "signal_grade": signal_grade,
+        "pattern_name": detected_pattern_name
     }
 
 # ====================================================
-# 🚀 USER SIGNALS (CLEAN VIP CARD WITH 1001% INTENSITY)
+# 🚀 USER SIGNALS (CLEAN VIP CARD WITH QUANT ACCURACY)
 # ====================================================
 def to_bold(text):
     """Converts ASCII letters and digits to Mathematical Sans-Serif Bold for crystal-clear Telegram bold rendering."""
@@ -977,7 +1118,7 @@ def to_bold(text):
 # ====================================================
 # 🚀 USER SIGNALS (HIGH-VISIBILITY BOLD VIP CARDS)
 # ====================================================
-def send_user_signal(target_period, target_type, target_val, confidence, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None):
+def send_user_signal(target_period, target_type, target_val, confidence, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
     if target_type == "COLOR":
@@ -992,26 +1133,30 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
         bet_label = target_val
 
     level = CURRENT_LOSS_STREAK + 1
+    mult = 3 ** (level - 1)
+    stage_str = to_bold(f"LEVEL {level} ({mult}X)")
+    conf_str = to_bold(f"{confidence:.1f}%")
+    pattern_str = to_bold(pattern_name) if pattern_name else to_bold("Market Momentum")
 
     if level == 1:
         banner = f"👑 <b>{to_bold('WINGO 30S VIP PREDICTION')}</b> 👑"
-        stage_str = to_bold("LEVEL 1 (1X)")
-        intensity_str = to_bold("1001% SURE-SHOT ENTRY")
         footer = f"💡 <i>Place 1X Base Bet on {bet_label}. High Probability Setup!</i>"
     elif level == 2:
         banner = f"⚡ <b>{to_bold('WINGO 30S RECOVERY SIGNAL')}</b> ⚡"
-        stage_str = to_bold("LEVEL 2 (3X)")
-        intensity_str = to_bold("1001% RECOVERY HIT")
-        footer = f"💰 <i>Triple your stake (3X) on {bet_label}! Full capital + profit recovery!</i>"
+        footer = f"💰 <i>Place 3X Bet on {bet_label}! Full capital + profit recovery!</i>"
+    elif level == 3:
+        banner = f"🔥 <b>{to_bold('WINGO 30S LEVEL 3 RECOVERY')}</b> 🔥"
+        footer = f"🚀 <i>Place 9X Bet on {bet_label}! High conviction recovery round!</i>"
+    elif level == 4:
+        banner = f"💎 <b>{to_bold('WINGO 30S LEVEL 4 RECOVERY')}</b> 💎"
+        footer = f"🚨 <i>Place 27X Bet on {bet_label}! Strong turnaround recovery!</i>"
     else:
-        banner = f"💎 <b>{to_bold('WINGO 30S FINAL ULTRA RECOVERY')}</b> 💎"
-        stage_str = to_bold("LEVEL 3 (8X-9X FINAL)")
-        intensity_str = to_bold("1001% MAXIMUM CAPITAL RECOVERY")
-        footer = f"🚨 <i>Final recovery round on {bet_label}! Maximum safety & profit turnaround!</i>"
+        banner = f"🛡️ <b>{to_bold('WINGO 30S LEVEL 5 FINAL RECOVERY')}</b> 🛡️"
+        footer = f"🎯 <i>Place 81X Bet on {bet_label}! Ultimate safety recovery!</i>"
 
     v_tip_line = ""
     if jackpot_tip:
-        v_tip_line = f"\n🎯 <b>Number Shots (9X)</b> : <b>{to_bold(jackpot_tip)}</b>"
+        v_tip_line = f"\n🎯 <b>Sure-Shot Numbers (9X)</b> : <b>{to_bold(jackpot_tip)}</b>"
     elif violet_alert:
         v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
 
@@ -1021,7 +1166,8 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
         f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
         f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
         f"📊 <b>Stage</b> : <b>{stage_str}</b>\n"
-        f"🔥 <b>Intensity</b> : <b>{intensity_str}</b>"
+        f"📈 <b>Confidence</b> : <b>{conf_str}</b>\n"
+        f"🧩 <b>Pattern</b> : <b>{pattern_str}</b>"
         f"{v_tip_line}\n"
         f"</blockquote>\n"
         f"{footer}"
@@ -1030,7 +1176,7 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
     try:
         # Send without pin so channel is not spammed with pinned message notifications
         send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
-        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Level {level}", flush=True)
+        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Level {level} | Pattern: {pattern_name}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
@@ -1081,9 +1227,15 @@ def send_user_result(period, actual_number, actual_color, pred):
         elif win_level == 2:
             win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 2 RECOVERY WIN ✅')}</b> 🟢"
             sub = "💸 <i>Recovery win secured! Capital + profit restored to Level 1.</i>"
+        elif win_level == 3:
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 3 RECOVERY WIN ✅')}</b> 🟢"
+            sub = "🤑 <i>Level 3 recovery delivered! Capital + profit restored to Level 1.</i>"
+        elif win_level == 4:
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 4 RECOVERY WIN ✅')}</b> 🟢"
+            sub = "💎 <i>Level 4 recovery delivered! Huge turnaround, resetting to Level 1.</i>"
         else:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 3 ULTRA WIN ✅')}</b> 🟢"
-            sub = "🤑 <i>Ultra recovery delivered! Turnaround secured, resetting to Level 1.</i>"
+            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 5 ULTRA WIN ✅')}</b> 🟢"
+            sub = "👑 <i>Level 5 ultimate win delivered! Complete recovery, resetting to Level 1.</i>"
 
         bonus_hit = ""
         tip_str = str(pred.get("jackpot_tip") or "")
@@ -1115,9 +1267,9 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_LOSS_STREAK += 1  # DO NOT RESET! KEEP CLIMBING UNTIL WIN!
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
-            # Reached max safety limit (Strict Level 3 Cap)
+            # Reached max safety limit (5-Level Stop-Loss)
             stop_banner = f"🛑 <b>{to_bold('ROUND RESULT : STOP-LOSS CAPITAL GUARD')}</b> 🛑"
-            status_str = to_bold("STOP-LOSS (STRICT LEVEL 3 CAP)")
+            status_str = to_bold("STOP-LOSS (LEVEL 5 HARD CAP)")
             loss_stage = to_bold(f"LEVEL {loss_level} (STOP-LOSS)")
             msg = (
                 f"{stop_banner}\n"
@@ -1128,7 +1280,7 @@ def send_user_result(period, actual_number, actual_color, pred):
                 f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
                 f"📊 <b>Stage</b> : <b>{loss_stage}</b>\n"
                 f"</blockquote>\n"
-                f"🛡️ <i>Strict 3-Level safety cap triggered. Capital protected from drawdown! Resetting fresh to LEVEL 1 (1X).</i>"
+                f"🛡️ <i>5-Level safety cap reached. Resetting fresh to LEVEL 1 (1X) to start new cycle.</i>"
             )
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
@@ -1137,9 +1289,8 @@ def send_user_result(period, actual_number, actual_color, pred):
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
             loss_banner = f"🔴 <b>{to_bold(f'ROUND RESULT : LEVEL {loss_level} LOSS ❌')}</b> 🔴"
-            status_str = to_bold("LOSS ❌ (TRY RECOVERY)")
+            status_str = to_bold("LOSS ❌ (RECOVERY NEXT)")
             next_stage_str = to_bold(f"LEVEL {next_level} ({mult}X RECOVERY)")
-            intensity_str = to_bold("1001% SURE-SHOT UPGRADE")
             msg = (
                 f"{loss_banner}\n"
                 f"<blockquote>"
@@ -1148,9 +1299,8 @@ def send_user_result(period, actual_number, actual_color, pred):
                 f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
                 f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
                 f"⚡ <b>Next Stage</b> : <b>{next_stage_str}</b>\n"
-                f"🔥 <b>Intensity</b> : <b>{intensity_str}</b>\n"
                 f"</blockquote>\n"
-                f"⚡ <i>Loss in round ...{short_period}. Escalating to Level {next_level} ({mult}X) for full recovery. Stay ready!</i>"
+                f"⚡ <i>Round ...{short_period} missed. Escalating to Level {next_level} ({mult}X) for full recovery!</i>"
             )
 
     save_cache()
@@ -1310,10 +1460,12 @@ def run_live_bot():
                             violet_alert = decision["violet_alert"]
                             jackpot_tip = decision.get("jackpot_tip")
                             signal_grade = decision["signal_grade"]
+                            pattern_name = decision.get("pattern_name", "")
 
                             v_flag = " [🟣 VIOLET ALERT]" if violet_alert else ""
                             j_flag = f" [🎰 TIP: {jackpot_tip}]" if jackpot_tip else ""
-                            print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag} | {signal_grade}", flush=True)
+                            p_flag = f" [🧩 {pattern_name}]" if pattern_name else ""
+                            print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag}{p_flag} | {signal_grade}", flush=True)
 
                             # Save & Dispatch ONE final decision to User DM
                             MEMORY_PREDICTIONS[next_target_period] = {
@@ -1326,9 +1478,10 @@ def run_live_bot():
                                 "consensus": consensus_tag,
                                 "violet_alert": violet_alert,
                                 "jackpot_tip": jackpot_tip,
-                                "grade": signal_grade
+                                "grade": signal_grade,
+                                "pattern_name": pattern_name
                             }
-                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip)
+                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name)
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
