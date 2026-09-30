@@ -1422,6 +1422,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 # 🔄 MAIN REAL-TIME LOOP
 # ====================================================
 def run_live_bot():
+    global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
     print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE!")
     print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
