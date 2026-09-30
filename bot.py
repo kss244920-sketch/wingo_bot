@@ -33,15 +33,44 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.end_headers()
-        self.wfile.write(b'{"status":"healthy","service":"wingo_council_bot"}\n')
+        try:
+            response_data = {
+                "status": "healthy",
+                "service": "wingo_council_bot",
+                "active_level": CURRENT_LOSS_STREAK + 1,
+                "rounds_in_memory": len(MEMORY_HISTORY),
+                "consecutive_skips": CONSECUTIVE_SKIPS
+            }
+            self.wfile.write(json.dumps(response_data).encode("utf-8"))
+        except Exception:
+            self.wfile.write(b'{"status":"healthy"}\n')
 
     def log_message(self, format, *args):
         pass
+
+def keep_alive_heartbeat(port=8080):
+    """
+    Anti-Sleep Heartbeat Engine for JustRunMy.App:
+    Pings the HTTP endpoint every 60s from inside the container so the host never marks it as idle/sleep!
+    """
+    time.sleep(5)
+    print(f"💓 [HEARTBEAT ENGINE] Started Anti-Sleep Heartbeat on port {port}", flush=True)
+    ping_num = 0
+    while True:
+        try:
+            r = requests.get(f"http://127.0.0.1:{port}", timeout=4)
+            ping_num += 1
+            if ping_num % 10 == 0:
+                print(f"💓 [HEARTBEAT] Ping #{ping_num} successful (Status: {r.status_code}) - Container Awake!", flush=True)
+        except Exception:
+            pass
+        time.sleep(60)
 
 def start_health_server(port=8080):
     try:
         server = HTTPServer(("0.0.0.0", port), HealthHandler)
         print(f"🌐 [HEALTH SERVER] Active on port {port}", flush=True)
+        threading.Thread(target=keep_alive_heartbeat, args=(port,), daemon=True).start()
         server.serve_forever()
     except Exception as e:
         print(f"⚠️ [HEALTH SERVER NOTICE] {e}", flush=True)
@@ -1450,7 +1479,7 @@ def run_live_bot():
 
                     actual_size = "BIG" if num >= 5 else "SMALL"
 
-                    # 2. When a round finishes:
+                    # 2. On initial startup: sync baseline and dispatch immediate prediction!
                     if last_processed_period is None:
                         last_processed_period = current_period
                         for item in reversed(items):
@@ -1458,7 +1487,35 @@ def run_live_bot():
                             if p:
                                 save_to_memory(p, int(item.get("number", 0)), str(item.get("color", "")), auto_save=False)
                         save_cache()
-                        print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Awaiting next live round...", flush=True)
+                        print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Generating immediate startup prediction...", flush=True)
+
+                        # Immediate startup prediction (Zero startup delay!)
+                        next_target_period = get_next_period(current_period)
+                        if len(MEMORY_HISTORY) >= 6:
+                            try:
+                                decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
+                                t_type = decision["target_type"]
+                                t_val = decision["target_val"]
+                                t_conf = decision["target_conf"]
+                                if t_type == "SKIP" or t_val == "SKIP":
+                                    CONSECUTIVE_SKIPS += 1
+                                    save_cache()
+                                    send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
+                                    print(f"⏸️ [STARTUP SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk on startup.", flush=True)
+                                else:
+                                    CONSECUTIVE_SKIPS = 0
+                                    MEMORY_PREDICTIONS[next_target_period] = {
+                                        "target_type": t_type, "target_val": t_val,
+                                        "color": decision["color"], "size": decision["size"],
+                                        "conf": t_conf, "reason": decision["reason"],
+                                        "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
+                                        "jackpot_tip": decision.get("jackpot_tip"), "grade": decision["signal_grade"],
+                                        "pattern_name": decision.get("pattern_name", "")
+                                    }
+                                    save_cache()
+                                    send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""))
+                            except Exception as e:
+                                print(f"[STARTUP PREDICTION ERROR] {e}", flush=True)
                         time.sleep(1.0)
                         continue
 
@@ -1575,4 +1632,9 @@ def run_live_bot():
         time.sleep(1.0)
 
 if __name__ == "__main__":
-    run_live_bot()
+    while True:
+        try:
+            run_live_bot()
+        except Exception as e:
+            print(f"🚨 [SUPERVISOR AUTO-RECOVERY] Bot loop exited with: {e}. Auto-restarting in 2s...", flush=True)
+            time.sleep(2.0)
