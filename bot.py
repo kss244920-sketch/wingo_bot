@@ -64,6 +64,7 @@ TOTAL_LOSSES = 0
 TOTAL_CYCLES = 0
 CYCLE_WINS = 0
 CYCLE_LOSSES = 0
+CONSECUTIVE_SKIPS = 0
 MAX_MARTINGALE_LEVEL = 5  # 5-Level Martingale Recovery Ladder (1X, 3X, 9X, 27X, 81X)
 
 def get_next_period(current_period):
@@ -93,7 +94,7 @@ def get_next_period(current_period):
         return current_period
 
 def load_cache():
-    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS
+    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -119,10 +120,11 @@ def load_cache():
                 TOTAL_CYCLES = st.get("total_cycles", 0)
                 CYCLE_WINS = st.get("cycle_wins", 0)
                 CYCLE_LOSSES = st.get("cycle_losses", 0)
+                CONSECUTIVE_SKIPS = st.get("consecutive_skips", 0)
                 saved_preds = st.get("memory_predictions", {})
                 if isinstance(saved_preds, dict):
                     MEMORY_PREDICTIONS.update(saved_preds)
-                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
+                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Skips: {CONSECUTIVE_SKIPS} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
         except Exception as e:
             print(f"[STATE LOAD ERROR] {e}", flush=True)
 
@@ -145,6 +147,7 @@ def save_cache():
             "total_cycles": TOTAL_CYCLES,
             "cycle_wins": CYCLE_WINS,
             "cycle_losses": CYCLE_LOSSES,
+            "consecutive_skips": CONSECUTIVE_SKIPS,
             "memory_predictions": MEMORY_PREDICTIONS
         }
         with open(tmp_st, "w") as f:
@@ -333,34 +336,39 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
             # AABB completed -> shift to new pair A!
             return a, 89.0, f"2-2 Double-Step ({a} Shift)"
 
-    # 5. 1-2 Single-Double (ABB ABB)
+    # 5. ABBA Mirror Pattern (Sandwich Symmetry: A -> BB -> A)
+    if len(seq) >= 3:
+        a = seq[-3]
+        b = seq[-2]
+        if a != b and seq[-1] == b:
+            # A followed by BB -> completes sandwich with A!
+            return a, 91.0, f"ABBA Mirror ({a} Symmetry)"
+
+    # 6. 1-2 Single-Double (ABB ABB)
     if len(seq) >= 4:
         a = seq[-4]
         b = seq[-3]
         if a != b and seq[-2] == b and seq[-1] == a:
+            # ABB followed by A -> starts double B!
             return b, 88.5, f"1-2 Single-Double ({b} Double)"
-    if len(seq) >= 3:
-        a = seq[-3]
-        b = seq[-2]
-        if a != b and seq[-1] == b:
-            return a, 88.0, f"1-2 Single-Double ({a} Single)"
 
-    # 6. ABBA Mirror Pattern (Sandwich Symmetry: A -> BB -> A)
-    if len(seq) >= 3:
-        a = seq[-3]
+    # 7. 2-1 Double-Single (AAB AAB)
+    if len(seq) >= 4:
+        a = seq[-4]
         b = seq[-2]
-        if a != b and seq[-1] == b:
-            return a, 88.5, f"ABBA Mirror ({a} Symmetry)"
+        if a != b and seq[-3] == a and seq[-1] == a:
+            # AAB followed by A -> completes double A!
+            return a, 88.5, f"2-1 Double-Single ({a} Double)"
 
-    # 7. Dragon Momentum (Streak >= 2) - Follow the Trend! Never cut a dragon!
+    # 8. Dragon Momentum (Streak >= 2) - Follow the Trend! Never cut a dragon!
     if streak_len >= 2:
         return last_val, min(95.0, 79.0 + streak_len * 3.0), f"Dragon Trend ({last_val} x{streak_len})"
 
-    # 8. 1-1 Alternating Chop (AB AB >= 2)
+    # 9. 1-1 Alternating Chop (AB AB >= 2)
     if alt_len >= 2:
         return opp_val, min(93.0, 76.0 + alt_len * 3.0), f"1-1 Chop ({alt_len}x Alternation)"
 
-    return opp_val if alt_len >= 2 else last_val, 68.0, "Momentum Flow"
+    return opp_val if alt_len >= 2 else last_val, 65.0, "Momentum Flow"
 
 # ====================================================
 # 📊 MATHEMATICAL MARKET STRUCTURE & PATTERN ENGINE
@@ -813,14 +821,14 @@ def detect_market_patterns(history_items):
 # ====================================================
 # 🧠 16-AGENT AI & QUANT HYBRID COUNCIL
 # ====================================================
-def ask_12_ai_council(history_items, current_loss_streak=0):
+def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0):
     """
     16-Agent AI & Math Quant Council:
     - 4 Neural LLM Specialists in Parallel (Qwen & GPT)
     - 11 Deterministic Pure-Math Quants (Database Transition, Fourier, Weibull, Bayes, Entropy, N-Gram)
-    - 1 Supreme Arbiter (GPT-120B / Qwen)
-    - Delivers decisive RED or GREEN prediction on EVERY round (Zero unnecessary skips!)
-    - Strictly aligned with 3-Level Martingale recovery for 88%+ cycle accuracy.
+    - 1 Supreme Arbiter (GPT-120B Flagship / Qwen)
+    - Dual-Layer Sniper Filter: Skips chaotic 50/50 noise; executes high-probability Pinterest roadmaps!
+    - Delivers direct Level 1 accuracy.
     """
     p_info = detect_market_patterns(history_items)
     recent_str = p_info["recent_compact"]
@@ -1003,6 +1011,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     pred_size = p_info.get("pred_size", "BIG")
     size_conf = p_info.get("pred_size_conf", 78.0)
 
+    c_pattern_desc = p_info.get("c_pattern_desc", "Momentum Flow")
+    s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
+
+    has_c_roadmap = any(p in c_pattern_desc for p in ["Dragon", "Chop", "Double-Step", "Staircase", "Triplet", "Mirror", "Single-Double", "Double-Single"])
+    has_s_roadmap = any(p in s_pattern_desc for p in ["Dragon", "Chop", "Double-Step", "Staircase", "Triplet", "Mirror", "Single-Double", "Double-Single"])
+
     if size_margin_pct > color_margin_pct:
         target_type = "SIZE"
         target_val = pred_size
@@ -1013,6 +1027,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         target_val = w_col
         target_conf = calc_conf
         target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%) >= SIZE edge ({size_margin_pct:.0f}%)"
+
+    # Deterministic statistical noise check
+    is_statistically_noisy = (not has_c_roadmap and not has_s_roadmap and w_v <= 9 and color_margin_pct < 22.0 and size_margin_pct < 22.0)
 
     # Dynamic Signal Grade mapped to Active Level
     cur_lvl = CURRENT_LOSS_STREAK + 1
@@ -1025,7 +1042,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     else:
         consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
 
-    # --- Phase 4: Council Synthesis by Arbiter (Agent 16) ---
+    # --- Phase 4: Council Synthesis by Flagship Arbiter (Agent 16: GPT-120B) ---
     spec_summary = "\n".join([
         f"- {s['name']}: {s['color']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
         for s in all_specialists[:8]
@@ -1034,20 +1051,23 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
     prompt_arbiter = (
         f"You are Agent 16 (Supreme Arbiter) presiding over the 16-Agent AI & Math WinGo Council.\n"
         f"Recent History Window: {recent_str[-50:]}\n"
-        f"Market Roadmap Structure: {pattern_str}\n"
+        f"Market Roadmaps: Color=[{c_pattern_desc}], Size=[{s_pattern_desc}]\n"
         f"Specialists Assessments:\n{spec_summary}\n"
-        f"Color Consensus: {w_col} ({color_margin_pct:.0f}% edge)\n"
+        f"Color Consensus: {w_col} ({w_v} vs {l_v} votes | {color_margin_pct:.0f}% edge)\n"
         f"Size Consensus: {pred_size} ({size_margin_pct:.0f}% edge)\n"
-        f"Chosen Best Bet: {target_type} -> {target_val}\n\n"
-        f"Instructions for Maximum Thinking Capacity:\n"
-        f"1. Conduct step-by-step reasoning on trend momentum vs contrarian fakeout risk.\n"
-        f"2. Confirm if the Pinterest roadmap (Dragon, Chop, 2-2, 3-2-1) guarantees edge.\n"
-        f"3. Return JSON ONLY:\n"
-        f'{{"thinking_process": "2 sentences of deep quant reasoning", "final_target": "{target_val}", "confidence": {target_conf}, "debate_summary": "1 sharp decisive sentence explaining why {target_val} has highest edge."}}'
+        f"Preliminary Target: {target_type} -> {target_val}\n\n"
+        f"STRICT SNIPER ACCURACY DIRECTIVE:\n"
+        f"The user requires maximum sniper accuracy and direct Level 1 wins.\n"
+        f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks.\n"
+        f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on both Color and Size: you MUST output action 'SKIP'.\n"
+        f"3. If a clear edge exists (Dragon continuation, 1-1 chop continuation, 2-2 symmetry, staircase, etc.): choose action 'BET' with the highest probability bet ('COLOR' or 'SIZE') and value ('RED'/'GREEN' or 'BIG'/'SMALL').\n\n"
+        f"Return JSON ONLY:\n"
+        f'{{"action": "BET" or "SKIP", "target_type": "COLOR" or "SIZE" or "SKIP", "target_val": "RED" or "GREEN" or "BIG" or "SMALL" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
     )
 
     final_summary = f"Selected {target_type} {target_val} based on {pattern_str.split('|')[0].strip()} ({target_edge_desc})."
     v_alert = bool(violet_due)
+    arbiter_wants_skip = False
 
     # Arbiter consultation with Flagship 120B model first (3.5s timeout for deep thinking)
     for arb_model in [MODEL_GPT120B, MODEL_QWEN]:
@@ -1059,44 +1079,72 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
             }, timeout=3.5)
             if r_arb.status_code == 200:
                 res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
-                summary_txt = res_arb.get("debate_summary", "")
-                if summary_txt:
-                    final_summary = summary_txt
+                act = str(res_arb.get("action", "")).upper()
+                if act == "SKIP":
+                    arbiter_wants_skip = True
+                    final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
+                elif act == "BET":
+                    t_t = str(res_arb.get("target_type", "")).upper()
+                    t_v = str(res_arb.get("target_val", "")).upper()
+                    if t_t == "COLOR" and t_v in ("RED", "GREEN"):
+                        target_type = "COLOR"
+                        target_val = t_v
+                    elif t_t == "SIZE" and t_v in ("BIG", "SMALL"):
+                        target_type = "SIZE"
+                        target_val = t_v
+                    if res_arb.get("confidence"):
+                        try:
+                            target_conf = min(96.0, max(75.0, float(res_arb.get("confidence"))))
+                        except Exception:
+                            pass
+                    summary_txt = res_arb.get("reason", "")
+                    if summary_txt:
+                        final_summary = summary_txt
                 break
         except Exception:
             continue
 
-    # High-Conviction Sure-Shot Number Engine (9X Payout)
-    # ONLY trigger when Council has super-majority (>= 12 agents) AND statistical peak exists!
-    jackpot_tip = None
-    if CURRENT_LOSS_STREAK <= 1 and w_v >= 12:
-        if w_col == "RED" and pred_size == "SMALL":
-            cand_nums = [2, 4, 0] if not v_alert else [0, 2, 4]
-        elif w_col == "RED" and pred_size == "BIG":
-            cand_nums = [6, 8]
-        elif w_col == "GREEN" and pred_size == "SMALL":
-            cand_nums = [1, 3]
-        else:
-            cand_nums = [7, 9, 5] if not v_alert else [5, 7, 9]
+    # Apply Dual-Layer Sniper Filter
+    # Prevent more than 2 consecutive skips (so user is never stalled indefinitely)
+    if consecutive_skips < 2 and (is_statistically_noisy or arbiter_wants_skip):
+        target_type = "SKIP"
+        target_val = "SKIP"
+        target_conf = 50.0
+        signal_grade = "SKIP"
+        detected_pattern_name = "Filtered Noise"
+        jackpot_tip = None
+    else:
+        # High-Conviction Sure-Shot Number Engine (9X Payout)
+        # ONLY trigger when Council has super-majority (>= 12 agents) AND statistical peak exists!
+        jackpot_tip = None
+        if CURRENT_LOSS_STREAK <= 1 and w_v >= 12:
+            if w_col == "RED" and pred_size == "SMALL":
+                cand_nums = [2, 4, 0] if not v_alert else [0, 2, 4]
+            elif w_col == "RED" and pred_size == "BIG":
+                cand_nums = [6, 8]
+            elif w_col == "GREEN" and pred_size == "SMALL":
+                cand_nums = [1, 3]
+            else:
+                cand_nums = [7, 9, 5] if not v_alert else [5, 7, 9]
 
-        nums_list = [int(it.get("num", 0)) for it in history_items]
-        last_num = nums_list[-1] if nums_list else 0
-        num_next_counts = defaultdict(int)
-        for i in range(len(nums_list) - 1):
-            if nums_list[i] == last_num:
-                num_next_counts[nums_list[i + 1]] += 1
+            nums_list = [int(it.get("num", 0)) for it in history_items]
+            last_num = nums_list[-1] if nums_list else 0
+            num_next_counts = defaultdict(int)
+            for i in range(len(nums_list) - 1):
+                if nums_list[i] == last_num:
+                    num_next_counts[nums_list[i + 1]] += 1
 
-        cand_transitions = sum(num_next_counts[n] for n in cand_nums)
-        if cand_transitions >= 8:
-            sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
-            top_cand = sorted_cands[0]
-            top_ratio = num_next_counts[top_cand] / cand_transitions
-            # Sure-shot peak: Dominant transition >= 40% (or violet outlier)
-            if top_ratio >= 0.40 or v_alert:
-                top_shots = sorted_cands[:2]
-                jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
+            cand_transitions = sum(num_next_counts[n] for n in cand_nums)
+            if cand_transitions >= 8:
+                sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
+                top_cand = sorted_cands[0]
+                top_ratio = num_next_counts[top_cand] / cand_transitions
+                # Sure-shot peak: Dominant transition >= 40% (or violet outlier)
+                if top_ratio >= 0.40 or v_alert:
+                    top_shots = sorted_cands[:2]
+                    jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
 
-    detected_pattern_name = p_info.get("c_pattern_desc") if target_type == "COLOR" else p_info.get("s_pattern_desc", "Trend Flow")
+        detected_pattern_name = c_pattern_desc if target_type == "COLOR" else s_pattern_desc
 
     return {
         "target_type": target_type,
@@ -1133,8 +1181,21 @@ def to_bold(text):
 # ====================================================
 # 🚀 USER SIGNALS (HIGH-VISIBILITY BOLD VIP CARDS)
 # ====================================================
-def send_user_signal(target_period, target_type, target_val, confidence, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None):
+def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
+
+    # User requirement: "par ye sirf SKIP bole ok prediciotn me kuch or extra befaltu nhi"
+    if target_type == "SKIP" or target_val == "SKIP":
+        msg = (
+            f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
+            f"🎯 <b>Prediction</b> : ⏸️ <b>SKIP</b>"
+        )
+        try:
+            send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
+            print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: ⏸️ SKIP (Filtered Noise)", flush=True)
+        except Exception as e:
+            print(f"[USER ALERT ERROR] {e}", flush=True)
+        return
 
     if target_type == "COLOR":
         c_name = to_bold(target_val)
@@ -1200,6 +1261,8 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
 # ====================================================
 def send_user_result(period, actual_number, actual_color, pred):
     global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL
+    if not pred or pred.get("target_type") == "SKIP" or pred.get("target_val") == "SKIP":
+        return
     short_period = period[-4:] if len(period) >= 4 else period
 
     bold_c_name = to_bold(actual_color)
@@ -1464,7 +1527,7 @@ def run_live_bot():
                         next_target_period = get_next_period(current_period)
 
                         if len(MEMORY_HISTORY) >= 6:
-                            decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK)
+                            decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
                             t_type = decision["target_type"]
                             t_val = decision["target_val"]
                             t_conf = decision["target_conf"]
@@ -1482,21 +1545,29 @@ def run_live_bot():
                             p_flag = f" [🧩 {pattern_name}]" if pattern_name else ""
                             print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag}{p_flag} | {signal_grade}", flush=True)
 
-                            # Save & Dispatch ONE final decision to User DM
-                            MEMORY_PREDICTIONS[next_target_period] = {
-                                "target_type": t_type,
-                                "target_val": t_val,
-                                "color": pred_color,
-                                "size": pred_size,
-                                "conf": t_conf,
-                                "reason": reason,
-                                "consensus": consensus_tag,
-                                "violet_alert": violet_alert,
-                                "jackpot_tip": jackpot_tip,
-                                "grade": signal_grade,
-                                "pattern_name": pattern_name
-                            }
-                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name)
+                            if t_type == "SKIP" or t_val == "SKIP":
+                                CONSECUTIVE_SKIPS += 1
+                                save_cache()
+                                send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
+                                print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Martingale streak preserved.", flush=True)
+                            else:
+                                CONSECUTIVE_SKIPS = 0
+                                # Save & Dispatch ONE final decision to User DM
+                                MEMORY_PREDICTIONS[next_target_period] = {
+                                    "target_type": t_type,
+                                    "target_val": t_val,
+                                    "color": pred_color,
+                                    "size": pred_size,
+                                    "conf": t_conf,
+                                    "reason": reason,
+                                    "consensus": consensus_tag,
+                                    "violet_alert": violet_alert,
+                                    "jackpot_tip": jackpot_tip,
+                                    "grade": signal_grade,
+                                    "pattern_name": pattern_name
+                                }
+                                save_cache()
+                                send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name)
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
