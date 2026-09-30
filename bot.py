@@ -63,8 +63,7 @@ TOTAL_WINS = 0
 TOTAL_LOSSES = 0
 TOTAL_CYCLES = 0
 CYCLE_WINS = 0
-CYCLE_LOSSES = 0
-MAX_MARTINGALE_LEVEL = 8  # Escalates levels with 1001% intensity until win
+MAX_MARTINGALE_LEVEL = 3  # Strict 3-Level Hard Cap (Never exceeds Level 3!)
 
 def get_next_period(current_period):
     """
@@ -316,6 +315,9 @@ def detect_market_patterns(history_items):
     is_double = False
     if len(colors) >= 4 and colors[-1] == colors[-2] and colors[-3] == colors[-4] and colors[-1] != colors[-3]:
         is_double = True
+    elif len(colors) >= 3 and colors[-1] != colors[-2] and colors[-2] == colors[-3]:
+        # Paired step setup: RR followed by G -> predict G to complete 2-2!
+        is_double = True
 
     # 4. Quant 5: Markov N-gram Transitions
     t3 = defaultdict(lambda: {"RED": 0, "GREEN": 0})
@@ -386,15 +388,14 @@ def detect_market_patterns(history_items):
     r_db = colors.count("RED")
     g_db = colors.count("GREEN")
 
-    if streak_len >= 5:
-        # Confirmed monster dragon: ride until natural break
-        q8_mr = (last_c, 74.0, f"Confirmed {last_c} dragon streak ({streak_len} rounds); riding momentum")
-    elif streak_len in (2, 3):
-        # 69% of 2-streaks and 60% of 3-streaks break in WinGo 30S!
-        q8_mr = (opp_c, 68.0, f"Streak length {streak_len} exhaustion rule; break reversal favors {opp_c}")
+    if streak_len >= 2:
+        # Dragon Rider: Follow the shoe! Never cut a dragon!
+        q8_mr = (last_c, min(90.0, 72.0 + streak_len * 3.0), f"Confirmed {last_c} dragon streak ({streak_len} rounds); riding momentum (Never cut a dragon)")
     elif alt_len >= 2:
         # Active 1-1 alternation: continuation favors chop
-        q8_mr = (opp_c, 68.0, f"Active 1-1 alternating chop ({alt_len} rounds); rhythm continuation favors {opp_c}")
+        q8_mr = (opp_c, min(88.0, 70.0 + alt_len * 3.0), f"Active 1-1 alternating chop ({alt_len} rounds); rhythm continuation favors {opp_c}")
+    elif is_double:
+        q8_mr = (last_c, 76.0, "2-2 paired double step; completing 2nd step of symmetry")
     else:
         r_20 = colors[-20:].count("RED") if tot_db >= 20 else r_db
         g_20 = colors[-20:].count("GREEN") if tot_db >= 20 else g_db
@@ -475,15 +476,11 @@ def detect_market_patterns(history_items):
     ended_t = [s[1] for s in streaks if s[1] == streak_len]
     h_rate = round((len(ended_t) / len(survived_t) * 100), 1) if survived_t else 50.0
 
-    if streak_len >= 5 and h_rate >= 68.0:
-        # Streak exhaustion: vote for REVERSAL!
-        q12_hazard = (opp_c, h_rate, f"Weibull Hazard Climax ({h_rate}% termination rate at {streak_len}-streak); reversal favors {opp_c}")
-    elif streak_len in (2, 3):
-        q12_hazard = (opp_c, 64.0, f"Weibull 2-3 streak exhaustion favors break to {opp_c}")
-    elif streak_len in (4,) and h_rate < 55.0:
-        q12_hazard = (last_c, round(100 - h_rate, 1), f"Weibull dragon momentum supported ({100-h_rate:.1f}% survival)")
+    if streak_len >= 2:
+        # Dragon support: ride the streak!
+        q12_hazard = (last_c, min(88.0, 70.0 + streak_len * 2.5), f"Weibull streak survival favors {last_c} dragon continuation ({streak_len} rounds)")
     elif alt_len >= 2:
-        q12_hazard = (opp_c, 67.0, f"Alternation survival favors chop continuation ({alt_len} rounds)")
+        q12_hazard = (opp_c, min(86.0, 68.0 + alt_len * 2.5), f"Alternation survival favors chop continuation ({alt_len} rounds)")
     else:
         q12_hazard = (opp_c, 55.0, f"Hazard regime favors {opp_c}")
 
@@ -547,27 +544,23 @@ def detect_market_patterns(history_items):
         if sizes[k] != sizes[k - 1]: s_alt += 1
         else: break
 
-    is_s_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3])
+    is_s_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3]) or (len(sizes) >= 3 and sizes[-1] != sizes[-2] and sizes[-2] == sizes[-3])
 
     s_score_big = 0.0
     s_score_small = 0.0
 
-    # 1. Size Alternation Chop (Continuation)
-    if s_alt >= 3:
-        if opp_s == "BIG": s_score_big += 4.2
-        else: s_score_small += 4.2
-    # 2. Size 2-2 Symmetry (Double Double)
+    # 1. Size Dragon Rider (Streak continuation >= 2)
+    if s_streak >= 2:
+        if last_s == "BIG": s_score_big += 4.5 + min(3.0, s_streak * 0.5)
+        else: s_score_small += 4.5 + min(3.0, s_streak * 0.5)
+    # 2. Size Alternation Chop (Continuation)
+    elif s_alt >= 2:
+        if opp_s == "BIG": s_score_big += 4.2 + min(2.0, s_alt * 0.4)
+        else: s_score_small += 4.2 + min(2.0, s_alt * 0.4)
+    # 3. Size 2-2 Symmetry (Double Double paired steps)
     elif is_s_2_2:
-        if opp_s == "BIG": s_score_big += 3.5
-        else: s_score_small += 3.5
-    # 3. Size 2-3 Streak Break (Mean-reversion)
-    elif s_streak in (2, 3):
-        if opp_s == "BIG": s_score_big += 3.0
-        else: s_score_small += 3.0
-    # 4. Confirmed Monster Dragon Size (5+ streak)
-    elif s_streak >= 5:
-        if last_s == "BIG": s_score_big += 3.5
-        else: s_score_small += 3.5
+        if last_s == "BIG": s_score_big += 3.8
+        else: s_score_small += 3.8
     else:
         if opp_s == "BIG": s_score_big += 1.5
         else: s_score_small += 1.5
@@ -727,8 +720,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
                 f"You are Agent 1 (Trend Specialist) on the 16-Agent WinGo Council.\n"
                 f"Recent rounds: {recent_str}\n"
                 f"Structure: {pattern_str}\n"
-                f"Rule: If confirmed dragon (5+ {last_color}), vote {last_color}. If streak is 2 or 3, vote {opp_color} (break). If chop, vote {opp_color}.\n"
-                f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
+                f"Rule: Golden Rule 'Never Cut a Dragon': If streak is >= 2 of {last_color}, ALWAYS vote {last_color} to ride the dragon for win streaks. If 1-1 chop, vote {opp_color}. If 2-2 symmetry, complete the 2nd step.\n"
+                f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 80, \"arg\": \"1 brief sentence\"}}"
             )
         ),
         (
@@ -757,10 +750,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
             "Agent 4 (Contrarian Trap: GPT-20B)",
             MODEL_GPT20B,
             (
-                f"You are Agent 4 (Contrarian Trap Hunter) on the 16-Agent WinGo Council.\n"
+                f"You are Agent 4 (Trend & Momentum Auditor) on the 16-Agent WinGo Council.\n"
                 f"Recent rounds: {recent_str}\n"
                 f"Structure: {pattern_str}\n"
-                f"Rule: Identify retail traps and false breakouts. Vote for highest mathematical edge.\n"
+                f"Rule: Protect against counter-trend losses. Confirm strong momentum and support the dominant regime (Dragon or Chop).\n"
                 f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
             )
         )
@@ -788,13 +781,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
             pass
 
         # Fast empirical fallback
-        if streak_len >= 5:
+        if streak_len >= 2:
             c_fall = last_color
-        elif streak_len in (2, 3) or alt_len >= 2:
+        elif alt_len >= 2:
             c_fall = opp_color
         else:
             c_fall = quants.get("q6", [opp_color])[0]
-        return {"name": agent_name, "color": c_fall or "RED", "conf": 72.0, "arg": "Empirical rhythm model"}
+        return {"name": agent_name, "color": c_fall or "RED", "conf": 76.0, "arg": "Dragon & Chop rhythm momentum"}
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         llm_specialists = list(executor.map(query_specialist, specialist_tasks))
@@ -832,7 +825,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
 
     # Dynamic Weight Assignment based on Empirical Win Rates
     weights = [
-        2.5 if streak_len >= 5 else 1.2,                                # Agent 1: Trend
+        3.0 if streak_len >= 2 else 1.2,                                # Agent 1: Dragon Trend Momentum
         2.8 if alt_len >= 2 else 1.2,                                   # Agent 2: 1-1 Chop
         2.2 if is_double else 1.0,                                      # Agent 3: 2-2 Symmetry
         1.2,                                                            # Agent 4: Contrarian
@@ -865,8 +858,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0):
         w_v, l_v = green_votes, red_votes
         w_weight = green_weight
     else:
-        # Exact tie-breaker: rhythm continuation
-        w_col = opp_c if (alt_len >= 2 or streak_len in (2, 3)) else last_color
+        # Exact tie-breaker: ride dragon continuation or chop rhythm
+        w_col = last_color if streak_len >= 2 else (opp_c if alt_len >= 2 else last_color)
         w_v = red_votes if w_col == "RED" else green_votes
         l_v = green_votes if w_col == "RED" else red_votes
         w_weight = red_weight if w_col == "RED" else green_weight
@@ -1003,22 +996,11 @@ def send_user_signal(target_period, target_type, target_val, confidence, reason=
         stage_str = to_bold("LEVEL 2 (3X)")
         intensity_str = to_bold("1001% RECOVERY HIT")
         footer = f"💰 <i>Triple your stake (3X) on {bet_label}! Full capital + profit recovery!</i>"
-    elif level == 3:
-        banner = f"💎 <b>{to_bold('WINGO 30S ULTRA SIGNAL')}</b> 💎"
-        stage_str = to_bold("LEVEL 3 (9X)")
-        intensity_str = to_bold("1001% ULTRA SURE-SHOT")
-        footer = f"🚨 <i>High conviction setup on {bet_label}! Bet 9X for full recovery!</i>"
-    elif level == 4:
-        banner = f"🔥 <b>{to_bold('WINGO 30S MAX RECOVERY')}</b> 🔥"
-        stage_str = to_bold("LEVEL 4 (27X)")
-        intensity_str = to_bold("1001% MAXIMUM RECOVERY")
-        footer = f"💥 <i>Maximum recovery setup on {bet_label}! Recover all previous rounds!</i>"
     else:
-        mult = 3 ** (level - 1)
-        banner = f"🏆 <b>{to_bold('WINGO 30S CRITICAL SIGNAL')}</b> 🏆"
-        stage_str = to_bold(f"LEVEL {level} ({mult}X)")
-        intensity_str = to_bold("1001% CRITICAL SURE-SHOT")
-        footer = f"🏆 <i>Critical recovery hit on {bet_label}! Final turnaround!</i>"
+        banner = f"💎 <b>{to_bold('WINGO 30S FINAL ULTRA RECOVERY')}</b> 💎"
+        stage_str = to_bold("LEVEL 3 (8X-9X FINAL)")
+        intensity_str = to_bold("1001% MAXIMUM CAPITAL RECOVERY")
+        footer = f"🚨 <i>Final recovery round on {bet_label}! Maximum safety & profit turnaround!</i>"
 
     v_tip_line = ""
     if jackpot_tip:
@@ -1092,15 +1074,9 @@ def send_user_result(period, actual_number, actual_color, pred):
         elif win_level == 2:
             win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 2 RECOVERY WIN ✅')}</b> 🟢"
             sub = "💸 <i>Recovery win secured! Capital + profit restored to Level 1.</i>"
-        elif win_level == 3:
+        else:
             win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 3 ULTRA WIN ✅')}</b> 🟢"
             sub = "🤑 <i>Ultra recovery delivered! Turnaround secured, resetting to Level 1.</i>"
-        elif win_level == 4:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 4 MAX WIN ✅')}</b> 🟢"
-            sub = "🏆 <i>27X mega recovery booked! Profit secured, resetting to Level 1.</i>"
-        else:
-            win_banner = f"🟢 <b>{to_bold(f'ROUND RESULT : LEVEL {win_level} WIN ✅')}</b> 🟢"
-            sub = "👑 <i>Critical recovery win! Cycle complete, resetting to Level 1.</i>"
 
         bonus_violet = ""
         if actual_number in (0, 5) and (pred.get("violet_alert") or pred.get("jackpot_tip")):
@@ -1127,9 +1103,9 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_LOSS_STREAK += 1  # DO NOT RESET! KEEP CLIMBING UNTIL WIN!
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
-            # Reached max safety limit (Level 8)
-            stop_banner = f"🛑 <b>{to_bold('ROUND RESULT : STOP-LOSS REACHED')}</b> 🛑"
-            status_str = to_bold("STOP-LOSS (CYCLE RESET)")
+            # Reached max safety limit (Strict Level 3 Cap)
+            stop_banner = f"🛑 <b>{to_bold('ROUND RESULT : STOP-LOSS CAPITAL GUARD')}</b> 🛑"
+            status_str = to_bold("STOP-LOSS (STRICT LEVEL 3 CAP)")
             loss_stage = to_bold(f"LEVEL {loss_level} (STOP-LOSS)")
             msg = (
                 f"{stop_banner}\n"
@@ -1140,7 +1116,7 @@ def send_user_result(period, actual_number, actual_color, pred):
                 f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
                 f"📊 <b>Stage</b> : <b>{loss_stage}</b>\n"
                 f"</blockquote>\n"
-                f"🔄 <i>Max safety level reached. Resetting fresh to LEVEL 1 (1X)!</i>"
+                f"🛡️ <i>Strict 3-Level safety cap triggered. Capital protected from drawdown! Resetting fresh to LEVEL 1 (1X).</i>"
             )
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1

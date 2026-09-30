@@ -41,6 +41,28 @@ def call_mcp(method_name, arguments=None):
                     return content[0]["text"]
     return None
 
+def parse_ping_left_hours(ping_left_str):
+    if not ping_left_str:
+        return 999.0
+    try:
+        if ping_left_str.startswith("-"):
+            return -1.0
+        parts = ping_left_str.split(":")
+        if len(parts) >= 3:
+            first = parts[0]
+            if "." in first:
+                days_str, hours_str = first.split(".")
+                days = int(days_str)
+                hours = int(hours_str)
+            else:
+                days = 0
+                hours = int(first)
+            minutes = int(parts[1])
+            return (days * 24) + hours + (minutes / 60.0)
+    except Exception as e:
+        print(f"Could not parse ping_left: {e}")
+    return 999.0
+
 def check_and_renew():
     try:
         apps = call_mcp("jrnm_get_user_apps")
@@ -62,13 +84,25 @@ def check_and_renew():
                 ping_left = p.get("value")
                 break
 
-        print(f"[{time.ctime()}] WinGo Cloud App: isStarted={is_started}, Lease Left={ping_left}")
+        hours_left = parse_ping_left_hours(ping_left)
+        print(f"[{time.ctime()}] WinGo Cloud App: isStarted={is_started}, Lease Left={ping_left} (~{hours_left:.2f}h)")
 
-        # If stopped, restart immediately
+        needs_action = False
         if not is_started:
+            needs_action = True
             print(f"[{time.ctime()}] App is stopped! Triggering restart...")
+        elif hours_left < 6.0:
+            needs_action = True
+            print(f"[{time.ctime()}] Free tier lease low (<6h remaining)! Triggering proactive renewal restart...")
+
+        if needs_action:
+            if is_started:
+                call_mcp("jrnm_stop_app", {"appId": APP_ID})
+                time.sleep(2)
             call_mcp("jrnm_start_or_restart_app", {"appId": APP_ID})
-            print(f"[{time.ctime()}] Restart command sent!")
+            print(f"[{time.ctime()}] Restart command sent successfully!")
+        else:
+            print(f"[{time.ctime()}] All good! App running healthy.")
     except Exception as e:
         print(f"[{time.ctime()}] Keep-alive error: {e}")
 
