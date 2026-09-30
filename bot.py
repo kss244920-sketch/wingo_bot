@@ -94,7 +94,7 @@ TOTAL_CYCLES = 0
 CYCLE_WINS = 0
 CYCLE_LOSSES = 0
 CONSECUTIVE_SKIPS = 0
-MAX_MARTINGALE_LEVEL = 5  # 5-Level Martingale Recovery Ladder (1X, 3X, 9X, 27X, 81X)
+MAX_MARTINGALE_LEVEL = 3  # Standard 3-Level VIP Protection (1X, 3X, 9X)
 
 def get_next_period(current_period):
     """
@@ -824,6 +824,10 @@ def detect_market_patterns(history_items):
         "violet_due": violet_due,
         "rounds_since_violet": rounds_since_violet,
         "pred_size": pred_size,
+        "s_streak": s_streak,
+        "s_alt": s_alt,
+        "last_s": last_s,
+        "opp_s": opp_s,
         "size_edge": size_edge,
         "size_margin_pct": size_margin_pct,
         "pred_size_conf": pred_size_conf,
@@ -870,6 +874,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     violet_due = p_info["violet_due"]
     quants = p_info.get("quants", {})
     pred_size = p_info.get("pred_size", "BIG")
+    last_s = p_info.get("last_s", "BIG")
+    s_streak = p_info.get("s_streak", 1)
+    s_alt = p_info.get("s_alt", 1)
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
@@ -928,7 +935,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt_txt}],
                 "response_format": {"type": "json_object"}
-            }, timeout=2.5)
+            }, timeout=1.5)
             if r.status_code == 200:
                 res = json.loads(r.json()["choices"][0]["message"]["content"])
                 c = str(res.get("color", "")).upper()
@@ -1034,33 +1041,71 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     color_margin_pct = round((color_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
     calc_conf = min(96.0, max(76.0, round(65.0 + (color_ratio * 30.0), 1)))
 
-    # DECIDE SINGLE TARGET BET: COLOR vs SIZE
-    # User requirement: "bet ek par lgayi jaye situation ki hisab se like color se jyada big/small ka chance h to vo predciton de agar color ka jyada chance h to vo prediciton de"
-    size_margin_pct = p_info.get("size_margin_pct", 0.0)
-    pred_size = p_info.get("pred_size", "BIG")
-    size_conf = p_info.get("pred_size_conf", 78.0)
+    # ====================================================
+    # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
+    # ====================================================
+    # If a streak of color is active (>= 2), NEVER bet counter-trend opposite color!
+    if streak_len >= 2 and w_col != last_color:
+        w_col = last_color
+        w_v = max(w_v, 11)
 
+    # If a streak of size is active (>= 2), NEVER bet counter-trend opposite size!
+    if s_streak >= 2 and pred_size != last_s:
+        pred_size = last_s
+
+    # ====================================================
+    # 🎯 2. DECIDE SINGLE TARGET BET: COLOR vs SIZE
+    # ====================================================
+    size_margin_pct = p_info.get("size_margin_pct", 0.0)
+    size_conf = p_info.get("pred_size_conf", 78.0)
     c_pattern_desc = p_info.get("c_pattern_desc", "Momentum Flow")
     s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
-
-    has_c_roadmap = any(p in c_pattern_desc for p in ["Dragon", "Chop", "Double-Step", "Staircase", "Triplet", "Mirror", "Single-Double", "Double-Single"])
-    has_s_roadmap = any(p in s_pattern_desc for p in ["Dragon", "Chop", "Double-Step", "Staircase", "Triplet", "Mirror", "Single-Double", "Double-Single"])
 
     if size_margin_pct > color_margin_pct:
         target_type = "SIZE"
         target_val = pred_size
         target_conf = size_conf
+        target_margin = size_margin_pct
+        target_pattern = s_pattern_desc
         target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%) > COLOR edge ({color_margin_pct:.0f}%)"
     else:
         target_type = "COLOR"
         target_val = w_col
         target_conf = calc_conf
+        target_margin = color_margin_pct
+        target_pattern = c_pattern_desc
         target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%) >= SIZE edge ({size_margin_pct:.0f}%)"
 
-    # Deterministic statistical noise check
-    is_statistically_noisy = (not has_c_roadmap and not has_s_roadmap and w_v <= 9 and color_margin_pct < 22.0 and size_margin_pct < 22.0)
+    # ====================================================
+    # 🎯 3. ULTRA-STRICT SNIPER QUALIFICATION ENGINE
+    # ====================================================
+    # High-Conviction Structural Signals
+    c_strong_dragon = ("Dragon Trend" in c_pattern_desc and streak_len >= 2)
+    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 2)
+    c_strong_chop = ("1-1 Chop" in c_pattern_desc and alt_len >= 3)
+    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 3)
+    c_strong_22 = ("2-2 Double-Step" in c_pattern_desc and "Pair" in c_pattern_desc)
+    s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and "Pair" in s_pattern_desc)
 
-    # Dynamic Signal Grade mapped to Active Level
+    has_confirmed_structure = (
+        (target_type == "COLOR" and (c_strong_dragon or c_strong_chop or c_strong_22)) or
+        (target_type == "SIZE" and (s_strong_dragon or s_strong_chop or s_strong_22))
+    )
+
+    # A round is ONLY qualified for betting if:
+    # (A) Super-majority consensus (w_v >= 11 out of 16) AND target margin >= 30%
+    # OR
+    # (B) Confirmed structural pattern (Dragon >= 2, Chop >= 3, or 2-2 Pair) AND target margin >= 22%
+    is_qualified_bet = (
+        (w_v >= 11 and target_margin >= 30.0) or
+        (has_confirmed_structure and target_margin >= 22.0)
+    )
+
+    # In recovery mode (current_loss_streak >= 1), be even stricter!
+    # Never bet into ambiguous chop when capital is at 3X or 9X risk!
+    if current_loss_streak >= 1 and not has_confirmed_structure and target_margin < 35.0:
+        is_qualified_bet = False
+
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
@@ -1089,60 +1134,49 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         f"The user requires maximum sniper accuracy and direct Level 1 wins.\n"
         f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks.\n"
         f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on both Color and Size: you MUST output action 'SKIP'.\n"
-        f"3. If a clear edge exists (Dragon continuation, 1-1 chop continuation, 2-2 symmetry, staircase, etc.): choose action 'BET' with the highest probability bet ('COLOR' or 'SIZE') and value ('RED'/'GREEN' or 'BIG'/'SMALL').\n\n"
+        f"3. If a clear edge exists: output action 'BET'.\n\n"
         f"Return JSON ONLY:\n"
-        f'{{"action": "BET" or "SKIP", "target_type": "COLOR" or "SIZE" or "SKIP", "target_val": "RED" or "GREEN" or "BIG" or "SMALL" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
+        f'{{"action": "BET" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
     )
 
     final_summary = f"Selected {target_type} {target_val} based on {pattern_str.split('|')[0].strip()} ({target_edge_desc})."
     v_alert = bool(violet_due)
     arbiter_wants_skip = False
 
-    # Arbiter consultation with Flagship 120B model first (3.5s timeout for deep thinking)
-    for arb_model in [MODEL_GPT120B, MODEL_QWEN]:
-        try:
-            r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                "model": arb_model,
-                "messages": [{"role": "user", "content": prompt_arbiter}],
-                "response_format": {"type": "json_object"}
-            }, timeout=3.5)
-            if r_arb.status_code == 200:
-                res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
-                act = str(res_arb.get("action", "")).upper()
-                if act == "SKIP":
-                    arbiter_wants_skip = True
-                    final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
-                elif act == "BET":
-                    t_t = str(res_arb.get("target_type", "")).upper()
-                    t_v = str(res_arb.get("target_val", "")).upper()
-                    if t_t == "COLOR" and t_v in ("RED", "GREEN"):
-                        target_type = "COLOR"
-                        target_val = t_v
-                    elif t_t == "SIZE" and t_v in ("BIG", "SMALL"):
-                        target_type = "SIZE"
-                        target_val = t_v
-                    if res_arb.get("confidence"):
-                        try:
-                            target_conf = min(96.0, max(75.0, float(res_arb.get("confidence"))))
-                        except Exception:
-                            pass
-                    summary_txt = res_arb.get("reason", "")
-                    if summary_txt:
-                        final_summary = summary_txt
-                break
-        except Exception:
-            continue
+    # Arbiter consultation with Flagship 120B model (1.2s timeout for sub-second execution)
+    try:
+        r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+            "model": MODEL_GPT120B,
+            "messages": [{"role": "user", "content": prompt_arbiter}],
+            "response_format": {"type": "json_object"}
+        }, timeout=1.2)
+        if r_arb.status_code == 200:
+            res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
+            act = str(res_arb.get("action", "")).upper()
+            if act == "SKIP":
+                arbiter_wants_skip = True
+                final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
+            elif act == "BET":
+                summary_txt = res_arb.get("reason", "")
+                if summary_txt:
+                    final_summary = summary_txt
+    except Exception:
+        pass
 
-    # Apply Dual-Layer Sniper Filter
-    # Prevent more than 2 consecutive skips (so user is never stalled indefinitely)
-    if consecutive_skips < 2 and (is_statistically_noisy or arbiter_wants_skip):
+    # ====================================================
+    # 🎯 4. FINAL SNIPER FILTER (Real Skips on Noise)
+    # ====================================================
+    # Allow at most 3 consecutive skips so user is never stalled indefinitely
+    if consecutive_skips < 3 and (not is_qualified_bet or arbiter_wants_skip):
         target_type = "SKIP"
         target_val = "SKIP"
         target_conf = 50.0
         signal_grade = "SKIP"
         detected_pattern_name = "Filtered Noise"
         jackpot_tip = None
+        final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
     else:
+        detected_pattern_name = target_pattern
         # High-Conviction Sure-Shot Number Engine (9X Payout)
         # ONLY trigger when Council has super-majority (>= 12 agents) AND statistical peak exists!
         jackpot_tip = None
@@ -1172,8 +1206,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 if top_ratio >= 0.40 or v_alert:
                     top_shots = sorted_cands[:2]
                     jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
-
-        detected_pattern_name = c_pattern_desc if target_type == "COLOR" else s_pattern_desc
 
     return {
         "target_type": target_type,
