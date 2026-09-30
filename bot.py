@@ -5,6 +5,10 @@ import os
 import math
 import threading
 import requests
+import re
+import datetime
+import cmath
+import zlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -18,10 +22,13 @@ STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
-# 16-Agent AI & Math Council Models (Max Thinking Capacity)
-MODEL_QWEN = "qwen/qwen3.8-27b"            # 27B parameter deep neural specialist
-MODEL_GPT20B = "openai/gpt-oss-20b"        # 20B parameter structural quant specialist
-MODEL_GPT120B = "openai/gpt-oss-120b"      # 120B parameter supreme arbiter (Flagship reasoning engine)
+# 12-Quant Engine + Single Master AI Brain (with cascading failover to eliminate rate limits)
+MASTER_AI_MODELS = [
+    "qwen/qwen3.8-27b",         # 27B parameter flagship reasoning engine
+    "openai/gpt-oss-120b",      # 120B parameter deep analysis engine
+    "allam-2-7b",               # 7B high-speed failover engine
+]
+MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
 HISTORY_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1011,91 +1018,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     last_s = p_info.get("last_s", "BIG")
     s_streak = p_info.get("s_streak", 1)
     s_alt = p_info.get("s_alt", 1)
+    c_pred_val = p_info.get("c_pred_val", opp_color)
+    colors = [it.get("color", "") for it in history_items]
+    sizes = [it.get("size", "") for it in history_items]
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
-    # --- Phase 1: 4 Neural LLM Specialists Consult in Parallel ---
-    specialist_tasks = [
-        (
-            "Agent 1 (Dragon Momentum: Qwen-27B)",
-            MODEL_QWEN,
-            (
-                f"You are Agent 1 (Trend Specialist) on the 16-Agent WinGo Council.\n"
-                f"Recent rounds: {recent_str}\n"
-                f"Structure: {pattern_str}\n"
-                f"Rule: Golden Rule 'Never Cut a Dragon': If streak is >= 2 of {last_color}, ALWAYS vote {last_color} to ride the dragon for win streaks. If 1-1 chop, vote {opp_color}. If 2-2 symmetry, complete the 2nd step.\n"
-                f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 80, \"arg\": \"1 brief sentence\"}}"
-            )
-        ),
-        (
-            "Agent 2 (1-1 Chop: GPT-20B)",
-            MODEL_GPT20B,
-            (
-                f"You are Agent 2 (1-1 Chop Specialist) on the 16-Agent WinGo Council.\n"
-                f"Recent rounds: {recent_str}\n"
-                f"Structure: {pattern_str}\n"
-                f"Rule: Follow 1-1 alternation rhythm (predict opposite of last: {opp_color}).\n"
-                f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
-            )
-        ),
-        (
-            "Agent 3 (2-2 Symmetry: Qwen-27B)",
-            MODEL_QWEN,
-            (
-                f"You are Agent 3 (2-2 Symmetry Specialist) on the 16-Agent WinGo Council.\n"
-                f"Recent rounds: {recent_str}\n"
-                f"Structure: {pattern_str}\n"
-                f"Rule: Identify paired steps (RR-GG). Predict the next step of the cycle.\n"
-                f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
-            )
-        ),
-        (
-            "Agent 4 (Contrarian Trap: GPT-20B)",
-            MODEL_GPT20B,
-            (
-                f"You are Agent 4 (Trend & Momentum Auditor) on the 16-Agent WinGo Council.\n"
-                f"Recent rounds: {recent_str}\n"
-                f"Structure: {pattern_str}\n"
-                f"Rule: Protect against counter-trend losses. Confirm strong momentum and support the dominant regime (Dragon or Chop).\n"
-                f"Return JSON ONLY: {{\"color\": \"RED\" or \"GREEN\", \"conf\": 75, \"arg\": \"1 brief sentence\"}}"
-            )
-        )
-    ]
+    # --- Phase 1: 12 Deterministic Pure-Math Quants (Instant 0ms, Zero Quota Consumption) ---
+    c_dragon = last_color if streak_len >= 3 else (opp_color if streak_len < 2 else last_color)
+    c_chop = opp_color if alt_len >= 4 else (last_color if streak_len >= 3 else opp_color)
+    c_22 = c_pred_val if is_double else opp_color
+    c_contrarian = opp_color if streak_len >= 4 else last_color
 
-    def query_specialist(task_info):
-        agent_name, model_name, prompt_txt = task_info
-        try:
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt_txt}],
-                "response_format": {"type": "json_object"}
-            }, timeout=1.5)
-            if r.status_code == 200:
-                res = json.loads(r.json()["choices"][0]["message"]["content"])
-                c = str(res.get("color", "")).upper()
-                if c in ("RED", "GREEN"):
-                    return {
-                        "name": agent_name,
-                        "color": c,
-                        "conf": float(res.get("conf", 75.0)),
-                        "arg": res.get("arg", "")
-                    }
-        except Exception:
-            pass
-
-        # Fast empirical fallback
-        if streak_len >= 2:
-            c_fall = last_color
-        elif alt_len >= 2:
-            c_fall = opp_color
-        else:
-            c_fall = quants.get("q6", [opp_color])[0]
-        return {"name": agent_name, "color": c_fall or "RED", "conf": 76.0, "arg": "Dragon & Chop rhythm momentum"}
-
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        llm_specialists = list(executor.map(query_specialist, specialist_tasks))
-
-    # --- Phase 2: Compile All 15 Specialists (4 LLM + 11 Database & Pure Math Quants) ---
     q4 = quants.get("q4", (opp_color, 75.0, "Pinterest Roadmap"))
     q5 = quants.get("q5", (opp_color, 60.0, "N-Gram model"))
     q6 = quants.get("q6", (opp_color, 65.0, "Number transition"))
@@ -1110,10 +1044,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     q15 = quants.get("q15", (opp_color, 58.0, "Bayesian Decay"))
 
     all_specialists = [
-        llm_specialists[0],
-        llm_specialists[1],
-        llm_specialists[2],
-        llm_specialists[3],
+        {"name": "Agent 1 (Dragon Momentum Quant)", "color": c_dragon, "conf": 80.0 if streak_len >= 3 else 50.0, "arg": f"Streak len: {streak_len}"},
+        {"name": "Agent 2 (1-1 Chop Quant)", "color": c_chop, "conf": 80.0 if alt_len >= 4 else 50.0, "arg": f"Chop len: {alt_len}"},
+        {"name": "Agent 3 (2-2 Symmetry Quant)", "color": c_22, "conf": 75.0 if is_double else 50.0, "arg": "Pair symmetry"},
+        {"name": "Agent 4 (Mean-Reversion Quant)", "color": c_contrarian, "conf": 75.0, "arg": "Anti-exhaustion balance"},
         {"name": "Agent 4B (Pinterest Roadmap Quant)", "color": q4[0], "conf": q4[1], "arg": q4[2]},
         {"name": "Agent 5 (N-Gram Markov Quant)", "color": q5[0], "conf": q5[1], "arg": q5[2]},
         {"name": "Agent 6 (Number-to-Color Bayes)", "color": q6[0], "conf": q6[1], "arg": q6[2]},
@@ -1130,14 +1064,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # Dynamic Weight Assignment based on Empirical Win Rates
     weights = [
-        3.0 if streak_len >= 2 else 1.2,                                # Agent 1: Dragon Trend Momentum
-        2.8 if alt_len >= 2 else 1.2,                                   # Agent 2: 1-1 Chop
+        3.5 if streak_len >= 3 else 1.0,                                # Agent 1: Dragon Trend Momentum
+        3.2 if alt_len >= 4 else 1.0,                                   # Agent 2: 1-1 Chop
         2.2,                                                            # Agent 3: 2-2 Symmetry
-        1.2,                                                            # Agent 4: Contrarian
+        1.2,                                                            # Agent 4: Mean-Reversion
         3.5 if q4[1] >= 85.0 else 2.2,                                  # Agent 4B: Pinterest 9-Roadmap Engine
-        2.2,                                                            # Agent 5: Markov N-Gram
-        2.4,                                                            # Agent 6: Number-to-Color Bayes
-        1.8,                                                            # Agent 7: Big/Small Matrix
+        2.5,                                                            # Agent 5: Markov N-Gram
+        2.5,                                                            # Agent 6: Number-to-Color Bayes
+        2.0,                                                            # Agent 7: Big/Small Matrix
         2.0,                                                            # Agent 8: Mean-Reversion Imbalance
         1.5,                                                            # Agent 9: Autocorrelation
         1.4,                                                            # Agent 10: Entropy
@@ -1165,7 +1099,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         w_weight = green_weight
     else:
         # Exact tie-breaker: ride dragon continuation or chop rhythm
-        w_col = last_color if streak_len >= 2 else (opp_c if alt_len >= 2 else last_color)
+        w_col = last_color if streak_len >= 2 else (opp_color if alt_len >= 2 else last_color)
         w_v = red_votes if w_col == "RED" else green_votes
         l_v = green_votes if w_col == "RED" else red_votes
         w_weight = red_weight if w_col == "RED" else green_weight
@@ -1251,52 +1185,64 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     else:
         consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
 
-    # --- Phase 4: Council Synthesis by Flagship Arbiter (Agent 16: GPT-120B) ---
+    # --- Phase 4: Master AI Arbiter Consultation (Groq with Automatic Model Failover) ---
     spec_summary = "\n".join([
         f"- {s['name']}: {s['color']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
         for s in all_specialists[:8]
     ])
 
-    prompt_arbiter = (
-        f"You are Agent 16 (Supreme Arbiter) presiding over the 16-Agent AI & Math WinGo Council.\n"
-        f"Recent History Window: {recent_str[-50:]}\n"
-        f"Market Roadmaps: Color=[{c_pattern_desc}], Size=[{s_pattern_desc}]\n"
-        f"Specialists Assessments:\n{spec_summary}\n"
-        f"Color Consensus: {w_col} ({w_v} vs {l_v} votes | {color_margin_pct:.0f}% edge)\n"
-        f"Size Consensus: {pred_size} ({size_margin_pct:.0f}% edge)\n"
-        f"Preliminary Target: {target_type} -> {target_val}\n\n"
-        f"STRICT SNIPER ACCURACY DIRECTIVE:\n"
-        f"The user requires maximum sniper accuracy and direct Level 1 wins.\n"
-        f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks.\n"
-        f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on both Color and Size: you MUST output action 'SKIP'.\n"
-        f"3. If a clear edge exists: output action 'BET'.\n\n"
-        f"Return JSON ONLY:\n"
-        f'{{"action": "BET" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
-    )
-
     final_summary = f"Selected {target_type} {target_val} based on {pattern_str.split('|')[0].strip()} ({target_edge_desc})."
     v_alert = bool(violet_due)
     arbiter_wants_skip = False
 
-    # Arbiter consultation with Flagship 120B model (1.2s timeout for sub-second execution)
-    try:
-        r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-            "model": MODEL_GPT120B,
-            "messages": [{"role": "user", "content": prompt_arbiter}],
-            "response_format": {"type": "json_object"}
-        }, timeout=1.2)
-        if r_arb.status_code == 200:
-            res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
-            act = str(res_arb.get("action", "")).upper()
-            if act == "SKIP":
-                arbiter_wants_skip = True
-                final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
-            elif act == "BET":
-                summary_txt = res_arb.get("reason", "")
-                if summary_txt:
-                    final_summary = summary_txt
-    except Exception:
-        pass
+    # Only invoke Master AI if mathematically qualified (saves daily Groq tokens, executes in 0ms on noise)
+    if is_qualified_bet:
+        prompt_arbiter = (
+            f"You are Supreme Master Arbiter presiding over the 16-Agent AI & Math WinGo Council.\n"
+            f"Recent History Window: {recent_str[-50:]}\n"
+            f"Market Roadmaps: Color=[{c_pattern_desc}], Size=[{s_pattern_desc}]\n"
+            f"Specialists Assessments:\n{spec_summary}\n"
+            f"Color Consensus: {w_col} ({w_v} vs {l_v} votes | {color_margin_pct:.0f}% edge)\n"
+            f"Size Consensus: {pred_size} ({size_margin_pct:.0f}% edge)\n"
+            f"Preliminary Target: {target_type} -> {target_val}\n\n"
+            f"STRICT SNIPER ACCURACY DIRECTIVE:\n"
+            f"The user requires maximum sniper accuracy and direct Level 1 wins.\n"
+            f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks.\n"
+            f"2. If the round is noisy, chaotic, in a 50/50 chop trap, or lacks a definite structural roadmap on both Color and Size: you MUST output action 'SKIP'.\n"
+            f"3. If a clear edge exists: output action 'BET'.\n\n"
+            f"Return JSON ONLY:\n"
+            f'{{"action": "BET" or "SKIP", "confidence": 85, "reason": "1 decisive sentence explaining the decision"}}'
+        )
+
+        for model_name in MASTER_AI_MODELS:
+            try:
+                r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt_arbiter}],
+                    "response_format": {"type": "json_object"}
+                }, timeout=2.5)
+                if r_arb.status_code == 200:
+                    res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
+                    act = str(res_arb.get("action", "")).upper()
+                    if act == "SKIP":
+                        arbiter_wants_skip = True
+                        final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
+                        print(f"🧠 [MASTER AI: {model_name}] ⏸️ VETO SKIP: {final_summary}", flush=True)
+                    elif act == "BET":
+                        summary_txt = res_arb.get("reason", "")
+                        if summary_txt:
+                            final_summary = summary_txt
+                        print(f"🧠 [MASTER AI: {model_name}] ✅ BET CONFIRMED: {target_type} {target_val} | {final_summary}", flush=True)
+                    break
+                elif r_arb.status_code == 429:
+                    print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429), failing over to next model...", flush=True)
+                    continue
+                else:
+                    print(f"⚠️ [MASTER AI: {model_name}] HTTP {r_arb.status_code}: {r_arb.text[:100]}", flush=True)
+                    continue
+            except Exception as e:
+                print(f"⚠️ [MASTER AI: {model_name}] Error: {e}", flush=True)
+                continue
 
     # ====================================================
     # 🎯 4. FINAL SNIPER FILTER (Real Skips on Noise)
