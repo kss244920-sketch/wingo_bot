@@ -1178,13 +1178,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
     # ====================================================
-    # If a streak of color is active (>= 2), NEVER bet counter-trend opposite color!
-    if streak_len >= 2 and w_col != last_color:
+    # Protect established dragons (streak >= 3) against counter-trend bets (no artificial vote inflation)
+    if streak_len >= 3 and w_col != last_color:
         w_col = last_color
-        w_v = max(w_v, 11)
-
-    # If a streak of size is active (>= 2), NEVER bet counter-trend opposite size!
-    if s_streak >= 2 and pred_size != last_s:
+    if s_streak >= 3 and pred_size != last_s:
         pred_size = last_s
 
     # ====================================================
@@ -1211,34 +1208,38 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         target_edge_desc = f"COLOR edge ({color_margin_pct:.0f}%) >= SIZE edge ({size_margin_pct:.0f}%)"
 
     # ====================================================
-    # 🎯 3. ULTRA-STRICT SNIPER QUALIFICATION ENGINE
+    # 🎯 3. ULTRA-STRICT MAX INTENSITY QUALIFICATION ENGINE
     # ====================================================
-    # High-Conviction Structural Signals
-    c_strong_dragon = ("Dragon Trend" in c_pattern_desc and streak_len >= 2)
-    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 2)
-    c_strong_chop = ("1-1 Chop" in c_pattern_desc and alt_len >= 3)
-    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 3)
-    c_strong_22 = ("2-2 Double-Step" in c_pattern_desc and "Pair" in c_pattern_desc)
-    s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and "Pair" in s_pattern_desc)
+    # High-Conviction Structural Signals (Genuine Trends Only)
+    # A true Dragon must be AT LEAST 3 or 4 in a row!
+    c_strong_dragon = ("Dragon Trend" in c_pattern_desc and streak_len >= 3)
+    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
+    # A true Chop must be AT LEAST 4 consecutive alternations!
+    c_strong_chop = ("1-1 Chop" in c_pattern_desc and alt_len >= 4)
+    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 4)
+    c_strong_22 = ("2-2 Double-Step" in c_pattern_desc and "Pair" in c_pattern_desc and len(colors) >= 4)
+    s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and "Pair" in s_pattern_desc and len(sizes) >= 4)
 
     has_confirmed_structure = (
         (target_type == "COLOR" and (c_strong_dragon or c_strong_chop or c_strong_22)) or
         (target_type == "SIZE" and (s_strong_dragon or s_strong_chop or s_strong_22))
     )
 
-    # A round is ONLY qualified for betting if:
-    # (A) Super-majority consensus (w_v >= 12 out of 16) AND target margin >= 42%
+    # MAX INTENSITY SURE-SHOT RULES:
+    # (A) Super-majority consensus (w_v >= 13 out of 16) AND target margin >= 50%
     # OR
-    # (B) Confirmed structural pattern (Dragon >= 3, Chop >= 3, or 2-2 Pair) AND target margin >= 30%
+    # (B) Confirmed structural pattern (Dragon >= 3, Chop >= 4, 2-2 Pair) AND w_v >= 12 AND target margin >= 38%
     is_qualified_bet = (
-        (w_v >= 12 and target_margin >= 42.0) or
-        (has_confirmed_structure and target_margin >= 30.0)
+        (w_v >= 13 and target_margin >= 50.0) or
+        (has_confirmed_structure and w_v >= 12 and target_margin >= 38.0)
     )
 
-    # In recovery mode (current_loss_streak >= 1), be even stricter!
-    # Never bet into ambiguous chop when capital is at 3X or 9X risk!
-    if current_loss_streak >= 1 and not has_confirmed_structure and target_margin < 45.0:
-        is_qualified_bet = False
+    # 🛡️ IRONCLAD RECOVERY PROTECTION (Level 2 & Level 3+):
+    # When capital is at 3X or 9X risk, NEVER bet on weak/average setups!
+    # MUST have confirmed structure AND w_v >= 13 AND margin >= 50%, otherwise CONTINUE SKIPPING!
+    if current_loss_streak >= 1:
+        if not (has_confirmed_structure and w_v >= 13 and target_margin >= 50.0):
+            is_qualified_bet = False
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
