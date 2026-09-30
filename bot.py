@@ -28,8 +28,142 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.join(BASE_DIR, "history_cache.json"))
 STATE_FILE = os.environ.get("STATE_FILE", os.path.join(BASE_DIR, "state_cache.json"))
 
+PANEL_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WinGo 30S Elite Predictor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background-color: #0b0f0c; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+        .card { width: 100%; max-width: 440px; background: #121814; border: 1px solid #1f2e22; border-radius: 20px; padding: 24px; box-shadow: 0 0 30px rgba(16, 185, 129, 0.15); }
+        .header { text-align: center; color: #86efac; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; margin-bottom: 20px; }
+        .pred-box { text-align: center; margin: 15px 0 20px 0; }
+        .pred-val { font-size: 52px; font-weight: 900; letter-spacing: 2px; color: #22c55e; text-shadow: 0 0 20px rgba(34, 197, 94, 0.8), 0 0 40px rgba(34, 197, 94, 0.4); }
+        .pred-val.skip { color: #f59e0b; text-shadow: 0 0 20px rgba(245, 158, 11, 0.7); font-size: 44px; }
+        .pred-val.red { color: #ef4444; text-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+        .hedge-box { border: 2px dashed #eab308; border-radius: 10px; padding: 12px; margin: 18px 0; text-align: center; color: #fef08a; font-weight: 800; font-size: 14px; letter-spacing: 1.2px; background: rgba(234, 179, 8, 0.05); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { color: #6b7280; font-size: 12px; font-weight: 700; text-align: center; padding: 8px 4px; border-bottom: 1px solid #1f2937; }
+        td { font-size: 13px; font-weight: 600; text-align: center; padding: 10px 4px; border-bottom: 1px solid #151e18; color: #d1d5db; }
+        .win { color: #22c55e; font-weight: 800; }
+        .loss { color: #ef4444; font-weight: 800; }
+        .footer { text-align: center; margin-top: 24px; color: #4b5563; font-size: 12px; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">PERIOD: <span id="period">LOADING...</span></div>
+        <div class="pred-box">
+            <div id="pred" class="pred-val">...</div>
+        </div>
+        <div id="hedge-box" class="hedge-box">OPPOSITE NUMS: <span id="opp-nums">--</span></div>
+        <table>
+            <thead>
+                <tr>
+                    <th>PRD</th>
+                    <th>PRED</th>
+                    <th>NUM</th>
+                    <th>STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="history-rows"></tbody>
+        </table>
+        <div class="footer">FIRE X QUANT ULTRA-SNIPER</div>
+    </div>
+    <script>
+        async function updatePanel() {
+            try {
+                const res = await fetch('/api/panel-data');
+                const data = await res.json();
+                document.getElementById('period').innerText = data.period || '--';
+                const predEl = document.getElementById('pred');
+                predEl.innerText = data.prediction || 'WAITING';
+                predEl.className = 'pred-val ' + (data.prediction_class || '');
+                document.getElementById('opp-nums').innerText = data.opposite_nums || 'N/A';
+                
+                const tbody = document.getElementById('history-rows');
+                tbody.innerHTML = '';
+                (data.history || []).forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${row.prd}</td>
+                        <td>${row.pred}</td>
+                        <td>${row.num}</td>
+                        <td class="${row.status.includes('WIN') ? 'win' : 'loss'}">${row.status}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {}
+        }
+        setInterval(updatePanel, 3000);
+        updatePanel();
+    </script>
+</body>
+</html>
+"""
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path in ("/", "/panel"):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(PANEL_HTML.encode("utf-8"))
+            return
+
+        if self.path == "/api/panel-data":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            try:
+                latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else "--"
+                pred_info = MEMORY_PREDICTIONS.get(latest_p, {})
+                t_val = pred_info.get("target_val", "WAITING")
+                
+                pred_cls = ""
+                if t_val == "SKIP":
+                    pred_cls = "skip"
+                elif t_val == "RED":
+                    pred_cls = "red"
+
+                opp_nums = pred_info.get("opposite_nums", "N/A")
+
+                history_rows = []
+                for it in reversed(MEMORY_HISTORY[-12:]):
+                    p_str = str(it.get("period", ""))[-3:]
+                    num_val = it.get("num", 0)
+                    sz = it.get("size", "")
+                    col = it.get("color", "")
+                    pred_it = MEMORY_PREDICTIONS.get(it.get("period"), {})
+                    p_target = pred_it.get("target_val", sz)
+                    is_win = True
+                    if pred_it:
+                        if pred_it.get("target_type") == "SIZE":
+                            is_win = (pred_it.get("target_val") == sz)
+                        elif pred_it.get("target_type") == "COLOR":
+                            is_win = (pred_it.get("target_val") in col)
+                    status_str = "WIN 🐯" if is_win else "LOSS 💔"
+                    history_rows.append({
+                        "prd": p_str,
+                        "pred": p_target if p_target != "SKIP" else sz,
+                        "num": num_val,
+                        "status": status_str
+                    })
+
+                resp = {
+                    "period": latest_p,
+                    "prediction": t_val,
+                    "prediction_class": pred_cls,
+                    "opposite_nums": opp_nums,
+                    "history": history_rows
+                }
+                self.wfile.write(json.dumps(resp).encode("utf-8"))
+            except Exception as e:
+                self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+            return
+
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.end_headers()
@@ -1093,17 +1227,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     )
 
     # A round is ONLY qualified for betting if:
-    # (A) Super-majority consensus (w_v >= 11 out of 16) AND target margin >= 30%
+    # (A) Super-majority consensus (w_v >= 12 out of 16) AND target margin >= 42%
     # OR
-    # (B) Confirmed structural pattern (Dragon >= 2, Chop >= 3, or 2-2 Pair) AND target margin >= 22%
+    # (B) Confirmed structural pattern (Dragon >= 3, Chop >= 3, or 2-2 Pair) AND target margin >= 30%
     is_qualified_bet = (
-        (w_v >= 11 and target_margin >= 30.0) or
-        (has_confirmed_structure and target_margin >= 22.0)
+        (w_v >= 12 and target_margin >= 42.0) or
+        (has_confirmed_structure and target_margin >= 30.0)
     )
 
     # In recovery mode (current_loss_streak >= 1), be even stricter!
     # Never bet into ambiguous chop when capital is at 3X or 9X risk!
-    if current_loss_streak >= 1 and not has_confirmed_structure and target_margin < 35.0:
+    if current_loss_streak >= 1 and not has_confirmed_structure and target_margin < 45.0:
         is_qualified_bet = False
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
@@ -1166,8 +1300,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 4. FINAL SNIPER FILTER (Real Skips on Noise)
     # ====================================================
-    # Allow at most 3 consecutive skips so user is never stalled indefinitely
-    if consecutive_skips < 3 and (not is_qualified_bet or arbiter_wants_skip):
+    # Strictly SKIP if not a qualified high-conviction bet or Arbiter flagged noise!
+    # UNLIMITED skips allowed - NEVER bet into 50/50 noise!
+    opposite_nums_tip = None
+    if not is_qualified_bet or arbiter_wants_skip:
         target_type = "SKIP"
         target_val = "SKIP"
         target_conf = 50.0
@@ -1207,6 +1343,25 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     top_shots = sorted_cands[:2]
                     jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
 
+        # 🔥 Fire X Elite "Opposite Nums (Hedge)" Engine
+        # Calculates top 2 most probable candidate numbers from the opposite side as safety hedge
+        nums_list = [int(it.get("num", 0)) for it in history_items]
+        last_num = nums_list[-1] if nums_list else 0
+        opp_next_counts = defaultdict(int)
+        for i in range(len(nums_list) - 1):
+            if nums_list[i] == last_num:
+                opp_next_counts[nums_list[i + 1]] += 1
+
+        if target_type == "SIZE":
+            opp_pool = [0, 1, 2, 3, 4] if target_val == "BIG" else [5, 6, 7, 8, 9]
+        elif target_type == "COLOR":
+            opp_pool = [1, 3, 5, 7, 9] if target_val == "RED" else [0, 2, 4, 6, 8]
+        else:
+            opp_pool = [0, 1, 2, 3, 4] if pred_size == "BIG" else [5, 6, 7, 8, 9]
+
+        sorted_opp = sorted(opp_pool, key=lambda n: opp_next_counts[n], reverse=True)
+        opposite_nums_tip = f"{sorted_opp[0]}, {sorted_opp[1]}"
+
     return {
         "target_type": target_type,
         "target_val": target_val,
@@ -1217,6 +1372,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         "consensus_tag": consensus_tag,
         "violet_alert": v_alert,
         "jackpot_tip": jackpot_tip,
+        "opposite_nums": opposite_nums_tip,
         "signal_grade": signal_grade,
         "pattern_name": detected_pattern_name
     }
@@ -1242,7 +1398,7 @@ def to_bold(text):
 # ====================================================
 # 🚀 USER SIGNALS (HIGH-VISIBILITY BOLD VIP CARDS)
 # ====================================================
-def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None):
+def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
     # User requirement: "par ye sirf SKIP bole ok prediciotn me kuch or extra befaltu nhi"
@@ -1294,6 +1450,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     v_tip_line = ""
     if jackpot_tip:
         v_tip_line = f"\n🎯 <b>Sure-Shot Numbers (9X)</b> : <b>{to_bold(jackpot_tip)}</b>"
+    elif opposite_nums:
+        v_tip_line = f"\n🛡️ <b>Opposite Nums (Hedge)</b> : <b>{to_bold(opposite_nums)}</b>"
     elif violet_alert:
         v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
 
@@ -1542,11 +1700,13 @@ def run_live_bot():
                                         "color": decision["color"], "size": decision["size"],
                                         "conf": t_conf, "reason": decision["reason"],
                                         "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
-                                        "jackpot_tip": decision.get("jackpot_tip"), "grade": decision["signal_grade"],
+                                        "jackpot_tip": decision.get("jackpot_tip"),
+                                        "opposite_nums": decision.get("opposite_nums"),
+                                        "grade": decision["signal_grade"],
                                         "pattern_name": decision.get("pattern_name", "")
                                     }
                                     save_cache()
-                                    send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""))
+                                    send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""), decision.get("opposite_nums"))
                             except Exception as e:
                                 print(f"[STARTUP PREDICTION ERROR] {e}", flush=True)
                         time.sleep(1.0)
@@ -1653,11 +1813,12 @@ def run_live_bot():
                                     "consensus": consensus_tag,
                                     "violet_alert": violet_alert,
                                     "jackpot_tip": jackpot_tip,
+                                    "opposite_nums": decision.get("opposite_nums"),
                                     "grade": signal_grade,
                                     "pattern_name": pattern_name
                                 }
                                 save_cache()
-                                send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name)
+                                send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"))
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
