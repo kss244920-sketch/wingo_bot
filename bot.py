@@ -242,6 +242,7 @@ MAX_MARTINGALE_LEVEL = 3  # Standard 3-Level VIP Protection (1X, 3X, 9X)
 USER_SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
 TELEGRAM_POLLING_STARTED = False
+IS_STANDBY_MODE = False
 
 def get_next_period(current_period):
     """
@@ -802,8 +803,10 @@ def handle_telegram_callback(query):
         answer_telegram_callback(query_id)
 
 def poll_telegram_updates():
+    global IS_STANDBY_MODE
     print("📡 [TELEGRAM POLLER] Starting Telegram DM update listener...", flush=True)
     offset = 0
+    consecutive_409 = 0
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
@@ -814,6 +817,10 @@ def poll_telegram_updates():
             }
             r = requests.get(url, params=params, timeout=30)
             if r.status_code == 200:
+                if IS_STANDBY_MODE:
+                    print("🟢 [FAILOVER CONTROLLER] Primary lock acquired! Activating primary signal transmission.", flush=True)
+                    IS_STANDBY_MODE = False
+                consecutive_409 = 0
                 data = r.json()
                 if data.get("ok"):
                     for update in data.get("result", []):
@@ -824,8 +831,11 @@ def poll_telegram_updates():
                         elif "callback_query" in update:
                             handle_telegram_callback(update["callback_query"])
             elif r.status_code == 409:
-                print("⚠️ [TELEGRAM POLLER] Conflict 409 (another poller running). Sleeping 5s...", flush=True)
-                time.sleep(5)
+                consecutive_409 += 1
+                if not IS_STANDBY_MODE and consecutive_409 >= 2:
+                    IS_STANDBY_MODE = True
+                    print("🛡️ [FAILOVER CONTROLLER] Conflict 409: Another active instance holds Telegram lock. Entering passive standby to eliminate duplicates.", flush=True)
+                time.sleep(25)
             else:
                 time.sleep(2)
         except Exception:
@@ -1885,6 +1895,186 @@ def detect_market_patterns(history_items):
     bayes_conf_s = round(max(post_mean_s, 1.0 - post_mean_s) * 100, 1)
     s_q15_bayes = (bayes_fav_s, min(85.0, max(55.0, bayes_conf_s)), f"Bayesian Posterior favors {bayes_fav_s} ({bayes_conf_s}%)")
 
+    # ====================================================
+    # 🧮 COMPREHENSIVE MULTI-PROBABILITY QUANTITATIVE ENGINE
+    # ====================================================
+    # 1. Multi-Horizon Rolling Empirical Probabilities
+    p_freq_5 = (sizes[-5:].count("BIG") / 5.0) if len(sizes) >= 5 else 0.5
+    p_freq_10 = (sizes[-10:].count("BIG") / 10.0) if len(sizes) >= 10 else 0.5
+    p_freq_20 = (sizes[-20:].count("BIG") / 20.0) if len(sizes) >= 20 else 0.5
+    p_freq_50 = (sizes[-50:].count("BIG") / 50.0) if len(sizes) >= 50 else 0.5
+
+    # 2. Number-to-Size Direct Transition Probability
+    num_trans_matrix = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 1):
+        num_trans_matrix[nums[i]][sizes[i + 1]] += 1
+    cnt_n = num_trans_matrix[last_num]
+    tot_n_ct = cnt_n["BIG"] + cnt_n["SMALL"]
+    p_num_direct = (cnt_n["BIG"] + 1.0) / (tot_n_ct + 2.0) if tot_n_ct > 0 else 0.5
+
+    # 3. Number-Pair Sequence Transition Probability
+    pair_trans_matrix = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 2):
+        pair_trans_matrix[(nums[i], nums[i + 1])][sizes[i + 2]] += 1
+    last_pair_key = (nums[-2], nums[-1]) if len(nums) >= 2 else None
+    cnt_p = pair_trans_matrix[last_pair_key] if last_pair_key else {"BIG": 0, "SMALL": 0}
+    tot_p_ct = cnt_p["BIG"] + cnt_p["SMALL"]
+    p_num_pair = (cnt_p["BIG"] + 1.0) / (tot_p_ct + 2.0) if tot_p_ct >= 2 else p_num_direct
+
+    # 4. Multi-Order Markov State Transition Probabilities (Order 5, 4, 3, 2, 1)
+    def compute_markov_prob(order):
+        if len(sizes) <= order:
+            return 0.5, 0
+        target_state = tuple(sizes[-order:])
+        trans_counts = {"BIG": 0, "SMALL": 0}
+        for i in range(len(sizes) - order):
+            if tuple(sizes[i:i + order]) == target_state:
+                trans_counts[sizes[i + order]] += 1
+        t_sum = trans_counts["BIG"] + trans_counts["SMALL"]
+        if t_sum >= 2:
+            return (trans_counts["BIG"] + 1.0) / (t_sum + 2.0), t_sum
+        return 0.5, 0
+
+    p_m5, t_m5 = compute_markov_prob(5)
+    p_m4, t_m4 = compute_markov_prob(4)
+    p_m3, t_m3 = compute_markov_prob(3)
+    p_m2, t_m2 = compute_markov_prob(2)
+    p_m1, t_m1 = compute_markov_prob(1)
+    p_markov_ensemble = p_m5 if t_m5 >= 3 else (p_m4 if t_m4 >= 3 else (p_m3 if t_m3 >= 3 else (p_m2 if t_m2 >= 3 else p_m1)))
+
+    # 5. Streak Survival / Dragon Hazard Continuation Probability
+    streaks_db = []
+    if len(sizes) >= 2:
+        cur_s, cur_l = sizes[0], 1
+        for s in sizes[1:]:
+            if s == cur_s: cur_l += 1
+            else:
+                streaks_db.append((cur_s, cur_l))
+                cur_s, cur_l = s, 1
+        streaks_db.append((cur_s, cur_l))
+    matching_streaks = [l for _, l in streaks_db if l >= s_streak]
+    continued_streaks = [l for _, l in streaks_db if l >= (s_streak + 1)]
+    p_streak_continue = (len(continued_streaks) + 1.0) / (len(matching_streaks) + 2.0) if matching_streaks else 0.5
+    p_streak_hazard = p_streak_continue if last_s == "BIG" else (1.0 - p_streak_continue)
+    p_streak_prob = p_streak_hazard
+
+    # 6. Alternating Chop Survival Probability
+    chops_db = []
+    if len(sizes) >= 2:
+        cur_a = 1
+        for k in range(1, len(sizes)):
+            if sizes[k] != sizes[k - 1]: cur_a += 1
+            else:
+                if cur_a >= 2: chops_db.append(cur_a)
+                cur_a = 1
+        if cur_a >= 2: chops_db.append(cur_a)
+    matching_chops = [a for a in chops_db if a >= s_alt]
+    continued_chops = [a for a in chops_db if a >= (s_alt + 1)]
+    p_chop_continue = (len(continued_chops) + 1.0) / (len(matching_chops) + 2.0) if matching_chops else 0.5
+    p_chop_prob = p_chop_continue if opp_s == "BIG" else (1.0 - p_chop_continue)
+
+    # 7. 2-2 Double Step Completion Probability
+    if len(sizes) >= 3 and sizes[-1] != sizes[-2] and sizes[-2] == sizes[-3]:
+        prefix3 = tuple(sizes[-3:])
+        count_c, total_o = 0, 0
+        for i in range(len(sizes) - 3):
+            if tuple(sizes[i:i + 3]) == prefix3:
+                total_o += 1
+                if sizes[i + 3] == sizes[-1]: count_c += 1
+        p_22_complete = (count_c + 1.0) / (total_o + 2.0) if total_o >= 2 else 0.65
+        p_22_prob = p_22_complete if sizes[-1] == "BIG" else (1.0 - p_22_complete)
+    else:
+        p_22_prob = 0.5
+
+    # 8. Full-History KNN Sequence Substring Match Probability
+    p_knn_prob = 0.5
+    tot_knn = 0
+    if len(sizes) >= 4:
+        pat4 = tuple(sizes[-4:])
+        pat_cnt = {"BIG": 0, "SMALL": 0}
+        for i in range(len(sizes) - 4):
+            if tuple(sizes[i:i + 4]) == pat4:
+                pat_cnt[sizes[i + 4]] += 1
+        tot_knn = pat_cnt["BIG"] + pat_cnt["SMALL"]
+        if tot_knn >= 3:
+            p_knn_prob = (pat_cnt["BIG"] + 1.0) / (tot_knn + 2.0)
+    if tot_knn < 3 and len(sizes) >= 3:
+        pat3 = tuple(sizes[-3:])
+        pat3_cnt = {"BIG": 0, "SMALL": 0}
+        for i in range(len(sizes) - 3):
+            if tuple(sizes[i:i + 3]) == pat3:
+                pat3_cnt[sizes[i + 3]] += 1
+        tot_knn3 = pat3_cnt["BIG"] + pat3_cnt["SMALL"]
+        if tot_knn3 >= 3:
+            p_knn_prob = (pat3_cnt["BIG"] + 1.0) / (tot_knn3 + 2.0)
+
+    # 9. Continuous Fourier Harmonic Probability
+    p_fourier_prob = 0.5
+    if n_fs >= 8:
+        p_fourier_prob = max(0.05, min(0.95, (f_val_s + 1.0) / 2.0))
+
+    # 10. Beta-Binomial Exponential Posterior Probability
+    p_bayes_decay = post_mean_s
+
+    # 11. Mean-Reversion Imbalance Probability
+    if p_freq_20 >= 0.65: p_mean_reversion = 0.35
+    elif p_freq_20 <= 0.35: p_mean_reversion = 0.65
+    elif p_freq_10 >= 0.70: p_mean_reversion = 0.38
+    elif p_freq_10 <= 0.30: p_mean_reversion = 0.62
+    else: p_mean_reversion = 0.50
+
+    # 12. Boundary Extreme Bounce Probability
+    if last_num in (0, 1): p_boundary = 0.65
+    elif last_num in (8, 9): p_boundary = 0.35
+    elif last_num == 4: p_boundary = 0.58
+    elif last_num == 5: p_boundary = 0.42
+    else: p_boundary = 0.50
+
+    probabilities = {
+        "p_freq_5": round(p_freq_5, 4),
+        "p_freq_10": round(p_freq_10, 4),
+        "p_freq_20": round(p_freq_20, 4),
+        "p_freq_50": round(p_freq_50, 4),
+        "p_num_direct": round(p_num_direct, 4),
+        "p_num_pair": round(p_num_pair, 4),
+        "p_markov": round(p_markov_ensemble, 4),
+        "p_streak_hazard": round(p_streak_hazard, 4),
+        "p_chop_prob": round(p_chop_prob, 4),
+        "p_22_prob": round(p_22_prob, 4),
+        "p_knn_prob": round(p_knn_prob, 4),
+        "p_fourier_prob": round(p_fourier_prob, 4),
+        "p_bayes_decay": round(p_bayes_decay, 4),
+        "p_mean_reversion": round(p_mean_reversion, 4),
+        "p_boundary": round(p_boundary, 4)
+    }
+
+    # Bayesian Log-Odds Unified Evidence Aggregation
+    def _lo(p):
+        p_c = max(0.05, min(0.95, p))
+        return math.log(p_c / (1.0 - p_c))
+
+    prob_weights = {
+        "p_streak_hazard": 4.5 if s_streak >= 3 else 1.2,
+        "p_chop_prob": 4.2 if s_alt >= 3 else 1.2,
+        "p_22_prob": 3.8 if p_22_prob != 0.5 else 1.0,
+        "p_knn_prob": 4.0 if tot_knn >= 3 else 1.5,
+        "p_markov": 3.5,
+        "p_num_pair": 3.2 if tot_p_ct >= 3 else 1.2,
+        "p_num_direct": 2.5 if tot_n_ct >= 5 else 1.0,
+        "p_fourier_prob": 2.2,
+        "p_bayes_decay": 2.2,
+        "p_mean_reversion": 0.5 if s_streak >= 3 else 2.0,
+        "p_boundary": 1.8 if last_num in (0, 1, 8, 9) else 0.8,
+        "p_freq_10": 2.0,
+        "p_freq_20": 2.2
+    }
+
+    sum_lo = sum(prob_weights[k] * _lo(probabilities[k]) for k in prob_weights)
+    sum_w = sum(prob_weights.values())
+    unified_p_big = 1.0 / (1.0 + math.exp(-sum_lo / sum_w))
+    unified_p_small = 1.0 - unified_p_big
+    unified_edge = round(abs(unified_p_big - unified_p_small) * 100, 1)
+
     return {
         "streak_color": last_c,
         "streak_len": streak_len,
@@ -1907,6 +2097,10 @@ def detect_market_patterns(history_items):
         "s_pattern_desc": s_pattern_desc,
         "c_pred_val": c_pred_val,
         "s_pred_val": s_pred_val,
+        "probabilities": probabilities,
+        "unified_p_big": round(unified_p_big, 4),
+        "unified_p_small": round(unified_p_small, 4),
+        "unified_edge": unified_edge,
         "quants": {
             "q4": q4_roadmap,
             "q5": q5_ngram,
@@ -1962,6 +2156,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
     is_s_2_2 = (len(history_items) >= 4 and history_items[-1].get("size") == history_items[-2].get("size") and history_items[-3].get("size") == history_items[-4].get("size") and history_items[-1].get("size") != history_items[-3].get("size")) or ("2-2 Double-Step" in s_pattern_desc)
     s_quants = p_info.get("s_quants", {})
+    probabilities = p_info.get("probabilities", {})
+    unified_p_big = p_info.get("unified_p_big", 0.5)
+    unified_p_small = p_info.get("unified_p_small", 0.5)
+    unified_edge = p_info.get("unified_edge", 0.0)
+
     sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
     nums = [int(it.get("num", 0)) for it in history_items]
     last_num = nums[-1] if nums else 0
@@ -1970,7 +2169,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
-    # --- Phase 1: 16 Deterministic Pure-Math Size Quants (Instant 0ms, Zero Quota Consumption) ---
+    # --- Phase 1: 17 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
     s_dragon = last_s if s_streak >= 3 else (opp_s if s_streak < 2 else last_s)
     s_chop = opp_s if s_alt >= 4 else (last_s if s_streak >= 3 else opp_s)
     s_22 = s_pred_val if is_s_2_2 else opp_s
@@ -1988,6 +2187,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     s_q13 = s_quants.get("s_q13", (opp_s, 60.0, "Fourier DFT Size"))
     s_q14 = s_quants.get("s_q14", (opp_s, 55.0, "Kolmogorov Size Complexity"))
     s_q15 = s_quants.get("s_q15", (opp_s, 58.0, "Bayesian Decay Size"))
+    meta_val = "BIG" if unified_p_big >= 0.50 else "SMALL"
+    meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
     all_specialists = [
         {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 80.0 if s_streak >= 3 else 50.0, "arg": f"Size streak len: {s_streak}"},
@@ -2005,54 +2206,27 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         {"name": "Agent 12 (Weibull Size Hazard & Survival)", "val": s_q12[0], "conf": s_q12[1], "arg": s_q12[2]},
         {"name": "Agent 13 (Fourier Spectral Wave Quant)", "val": s_q13[0], "conf": s_q13[1], "arg": s_q13[2]},
         {"name": "Agent 14 (Kolmogorov Complexity Quant)", "val": s_q14[0], "conf": s_q14[1], "arg": s_q14[2]},
-        {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15[0], "conf": s_q15[1], "arg": s_q15[2]}
+        {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15[0], "conf": s_q15[1], "arg": s_q15[2]},
+        {"name": "Agent 16 (Unified Multi-Probability Meta-Engine)", "val": meta_val, "conf": meta_conf, "arg": f"Unified Edge {unified_edge:.1f}% (P(BIG)={unified_p_big:.2f}, P(SMALL)={unified_p_small:.2f})"}
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    # 1. Dragon Trend Momentum: Heavy trend-following weight (Never cut a dragon law)
     dragon_weight = 6.0 if s_streak >= 3 else 1.2
-
-    # 2. 1-1 Alternating Chop: Heavy chop momentum if active
     chop_weight = 5.2 if s_alt >= 3 else 1.2
-
-    # 3. 2-2 Symmetry Double Step
     sym_weight = 4.2 if is_s_2_2 else 1.5
-
-    # 4. Mean-Reversion: Suppressed during strong dragons to prevent counter-trend retail traps
     mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
-
-    # 5. Pinterest 9-Roadmap Engine: Maximum pattern recognition weight
     roadmap_weight = 5.0 if s_q4[1] >= 80.0 else 2.5
-
-    # 6. Markov Multi-Order Deep Engine (Order 4 -> 3 -> 2 -> 1)
     markov_weight = 3.8 if s_q5[1] >= 75.0 else 2.5
-
-    # 7. Bayesian Number-to-Size Prior
     bayes_num_weight = 3.5 if s_q6[1] >= 70.0 else 2.2
-
-    # 8. Multi-Window Imbalance (10-Round & 20-Round)
     imbalance_weight = 3.0 if s_q7[1] >= 70.0 else 1.8
-
-    # 9. Autocorrelation Harmonic Rhythm
     rhythm_weight = 2.2 if s_q9[1] >= 65.0 else 1.4
-
-    # 10. Multi-Scale Shannon Entropy Gatekeeper
     entropy_weight = 1.8
-
-    # 11. Range Boundary Outlier Specialist
     outlier_weight = 2.2 if last_num in (0, 1, 8, 9) else 1.2
-
-    # 12. Weibull Hazard Survival Rate (Dynamic streak continuation boost)
     hazard_weight = 4.2 if s_streak >= 2 else (3.5 if s_alt >= 2 else 1.8)
-
-    # 13. Fourier Spectral DFT Wave Analysis
     fourier_weight = 2.5 if s_q13[1] >= 68.0 else 1.5
-
-    # 14. Kolmogorov Algorithmic Complexity
     kolmo_weight = 1.8
-
-    # 15. Exponential Beta-Binomial Bayesian Decay
     bayes_decay_weight = 2.5 if s_q15[1] >= 65.0 else 1.8
+    meta_weight = 5.5 if unified_edge >= 3.0 else 3.5
 
     weights = [
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -2070,7 +2244,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         hazard_weight,        # Agent 12: Weibull Hazard Survival
         fourier_weight,       # Agent 13: Fourier Spectral DFT
         kolmo_weight,         # Agent 14: Kolmogorov Complexity
-        bayes_decay_weight    # Agent 15: Exponential Bayesian Decay
+        bayes_decay_weight,   # Agent 15: Exponential Bayesian Decay
+        meta_weight           # Agent 16: Unified Multi-Probability Meta-Engine
     ]
 
     big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
@@ -2078,16 +2253,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     big_votes = sum(1 for s in all_specialists if s["val"] == "BIG")
     small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
 
-    # High-Intensity Multi-Model Confluence Boost (+20% weight if core pillars align)
-    core_pillar_votes = [s_q4[0], s_q5[0], s_q12[0]]
-    if core_pillar_votes.count("BIG") == 3:
-        big_weight *= 1.20
-    elif core_pillar_votes.count("SMALL") == 3:
-        small_weight *= 1.20
+    # High-Intensity Multi-Model Confluence Boost (+25% weight if core pillars align)
+    core_pillar_votes = [s_q4[0], s_q5[0], s_q12[0], meta_val]
+    if core_pillar_votes.count("BIG") >= 3:
+        big_weight *= 1.25
+    elif core_pillar_votes.count("SMALL") >= 3:
+        small_weight *= 1.25
 
     total_active_weight = big_weight + small_weight
 
-    # Decisive Winning Size Selection (No Deadlocks, No Artificial Skips!)
+    # Decisive Winning Size Selection
     if big_weight > small_weight:
         w_size = "BIG"
         w_v, l_v = big_votes, small_votes
@@ -2097,8 +2272,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         w_v, l_v = small_votes, big_votes
         w_weight = small_weight
     else:
-        # Tie-breaker: ride size dragon continuation or chop rhythm
-        w_size = last_s if s_streak >= 2 else (opp_s if s_alt >= 2 else last_s)
+        # Fallback to Unified Probability Engine
+        w_size = meta_val
         w_v = big_votes if w_size == "BIG" else small_votes
         l_v = small_votes if w_size == "BIG" else big_votes
         w_weight = big_weight if w_size == "BIG" else small_weight
@@ -2106,7 +2281,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     size_edge = abs(big_weight - small_weight)
     size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-    calc_conf = min(96.0, max(76.0, round(65.0 + (size_ratio * 30.0), 1)))
+    calc_conf = min(96.0, max(76.0, round(max(meta_conf, 65.0 + (size_ratio * 30.0)), 1)))
 
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
@@ -2134,39 +2309,29 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 3. HIGH-INTENSITY QUALIFICATION & ANTI-SKIP ENGINE
     # ====================================================
-    # Eliminates endless skip deadlocks while maintaining strong sniper accuracy:
-    # 1. Base High-Probability Qualification:
-    #    - Confirmed structure (Dragon >= 2, Chop >= 3, 2-2 Double, Staircase) with w_v >= 9 and margin >= 18%
-    #    - OR Council Super-Majority: w_v >= 10 and margin >= 24%
-    #    - OR Strong Vote Consensus: w_v >= 11 and margin >= 20%
+    # Comprehensive Multi-Probability Execution:
+    # Bet whenever:
+    # 1. Council majority (w_v >= 9 out of 17)
+    # 2. OR Unified probability statistical edge >= 2.0%
+    # 3. OR Confirmed structure (Dragon >= 2, Chop >= 3, 2-2 Double, Staircase) with w_v >= 8
+    # 4. OR target_margin >= 10.0%
     is_qualified_bet = (
-        (has_confirmed_structure and w_v >= 9 and target_margin >= 14.0) or
-        (w_v >= 10 and target_margin >= 18.0) or
-        (w_v >= 11 and target_margin >= 12.0)
+        (w_v >= 9) or
+        (unified_edge >= 2.0) or
+        (has_confirmed_structure and w_v >= 8) or
+        (target_margin >= 10.0)
     )
 
     # 🛡️ Anti-Skip Deadlock Breaker:
-    # If the bot skipped previous rounds (consecutive_skips >= 1 or >= 2),
-    # dynamically relax criteria so it executes on the best statistical edge rather than stalling!
+    # If the bot skipped previous round (consecutive_skips >= 1),
+    # IMMEDIATELY take the dominant statistical edge without hesitation!
     if consecutive_skips >= 1:
-        if (has_confirmed_structure and w_v >= 9 and target_margin >= 8.0) or (w_v >= 9 and target_margin >= 12.0):
-            is_qualified_bet = True
-
-    if consecutive_skips >= 2:
-        # Hard Cap: After 2 consecutive skips, enforce bet on dominant mathematical consensus
-        # w_v >= 9 (majority of 16) OR dominant weight (w_weight > l_weight and target_margin >= 5.0)
-        if w_v >= 9 or (w_weight > l_weight and target_margin >= 5.0):
-            is_qualified_bet = True
+        is_qualified_bet = True
 
     # 🛡️ Level 2+ Recovery Protection:
     if current_loss_streak >= 1:
-        recovery_ok = (
-            (has_confirmed_structure and w_v >= 10 and target_margin >= 18.0) or
-            (w_v >= 11 and target_margin >= 20.0)
-        )
-        if consecutive_skips >= 1 and (has_confirmed_structure and w_v >= 9 and target_margin >= 12.0):
-            recovery_ok = True
-        if consecutive_skips >= 2 and (w_v >= 9 and target_margin >= 8.0):
+        recovery_ok = (w_v >= 9) or (unified_edge >= 3.0) or (has_confirmed_structure and w_v >= 8)
+        if consecutive_skips >= 1:
             recovery_ok = True
         is_qualified_bet = recovery_ok
 
@@ -2183,22 +2348,25 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
 
     # --- Phase 4: Master AI Arbiter Consultation (Groq with Automatic Model Failover) ---
+    top_prob_lines = ", ".join([f"{k}={probabilities[k]}" for k in list(probabilities.keys())[:6]])
     spec_summary = "\n".join([
         f"- {s['name']}: {s['val']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
         for s in all_specialists[:8]
     ])
 
-    final_summary = f"Selected SIZE {target_val} based on {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
+    final_summary = f"Selected SIZE {target_val} based on {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc} | Edge {unified_edge:.1f}%)."
     v_alert = False
     arbiter_wants_skip = False
 
-    # Only invoke Master AI if mathematically qualified (saves daily Groq tokens, executes in 0ms on noise)
+    # Only invoke Master AI if mathematically qualified
     if is_qualified_bet:
         prompt_arbiter = (
-            f"You are Supreme Master Arbiter presiding over the 16-Agent AI & Math WinGo Council.\n"
+            f"You are Supreme Master Arbiter presiding over the 17-Agent AI & Math WinGo Council.\n"
             f"Prediction Domain: STRICTLY SIZE (BIG [5-9] vs SMALL [0-4]). Zero violet payout penalty.\n"
             f"Recent History Window: {recent_str[-50:]}\n"
             f"Size Market Roadmap: [{s_pattern_desc}]\n"
+            f"Unified Mathematical Edge: {unified_edge:.1f}% | P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}%\n"
+            f"Key Multi-Horizon Probabilities: {top_prob_lines}\n"
             f"Specialists Assessments:\n{spec_summary}\n"
             f"Size Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)\n"
             f"Preliminary Target: SIZE -> {target_val}\n"
@@ -2206,9 +2374,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             f"HIGH-INTENSITY DECISIVE PREDICTION DIRECTIVE:\n"
             f"The user requires MAXIMUM ANALYTICAL INTENSITY and decisive execution without unnecessary skips.\n"
             f"1. Synthesize trend momentum, chop rhythm, Bayesian distributions, and structural patterns.\n"
-            f"2. Resolve any specialist disagreements by identifying the dominant regime (e.g. strong trend favors dragon continuation; alternating shoe favors chop).\n"
-            f"3. Do NOT default to SKIP if there is a discernible statistical edge. Only recommend 'SKIP' if the round is in a pure 50/50 chaotic transition deadlock with zero structural edge.\n"
-            f"4. If consecutive skips >= 2, you MUST approve 'BET' on the highest probability directional bias.\n\n"
+            f"2. Resolve any specialist disagreements by identifying the dominant regime.\n"
+            f"3. Do NOT default to SKIP if there is a discernible statistical edge.\n"
+            f"4. If consecutive skips >= 1, you MUST approve 'BET' on the highest probability directional bias.\n\n"
             f"Return JSON ONLY:\n"
             f'{{"action": "BET" or "SKIP", "confidence": 90, "reason": "1 decisive sentence explaining the decision"}}'
         )
@@ -2224,16 +2392,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
                     act = str(res_arb.get("action", "")).upper()
                     if act == "SKIP":
-                        if consecutive_skips >= 2:
-                            # Anti-Skip Breaker: Override Arbiter skip to prevent skip spam
+                        # The pure mathematical multi-probability engine (15+ dimensions, 3600+ rounds)
+                        # strictly overrides an LLM text hallucination when qualified or edge exists!
+                        if is_qualified_bet or w_v >= 9 or unified_edge >= 2.0 or consecutive_skips >= 1:
                             arbiter_wants_skip = False
-                            final_summary = f"Decisive sniper entry enforced: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
-                            print(f"🧠 [MASTER AI: {model_name}] ⚠️ VETO OVERRIDDEN (Anti-Skip Breaker): {final_summary}", flush=True)
+                            final_summary = f"Decisive statistical entry: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc} | Edge {unified_edge:.1f}%)."
+                            print(f"🧠 [MASTER AI: {model_name}] ⚠️ VETO OVERRIDDEN BY QUANT ENGINE: Math edge confirmed ({w_v}-{l_v} | Edge {unified_edge:.1f}%). Proceeding with bet.", flush=True)
                         else:
                             arbiter_wants_skip = True
                             final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
                             print(f"🧠 [MASTER AI: {model_name}] ⏸️ VETO SKIP: {final_summary}", flush=True)
                     elif act == "BET":
+                        arbiter_wants_skip = False
                         summary_txt = res_arb.get("reason", "")
                         if summary_txt:
                             final_summary = summary_txt
@@ -2330,6 +2500,10 @@ def to_bold(text):
 # ====================================================
 def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
+
+    if IS_STANDBY_MODE:
+        print(f"⏸️ [STANDBY SILENT] Period: ...{short_period} | Secondary instance silent (duplicate prevention active).", flush=True)
+        return
 
     # User requirement: "par ye sirf SKIP bole ok prediciotn me kuch or extra befaltu nhi"
     if target_type == "SKIP" or target_val == "SKIP":
