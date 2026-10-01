@@ -34,7 +34,6 @@ HISTORY_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssue
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.join(BASE_DIR, "history_cache.json"))
 STATE_FILE = os.environ.get("STATE_FILE", os.path.join(BASE_DIR, "state_cache.json"))
-USER_SESSIONS_FILE = os.environ.get("USER_SESSIONS_FILE", os.path.join(BASE_DIR, "user_sessions.json"))
 
 PANEL_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -238,10 +237,7 @@ CYCLE_LOSSES = 0
 CONSECUTIVE_SKIPS = 0
 MAX_MARTINGALE_LEVEL = 3  # Standard 3-Level VIP Protection (1X, 3X, 9X)
 
-# 👤 DM Personal Tracking & Recovery Sessions
-USER_SESSIONS = {}
-SESSIONS_LOCK = threading.Lock()
-TELEGRAM_POLLING_STARTED = False
+# Direct VIP Channel Architecture (Zero Polling, Zero 409 Conflicts)
 IS_STANDBY_MODE = False
 
 def get_next_period(current_period):
@@ -385,757 +381,6 @@ def pin_telegram_msg(chat_id, message_id, disable_notification=True):
         except Exception:
             pass
     return False
-
-# ====================================================
-# 👤 PART 2: DM PERSONAL TRACKING & RECOVERY ARCHITECTURE
-# ====================================================
-
-def generate_progress_bar(pct, length=10):
-    pct = max(0.0, min(100.0, float(pct)))
-    filled = int(round((pct / 100.0) * length))
-    empty = length - filled
-    return "█" * filled + "░" * empty
-
-def load_user_sessions():
-    global USER_SESSIONS
-    if os.path.exists(USER_SESSIONS_FILE):
-        try:
-            with open(USER_SESSIONS_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    with SESSIONS_LOCK:
-                        USER_SESSIONS = data
-                    print(f"👥 [DM SESSIONS] Loaded {len(USER_SESSIONS)} user sessions from {USER_SESSIONS_FILE}", flush=True)
-        except Exception as e:
-            print(f"[USER SESSIONS LOAD ERROR] {e}", flush=True)
-
-def save_user_sessions():
-    try:
-        tmp_file = f"{USER_SESSIONS_FILE}.tmp"
-        with SESSIONS_LOCK:
-            data = dict(USER_SESSIONS)
-        with open(tmp_file, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_file, USER_SESSIONS_FILE)
-    except Exception as e:
-        print(f"[USER SESSIONS SAVE ERROR] {e}", flush=True)
-
-def answer_telegram_callback(callback_query_id, text=None):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
-        payload = {"callback_query_id": str(callback_query_id)}
-        if text:
-            payload["text"] = str(text)
-        requests.post(url, json=payload, timeout=4)
-    except Exception:
-        pass
-
-def get_user_session(user_id):
-    with SESSIONS_LOCK:
-        sess = USER_SESSIONS.get(str(user_id))
-        return dict(sess) if sess else None
-
-def start_user_session(user_id, chat_id, user_name, wallet_amount, target_profit=None, base_unit=None):
-    try:
-        wallet = float(wallet_amount)
-    except (ValueError, TypeError):
-        wallet = 1000.0
-
-    if wallet < 50.0:
-        wallet = 50.0
-
-    if target_profit is None or target_profit <= 0:
-        target_profit = round(wallet * 0.20, 2)
-        if target_profit < 20.0:
-            target_profit = 20.0
-    else:
-        try:
-            target_profit = float(target_profit)
-        except (ValueError, TypeError):
-            target_profit = round(wallet * 0.20, 2)
-
-    if base_unit is None or base_unit <= 0:
-        base_unit = 10.0
-    else:
-        try:
-            base_unit = float(base_unit)
-        except (ValueError, TypeError):
-            base_unit = 10.0
-
-    target_wallet = round(wallet + target_profit, 2)
-    max_drawdown = round(13.0 * base_unit, 2)
-
-    with SESSIONS_LOCK:
-        USER_SESSIONS[str(user_id)] = {
-            "user_id": int(user_id),
-            "chat_id": int(chat_id),
-            "user_name": str(user_name or "Trader"),
-            "wallet_start": round(wallet, 2),
-            "wallet_current": round(wallet, 2),
-            "target_profit": round(target_profit, 2),
-            "target_wallet": target_wallet,
-            "base_unit": round(base_unit, 2),
-            "current_level": 1,
-            "total_cycle_wins": 0,
-            "session_status": "ACTIVE",
-            "max_drawdown_limit": max_drawdown,
-            "locked_until": 0,
-            "pending_bet": None,
-            "created_at": int(time.time())
-        }
-    save_user_sessions()
-
-    bar = generate_progress_bar(0.0)
-    activation_msg = (
-        f"🚀 <b>PERSONAL RECOVERY SESSION ACTIVATED!</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💼 <b>Starting Wallet</b> : ₹{wallet:,.2f}\n"
-        f"🎯 <b>Target Goal</b>     : ₹{target_wallet:,.2f} (+₹{target_profit:,.2f} Profit)\n"
-        f"💰 <b>Base Stake (1X)</b> : ₹{base_unit:,.0f} (L1: ₹{base_unit:,.0f} | L2: ₹{base_unit*3:,.0f} | L3: ₹{base_unit*9:,.0f})\n"
-        f"🛡️ <b>Stop-Loss Limit</b> : -₹{max_drawdown:,.2f} (Strict Level 3 Hard Cap)\n"
-        f"💸 <b>Platform Tax</b>    : 2% WinGo Tax Accounting Active\n"
-        f"📈 <b>Progress</b>        : [{bar}] 0.0%\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏳ <i>Session is LIVE! Waiting for the next official 30s sniper draw...</i>"
-    )
-    markup = {
-        "inline_keyboard": [
-            [
-                {"text": "📊 Live Status", "callback_data": "status"},
-                {"text": "⏹️ End Session", "callback_data": "stop"}
-            ]
-        ]
-    }
-    send_telegram_msg(chat_id, activation_msg, reply_markup=markup)
-
-def send_status_message(chat_id, user_id):
-    session = get_user_session(user_id)
-    if not session:
-        send_welcome_menu(chat_id, user_id, "User")
-        return
-
-    wallet_current = session.get("wallet_current", 0.0)
-    wallet_start = session.get("wallet_start", 0.0)
-    target_wallet = session.get("target_wallet", 0.0)
-    target_profit = session.get("target_profit", 1.0)
-    current_level = session.get("current_level", 1)
-    cycle_wins = session.get("total_cycle_wins", 0)
-    status = session.get("session_status", "IDLE")
-    base_unit = session.get("base_unit", 10.0)
-
-    earned = wallet_current - wallet_start
-    pl_sign = "+" if earned >= 0 else "-"
-    abs_earned = abs(earned)
-    pl_str = f"{pl_sign}₹{abs_earned:,.2f}"
-
-    remaining = max(0.0, target_wallet - wallet_current)
-    pct = max(0.0, min(100.0, (earned / target_profit) * 100.0)) if target_profit > 0 else 0.0
-    bar = generate_progress_bar(pct)
-
-    if status == "ACTIVE":
-        status_str = "🟢 ACTIVE (Tracking Draws)"
-    elif status == "COMPLETED":
-        status_str = "🎉 TARGET HIT (Locked)"
-    elif status == "STOP_LOSS":
-        status_str = "🛑 STOP-LOSS HIT (Paused)"
-    elif status == "IDLE":
-        status_str = "⚪ IDLE (Session Ended)"
-    else:
-        status_str = status
-
-    msg = (
-        f"📊 <b>LIVE PERSONAL SESSION STATUS</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💼 <b>Current Wallet</b> : ₹{wallet_current:,.2f}\n"
-        f"🏁 <b>Starting Wallet</b>: ₹{wallet_start:,.2f}\n"
-        f"🎯 <b>Target Goal</b>    : ₹{target_wallet:,.2f} (Remaining: ₹{remaining:,.2f})\n"
-        f"💵 <b>Net P&L</b>        : {pl_str}\n"
-        f"📈 <b>Progress</b>       : [{bar}] {pct:.1f}%\n"
-        f"📊 <b>Current Stage</b>  : LEVEL {current_level} (Base ₹{base_unit:,.0f})\n"
-        f"🏆 <b>Cycle Wins</b>     : {cycle_wins}\n"
-        f"⚙️ <b>Status</b>         : <b>{status_str}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 <i>Naya session shuru karne ke liye amount bhejein ya /reset karein.</i>"
-    )
-    markup = {
-        "inline_keyboard": [
-            [
-                {"text": "🔄 Reset / New Session", "callback_data": "reset"},
-                {"text": "⏹️ End Session", "callback_data": "stop"}
-            ]
-        ]
-    }
-    send_telegram_msg(chat_id, msg, reply_markup=markup)
-
-def stop_user_session(chat_id, user_id):
-    with SESSIONS_LOCK:
-        session = USER_SESSIONS.get(str(user_id))
-        if session:
-            session["session_status"] = "IDLE"
-            session["pending_bet"] = None
-    save_user_sessions()
-
-    if session:
-        wallet_current = session.get("wallet_current", 0.0)
-        wallet_start = session.get("wallet_start", 0.0)
-        earned = wallet_current - wallet_start
-        pl_sign = "+" if earned >= 0 else "-"
-        pl_str = f"{pl_sign}₹{abs(earned):,.2f}"
-        cycle_wins = session.get("total_cycle_wins", 0)
-
-        msg = (
-            f"⏹️ <b>SESSION ENDED / PAUSED</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💼 <b>Final Wallet</b>   : ₹{wallet_current:,.2f}\n"
-            f"🏁 <b>Starting Wallet</b>: ₹{wallet_start:,.2f}\n"
-            f"💵 <b>Net P&L</b>        : {pl_str}\n"
-            f"🏆 <b>Total Wins</b>     : {cycle_wins}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <i>Profit safe hai! Naya session shuru karne ke liye /start bhejein.</i>"
-        )
-    else:
-        msg = "ℹ️ <i>Koi active session nahi tha. Naya session shuru karne ke liye /start bhejein.</i>"
-
-    send_telegram_msg(chat_id, msg)
-
-def reset_user_session(chat_id, user_id):
-    with SESSIONS_LOCK:
-        if str(user_id) in USER_SESSIONS:
-            USER_SESSIONS[str(user_id)]["session_status"] = "IDLE"
-            USER_SESSIONS[str(user_id)]["locked_until"] = 0
-            USER_SESSIONS[str(user_id)]["pending_bet"] = None
-            USER_SESSIONS[str(user_id)]["current_level"] = 1
-    save_user_sessions()
-
-    msg = (
-        f"🔄 <b>SESSION RESET COMPLETE</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Aapka purana session aur safety locks clear kar diye gaye hain.\n\n"
-        f"Naya session shuru karne ke liye apna <b>Wallet Balance</b> likhein (jaise <code>1000</code>) ya niche button chunein:"
-    )
-    markup = {
-        "inline_keyboard": [
-            [
-                {"text": "💰 ₹500", "callback_data": "start_500"},
-                {"text": "💰 ₹1,000", "callback_data": "start_1000"}
-            ],
-            [
-                {"text": "💰 ₹2,000", "callback_data": "start_2000"},
-                {"text": "💰 ₹5,000", "callback_data": "start_5000"}
-            ],
-            [
-                {"text": "🏛️ ₹10,000 (Base ₹1)", "callback_data": "start_10000"}
-            ]
-        ]
-    }
-    send_telegram_msg(chat_id, msg, reply_markup=markup)
-
-def send_welcome_menu(chat_id, user_id, user_name):
-    session = get_user_session(user_id)
-    if session and session.get("session_status") == "ACTIVE":
-        send_status_message(chat_id, user_id)
-        return
-
-    if session and session.get("session_status") == "COMPLETED":
-        locked_until = session.get("locked_until", 0)
-        now = time.time()
-        if locked_until > now:
-            hrs_left = (locked_until - now) / 3600
-            wallet_current = session.get("wallet_current", 0.0)
-            target_wallet = session.get("target_wallet", 0.0)
-            earned = wallet_current - session.get("wallet_start", 0.0)
-            msg = (
-                f"🛑 <b>SESSION COMPLETED (GREED LOCK ACTIVE)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎯 <b>Target Reached</b>: ₹{target_wallet:,.2f} (+₹{earned:,.2f} Profit)\n"
-                f"💼 <b>Live Wallet</b>   : ₹{wallet_current:,.2f}\n"
-                f"🔒 <b>Auto-Lock</b>     : {hrs_left:.1f} ghante remaining.\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💡 <i>Greed control: Profit withdraw karein! Agar aap withdraw kar chuke hain aur fresh session shuru karna chahte hain, to /reset bhejein.</i>"
-            )
-            markup = {
-                "inline_keyboard": [
-                    [{"text": "🔄 Reset & Start Fresh", "callback_data": "reset"}]
-                ]
-            }
-            send_telegram_msg(chat_id, msg, reply_markup=markup)
-            return
-
-    msg = (
-        f"👤 <b>PERSONAL RECOVERY SESSION TRACKER</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Namaste <b>{user_name}</b>! WinGo 30S Personal Recovery & Capital Guard me aapka swagat hai.\n\n"
-        f"Apna personal session shuru karne ke liye apna <b>Wallet Balance</b> enter karein:\n\n"
-        f"👉 Niche <b>Quick Buttons</b> chunein, ya direct balance likhein jaise: <code>1000</code> ya <code>/start 1000</code>.\n\n"
-        f"⚙️ <b>Architecture Rules:</b>\n"
-        f"• <b>Target Profit</b>: +20% (e.g. ₹200 on ₹1,000 | +₹500 on ₹10k)\n"
-        f"• <b>Base Unit (1X)</b>: ₹10 (L1: ₹10 | L2: ₹30 | L3: ₹90) ya Custom ₹1\n"
-        f"• <b>Strict Stop-Loss</b>: Hard Cap at Level 3 (-₹130 max loss) & 5% Overall Guard\n"
-        f"• <b>2% Tax Engine</b>: Real WinGo platform tax accounting\n"
-        f"• <b>Greed Killer</b>: 12-Hour auto-lock upon hitting target\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 <i>Custom target: <code>/start &lt;wallet&gt; &lt;target_profit&gt; [base_unit]</code></i>"
-    )
-    markup = {
-        "inline_keyboard": [
-            [
-                {"text": "💰 ₹500 (Base ₹10)", "callback_data": "start_500"},
-                {"text": "💰 ₹1,000 (Base ₹10)", "callback_data": "start_1000"}
-            ],
-            [
-                {"text": "💰 ₹2,000 (Base ₹20)", "callback_data": "start_2000"},
-                {"text": "💰 ₹5,000 (Base ₹50)", "callback_data": "start_5000"}
-            ],
-            [
-                {"text": "🏛️ ₹10,000 Buffer (Base ₹1)", "callback_data": "start_10000"}
-            ],
-            [
-                {"text": "📊 Live Status", "callback_data": "status"},
-                {"text": "⏹️ End Session", "callback_data": "stop"}
-            ]
-        ]
-    }
-    send_telegram_msg(chat_id, msg, reply_markup=markup)
-
-def handle_telegram_message(msg):
-    chat = msg.get("chat", {})
-    if chat.get("type") != "private":
-        return
-
-    chat_id = chat.get("id")
-    from_user = msg.get("from", {})
-    user_id = from_user.get("id", chat_id)
-    user_name = from_user.get("first_name", "User")
-    text = (msg.get("text") or "").strip()
-
-    if not text:
-        return
-
-    lower_text = text.lower()
-    if lower_text in ("/start", "/session"):
-        send_welcome_menu(chat_id, user_id, user_name)
-        return
-    elif lower_text == "/status":
-        send_status_message(chat_id, user_id)
-        return
-    elif lower_text in ("/stop", "/cancel", "/end"):
-        stop_user_session(chat_id, user_id)
-        return
-    elif lower_text == "/reset":
-        reset_user_session(chat_id, user_id)
-        return
-    elif lower_text in ("/help", "/guide"):
-        help_msg = (
-            f"📖 <b>WINGO PERSONAL RECOVERY TRACKER GUIDE</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"1️⃣ <b>2% Platform Tax Engine:</b>\n"
-            f"• Har win par 2% platform fee deduct hoti hai.\n"
-            f"• Net Payout = Stake × 1.96 (Net Profit = Stake × 0.96)\n"
-            f"• Level 1 (₹10)  ➔ Net: +₹9.60 (Tax: -₹0.40)\n"
-            f"• Level 2 (₹30)  ➔ Net: +₹28.80 (Cycle Profit: +₹18.80)\n"
-            f"• Level 3 (₹90)  ➔ Net: +₹86.40 (Cycle Profit: +₹46.40)\n\n"
-            f"2️⃣ <b>Strict Stop-Loss (Level 3 Cap):</b>\n"
-            f"• Level 3 ke baad 27X aur 81X betting blocked hai.\n"
-            f"• -₹130 loss book karke session pause ho jata hai capital save karne ke liye.\n\n"
-            f"3️⃣ <b>Greed Killer Auto-Lock:</b>\n"
-            f"• Target (+20%) cross hote hi bot 12 hours ke liye lock ho jata hai.\n\n"
-            f"<b>Commands:</b>\n"
-            f"• <code>/start</code> - Main Menu\n"
-            f"• <code>1000</code> ya <code>/start 1000</code> - Start Session\n"
-            f"• <code>/status</code> - Live Session Status\n"
-            f"• <code>/stop</code> - Session Stop & Profit Safe\n"
-            f"• <code>/reset</code> - Clear Session & Locks"
-        )
-        send_telegram_msg(chat_id, help_msg)
-        return
-
-    clean_text = re.sub(r"^(?:/(?:start|session)\s+)?", "", text, flags=re.IGNORECASE).strip()
-    clean_text = clean_text.replace("₹", "").replace("rs", "").replace("RS", "").strip()
-
-    parts = [p.strip() for p in clean_text.split() if p.strip()]
-    if parts:
-        try:
-            val1 = float(parts[0])
-            val2 = float(parts[1]) if len(parts) > 1 else None
-            val3 = float(parts[2]) if len(parts) > 2 else None
-
-            start_user_session(user_id, chat_id, user_name, wallet_amount=val1, target_profit=val2, base_unit=val3)
-            return
-        except ValueError:
-            pass
-
-    send_welcome_menu(chat_id, user_id, user_name)
-
-def handle_telegram_callback(query):
-    query_id = query.get("id")
-    data = str(query.get("data", ""))
-    from_user = query.get("from", {})
-    user_id = from_user.get("id")
-    user_name = from_user.get("first_name", "User")
-    message = query.get("message", {})
-    chat_id = message.get("chat", {}).get("id", user_id)
-
-    if data == "start_500":
-        answer_telegram_callback(query_id, "Activating ₹500 Session...")
-        start_user_session(user_id, chat_id, user_name, wallet_amount=500.0, target_profit=100.0, base_unit=10.0)
-    elif data == "start_1000":
-        answer_telegram_callback(query_id, "Activating ₹1,000 Session...")
-        start_user_session(user_id, chat_id, user_name, wallet_amount=1000.0, target_profit=200.0, base_unit=10.0)
-    elif data == "start_2000":
-        answer_telegram_callback(query_id, "Activating ₹2,000 Session...")
-        start_user_session(user_id, chat_id, user_name, wallet_amount=2000.0, target_profit=400.0, base_unit=20.0)
-    elif data == "start_5000":
-        answer_telegram_callback(query_id, "Activating ₹5,000 Session...")
-        start_user_session(user_id, chat_id, user_name, wallet_amount=5000.0, target_profit=1000.0, base_unit=50.0)
-    elif data == "start_10000":
-        answer_telegram_callback(query_id, "Activating ₹10,000 Session (Base ₹1)...")
-        start_user_session(user_id, chat_id, user_name, wallet_amount=10000.0, target_profit=500.0, base_unit=1.0)
-    elif data == "status":
-        answer_telegram_callback(query_id, "Fetching Status...")
-        send_status_message(chat_id, user_id)
-    elif data == "stop":
-        answer_telegram_callback(query_id, "Ending Session...")
-        stop_user_session(chat_id, user_id)
-    elif data == "reset":
-        answer_telegram_callback(query_id, "Resetting Session...")
-        reset_user_session(chat_id, user_id)
-    else:
-        answer_telegram_callback(query_id)
-
-def poll_telegram_updates():
-    global IS_STANDBY_MODE
-    print("📡 [TELEGRAM POLLER] Starting Telegram DM update listener...", flush=True)
-    offset = 0
-    consecutive_409 = 0
-    while True:
-        try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
-            params = {
-                "offset": offset,
-                "timeout": 20,
-                "allowed_updates": json.dumps(["message", "callback_query"])
-            }
-            r = requests.get(url, params=params, timeout=30)
-            if r.status_code == 200:
-                if IS_STANDBY_MODE:
-                    print("🟢 [FAILOVER CONTROLLER] Primary lock acquired! Activating primary signal transmission.", flush=True)
-                    IS_STANDBY_MODE = False
-                consecutive_409 = 0
-                data = r.json()
-                if data.get("ok"):
-                    for update in data.get("result", []):
-                        up_id = update.get("update_id", 0)
-                        offset = max(offset, up_id + 1)
-                        if "message" in update:
-                            handle_telegram_message(update["message"])
-                        elif "callback_query" in update:
-                            handle_telegram_callback(update["callback_query"])
-            elif r.status_code == 409:
-                consecutive_409 += 1
-                if not IS_STANDBY_MODE:
-                    IS_STANDBY_MODE = True
-                    print("🛡️ [FAILOVER CONTROLLER] Conflict 409: Another active instance holds Telegram lock. Entering passive standby to eliminate duplicates.", flush=True)
-                time.sleep(60)
-            else:
-                time.sleep(2)
-        except Exception:
-            time.sleep(2)
-
-def start_telegram_polling():
-    global TELEGRAM_POLLING_STARTED
-    if TELEGRAM_POLLING_STARTED:
-        return
-    TELEGRAM_POLLING_STARTED = True
-    t = threading.Thread(target=poll_telegram_updates, daemon=True)
-    t.start()
-
-def dispatch_dm_signals(target_period, target_type, target_val, confidence=0.0, pattern_name=None):
-    if IS_STANDBY_MODE:
-        return
-    with SESSIONS_LOCK:
-        active_list = [
-            dict(s) for s in USER_SESSIONS.values()
-            if s.get("session_status") == "ACTIVE" and (s.get("locked_until", 0) <= time.time())
-        ]
-
-    if not active_list:
-        return
-
-    for s in active_list:
-        threading.Thread(
-            target=_send_single_user_signal,
-            args=(s["user_id"], target_period, target_type, target_val, confidence, pattern_name),
-            daemon=True
-        ).start()
-
-def _send_single_user_signal(user_id, target_period, target_type, target_val, confidence=0.0, pattern_name=None):
-    with SESSIONS_LOCK:
-        s = USER_SESSIONS.get(str(user_id))
-        if not s or s.get("session_status") != "ACTIVE":
-            return
-        chat_id = s.get("chat_id", user_id)
-        level = s.get("current_level", 1)
-        base_unit = s.get("base_unit", 10.0)
-        wallet_current = s.get("wallet_current", 1000.0)
-        target_wallet = s.get("target_wallet", 1200.0)
-        wallet_start = s.get("wallet_start", 1000.0)
-        target_profit = s.get("target_profit", 200.0)
-
-    short_period = target_period[-4:] if len(target_period) >= 4 else target_period
-    earned = wallet_current - wallet_start
-    remaining = max(0.0, target_wallet - wallet_current)
-    pct = max(0.0, min(100.0, (earned / target_profit) * 100.0)) if target_profit > 0 else 0.0
-    bar = generate_progress_bar(pct)
-
-    if target_type == "SKIP" or target_val == "SKIP":
-        msg = (
-            f"👤 <b>PERSONAL RECOVERY SESSION (Round ...{short_period})</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 <b>Target Bet</b>   : ⏸️ <b>SKIP (NO TRADE)</b>\n"
-            f"🛡️ <b>Capital Guard</b>: <i>Market noise filtered. Level {level} recovery preserved. Zero risk!</i>\n"
-            f"💼 <b>Live Wallet</b>  : ₹{wallet_current:,.2f}\n"
-            f"🎯 <b>Target Goal</b>  : ₹{target_wallet:,.2f} (Remaining: ₹{remaining:,.2f})\n"
-            f"📈 <b>Progress</b>     : [{bar}] {pct:.1f}%\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <i>Waiting for next high-conviction sniper entry...</i>"
-        )
-        send_telegram_msg(chat_id, msg)
-        return
-
-    mult = 3 ** (level - 1)
-    stake = mult * base_unit
-
-    if target_type == "COLOR":
-        target_label = f"🔴 RED" if target_val == "RED" else f"🟢 GREEN"
-    else:
-        target_label = f"🐘 BIG [5-9]" if target_val == "BIG" else f"🐜 SMALL [0-4]"
-
-    msg = (
-        f"👤 <b>PERSONAL RECOVERY SESSION (Round ...{short_period})</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 <b>Target Bet</b>   : {target_label}\n"
-        f"💰 <b>Recommended</b>  : ₹{stake:,.0f} (Level {level} - {mult}X)\n"
-        f"💼 <b>Live Wallet</b>  : ₹{wallet_current:,.2f}\n"
-        f"🎯 <b>Target Goal</b>  : ₹{target_wallet:,.2f} (Remaining: ₹{remaining:,.2f})\n"
-        f"📈 <b>Progress</b>     : [{bar}] {pct:.1f}%\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏳ <i>Result in 30 seconds...</i>"
-    )
-
-    with SESSIONS_LOCK:
-        if str(user_id) in USER_SESSIONS:
-            USER_SESSIONS[str(user_id)]["pending_bet"] = {
-                "period": str(target_period),
-                "target_type": str(target_type),
-                "target_val": str(target_val),
-                "stake": float(stake),
-                "level": int(level)
-            }
-    save_user_sessions()
-    send_telegram_msg(chat_id, msg)
-
-def dispatch_dm_results(period, actual_number, actual_color, actual_size):
-    if IS_STANDBY_MODE:
-        return
-    with SESSIONS_LOCK:
-        eval_list = [
-            str(uid) for uid, s in USER_SESSIONS.items()
-            if s.get("session_status") == "ACTIVE" and s.get("pending_bet") and str(s.get("pending_bet", {}).get("period")) == str(period)
-        ]
-
-    for uid in eval_list:
-        threading.Thread(
-            target=_send_single_user_result,
-            args=(uid, period, actual_number, actual_color, actual_size),
-            daemon=True
-        ).start()
-
-def _send_single_user_result(user_id, period, actual_number, actual_color, actual_size):
-    with SESSIONS_LOCK:
-        s = USER_SESSIONS.get(str(user_id))
-        if not s or s.get("session_status") != "ACTIVE" or not s.get("pending_bet"):
-            return
-        pending = dict(s["pending_bet"])
-        chat_id = s.get("chat_id", user_id)
-        base_unit = s.get("base_unit", 10.0)
-
-    target_type = pending.get("target_type", "SIZE")
-    target_val = pending.get("target_val", "BIG")
-    stake = pending.get("stake", 10.0)
-    level = pending.get("level", 1)
-
-    if target_type == "COLOR":
-        is_win = (target_val == actual_color)
-        draw_res_display = f"{actual_color} ({actual_number})"
-    else:
-        is_win = (target_val == actual_size)
-        draw_res_display = f"{actual_size} ({actual_number})"
-
-    if is_win:
-        tax_cut = round(stake * 0.04, 2)
-        net_profit = round(stake * 0.96, 2)
-
-        with SESSIONS_LOCK:
-            if str(user_id) in USER_SESSIONS:
-                curr_s = USER_SESSIONS[str(user_id)]
-                curr_s["wallet_current"] = round(curr_s["wallet_current"] + net_profit, 2)
-                curr_s["total_cycle_wins"] = curr_s.get("total_cycle_wins", 0) + 1
-                curr_s["current_level"] = 1  # Reset to Level 1
-                curr_s["pending_bet"] = None
-
-                wallet_current = curr_s["wallet_current"]
-                wallet_start = curr_s.get("wallet_start", 1000.0)
-                target_wallet = curr_s.get("target_wallet", 1200.0)
-                target_profit = curr_s.get("target_profit", 200.0)
-                cycle_wins = curr_s["total_cycle_wins"]
-
-        save_user_sessions()
-
-        earned = wallet_current - wallet_start
-        remaining = max(0.0, target_wallet - wallet_current)
-        pct = max(0.0, min(100.0, (earned / target_profit) * 100.0)) if target_profit > 0 else 100.0
-
-        win_title = f"LEVEL {level} WIN ✅" if level == 1 else f"LEVEL {level} RECOVERY WIN ✅"
-
-        win_msg = (
-            f"🎉 <b>ROUND RESULT : {win_title}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎲 <b>Draw Result</b>  : {draw_res_display}\n"
-            f"💰 <b>Stake Placed</b> : ₹{stake:,.2f}\n"
-            f"💸 <b>2% Tax Cut</b>   : -₹{tax_cut:,.2f}\n"
-            f"💵 <b>Net Profit</b>   : +₹{net_profit:,.2f}\n"
-            f"💼 <b>New Wallet</b>   : ₹{wallet_current:,.2f}\n"
-            f"🎯 <b>Remaining</b>    : ₹{remaining:,.2f} (Progress: {pct:.1f}%)\n"
-            f"🔄 <b>Stage Reset</b>  : LEVEL 1 (Base ₹{base_unit:,.0f})\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <i>Looking for next high-conviction sniper entry...</i>"
-        )
-        send_telegram_msg(chat_id, win_msg)
-
-        # Safety Guardrail: Target Reach Auto-Lock (Greed Killer)
-        if wallet_current >= target_wallet:
-            lock_duration = 12 * 3600
-            with SESSIONS_LOCK:
-                if str(user_id) in USER_SESSIONS:
-                    USER_SESSIONS[str(user_id)]["session_status"] = "COMPLETED"
-                    USER_SESSIONS[str(user_id)]["locked_until"] = int(time.time()) + lock_duration
-            save_user_sessions()
-
-            target_hit_msg = (
-                f"🎉 <b>TARGET GOAL ACHIEVED! SESSION LOCKED!</b> 🎉\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎯 <b>Target Goal</b>  : ₹{target_wallet:,.2f} Reached!\n"
-                f"💵 <b>Total Profit</b> : +₹{earned:,.2f}\n"
-                f"💼 <b>Final Wallet</b> : ₹{wallet_current:,.2f}\n"
-                f"🏆 <b>Total Wins</b>   : {cycle_wins}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🛑 <b>SESSION COMPLETED! Target ₹{target_wallet:,.0f} Reached (+₹{earned:,.0f} Profit). Bot session locked for 12 hours. Profit withdraw karein!</b>"
-            )
-            markup = {
-                "inline_keyboard": [
-                    [{"text": "🔄 Reset & Start New Session", "callback_data": "reset"}]
-                ]
-            }
-            send_telegram_msg(chat_id, target_hit_msg, reply_markup=markup)
-
-    else:
-        # LOSS
-        with SESSIONS_LOCK:
-            if str(user_id) in USER_SESSIONS:
-                curr_s = USER_SESSIONS[str(user_id)]
-                curr_s["wallet_current"] = round(curr_s["wallet_current"] - stake, 2)
-                curr_s["pending_bet"] = None
-                wallet_current = curr_s["wallet_current"]
-                wallet_start = curr_s.get("wallet_start", 1000.0)
-
-        # Check Overall Session 5% Hard Stop-Loss Guardrail (Module 3)
-        max_overall_stop_loss = round(wallet_start * 0.05, 2)
-        total_session_loss = round(wallet_start - wallet_current, 2)
-        if total_session_loss >= max_overall_stop_loss:
-            with SESSIONS_LOCK:
-                if str(user_id) in USER_SESSIONS:
-                    curr_s = USER_SESSIONS[str(user_id)]
-                    curr_s["session_status"] = "STOP_LOSS"
-                    curr_s["current_level"] = 1
-            save_user_sessions()
-
-            session_stop_msg = (
-                f"🛑 <b>OVERALL 5% HARD STOP-LOSS REACHED</b> 🛑\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎲 <b>Draw Result</b>  : {draw_res_display}\n"
-                f"💸 <b>Session Loss</b> : -₹{total_session_loss:,.2f} (5% Cap Reached)\n"
-                f"💼 <b>Safe Wallet</b>  : ₹{wallet_current:,.2f} (95% Capital Protected)\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🛡️ <i>Dual-Safety Guardrail Triggered! Session terminated to freeze remaining ₹{wallet_current:,.2f}.</i>\n"
-                f"💡 <i>Take a break to clear your mind. Send /start or /reset when ready.</i>"
-            )
-            markup = {
-                "inline_keyboard": [
-                    [{"text": "🔄 Reset & Start Fresh", "callback_data": "reset"}]
-                ]
-            }
-            send_telegram_msg(chat_id, session_stop_msg, reply_markup=markup)
-            return
-
-        next_level = level + 1
-
-        if next_level > 3:
-            # Strict Hard Stop-Loss at Level 3
-            total_cycle_loss = 13.0 * base_unit
-            with SESSIONS_LOCK:
-                if str(user_id) in USER_SESSIONS:
-                    curr_s = USER_SESSIONS[str(user_id)]
-                    curr_s["session_status"] = "STOP_LOSS"
-                    curr_s["current_level"] = 1
-            save_user_sessions()
-
-            stop_loss_msg = (
-                f"🔴 <b>ROUND RESULT : LEVEL {level} LOSS ❌</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎲 <b>Draw Result</b>  : {draw_res_display}\n"
-                f"💸 <b>Deducted</b>     : -₹{stake:,.2f}\n"
-                f"💼 <b>New Wallet</b>   : ₹{wallet_current:,.2f}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🛡️ <b>STOP-LOSS HIT: ₹{total_cycle_loss:,.0f} loss booked. Wallet is at ₹{wallet_current:,.2f}. Session paused to prevent account liquidation.</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <i>Strict 3-Level Hard Cap reached. Level 4 (27X) is blocked to save wallet.</i>\n"
-                f"💡 <i>Take a break to clear your mind. Send /start or /reset when ready.</i>"
-            )
-            markup = {
-                "inline_keyboard": [
-                    [{"text": "🔄 Reset & Start Fresh", "callback_data": "reset"}]
-                ]
-            }
-            send_telegram_msg(chat_id, stop_loss_msg, reply_markup=markup)
-
-        else:
-            # Level Escalation (Level 1 -> 2, or Level 2 -> 3)
-            with SESSIONS_LOCK:
-                if str(user_id) in USER_SESSIONS:
-                    USER_SESSIONS[str(user_id)]["current_level"] = next_level
-            save_user_sessions()
-
-            next_mult = 3 ** (next_level - 1)
-            next_stake = next_mult * base_unit
-            if next_level == 2:
-                prev_loss = 1 * base_unit
-                next_cycle_profit = (next_stake * 0.96) - prev_loss
-            else:  # next_level == 3
-                prev_loss = (1 + 3) * base_unit
-                next_cycle_profit = (next_stake * 0.96) - prev_loss
-
-            loss_msg = (
-                f"🔴 <b>ROUND RESULT : LEVEL {level} LOSS ❌</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎲 <b>Draw Result</b>  : {draw_res_display}\n"
-                f"💸 <b>Deducted</b>     : -₹{stake:,.2f}\n"
-                f"💼 <b>New Wallet</b>   : ₹{wallet_current:,.2f}\n"
-                f"⚡ <b>Next Stage</b>   : LEVEL {next_level} (₹{next_stake:,.0f} Stake - {next_mult}X Recovery)\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <i>Next round will recover previous ₹{prev_loss:,.0f} + generate +₹{next_cycle_profit:,.2f} profit!</i>"
-            )
-            send_telegram_msg(chat_id, loss_msg)
-
 
 def save_to_memory(period, number, raw_color, auto_save=True):
     global MEMORY_HISTORY, KNOWN_PERIODS
@@ -1900,7 +1145,7 @@ def detect_market_patterns(history_items):
     s_q15_bayes = (bayes_fav_s, min(85.0, max(55.0, bayes_conf_s)), f"Bayesian Posterior favors {bayes_fav_s} ({bayes_conf_s}%)")
 
     # ====================================================
-    # 🧮 25-DIMENSION MULTI-PROBABILITY QUANTITATIVE ENGINE
+    # 🧮 30-DIMENSION ULTRA-INTENSITY QUANTITATIVE ENGINE
     # ====================================================
     # 1. Multi-Horizon Rolling Empirical Probabilities (9 Windows)
     p_freq_3 = (sizes[-3:].count("BIG") / 3.0) if len(sizes) >= 3 else 0.5
@@ -1939,7 +1184,16 @@ def detect_market_patterns(history_items):
     tot_tr_ct = cnt_tr["BIG"] + cnt_tr["SMALL"]
     p_num_triplet = (cnt_tr["BIG"] + 1.0) / (tot_tr_ct + 2.0) if tot_tr_ct >= 2 else p_num_pair
 
-    # 4. Multi-Order Markov State Transition Probabilities (Orders 7 down to 1)
+    # 3C. Number-Quad Sequence Transition Probability (4-Gram)
+    quad_trans_matrix = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 4):
+        quad_trans_matrix[(nums[i], nums[i + 1], nums[i + 2], nums[i + 3])][sizes[i + 4]] += 1
+    last_quad_key = (nums[-4], nums[-3], nums[-2], nums[-1]) if len(nums) >= 4 else None
+    cnt_qd = quad_trans_matrix[last_quad_key] if last_quad_key else {"BIG": 0, "SMALL": 0}
+    tot_qd_ct = cnt_qd["BIG"] + cnt_qd["SMALL"]
+    p_num_quad = (cnt_qd["BIG"] + 1.0) / (tot_qd_ct + 2.0) if tot_qd_ct >= 2 else p_num_triplet
+
+    # 4. Multi-Order Markov State Transition Probabilities (Orders 8 down to 1)
     def compute_markov_prob(order):
         if len(sizes) <= order:
             return 0.5, 0
@@ -1953,26 +1207,12 @@ def detect_market_patterns(history_items):
             return (trans_counts["BIG"] + 1.0) / (t_sum + 2.0), t_sum
         return 0.5, 0
 
-    p_m7, t_m7 = compute_markov_prob(7)
-    p_m6, t_m6 = compute_markov_prob(6)
-    p_m5, t_m5 = compute_markov_prob(5)
-    p_m4, t_m4 = compute_markov_prob(4)
-    p_m3, t_m3 = compute_markov_prob(3)
-    p_m2, t_m2 = compute_markov_prob(2)
-    p_m1, t_m1 = compute_markov_prob(1)
-    p_markov_ensemble = (
-        p_m7 if t_m7 >= 3 else (
-            p_m6 if t_m6 >= 3 else (
-                p_m5 if t_m5 >= 3 else (
-                    p_m4 if t_m4 >= 3 else (
-                        p_m3 if t_m3 >= 3 else (
-                            p_m2 if t_m2 >= 3 else p_m1
-                        )
-                    )
-                )
-            )
-        )
-    )
+    p_markov_ensemble = 0.5
+    for o in (8, 7, 6, 5, 4, 3, 2, 1):
+        pm, tm = compute_markov_prob(o)
+        if tm >= 3:
+            p_markov_ensemble = pm
+            break
 
     # 5. Streak Survival / Dragon Hazard Continuation Probability
     streaks_db = []
@@ -2028,10 +1268,10 @@ def detect_market_patterns(history_items):
     if len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-2] != sizes[-3] and sizes[-3] != sizes[-4]:
         p_step_prob = 0.65 if opp_s == "BIG" else 0.35
 
-    # 8. Full-History KNN Sequence Substring Match Probability (Length 6 -> 5 -> 4 -> 3)
+    # 8. Full-History KNN Sequence Substring Match Probability (Length 7 -> 6 -> 5 -> 4 -> 3)
     p_knn_prob = 0.5
     tot_knn = 0
-    for k_len in (6, 5, 4, 3):
+    for k_len in (7, 6, 5, 4, 3):
         if len(sizes) >= k_len:
             pat_k = tuple(sizes[-k_len:])
             pat_k_cnt = {"BIG": 0, "SMALL": 0}
@@ -2086,6 +1326,52 @@ def detect_market_patterns(history_items):
         if z >= 1.5: p_zscore = 0.35
         elif z <= -1.5: p_zscore = 0.65
 
+    # 15. Bayesian Dirichlet-Multinomial Digit Distribution (Digits 0-9)
+    alpha_digits = [1.0] * 10
+    decay_d = 0.97
+    for n in nums:
+        for d in range(10):
+            alpha_digits[d] = (alpha_digits[d] * decay_d) + (1.0 if n == d else 0.0)
+    sum_small = sum(alpha_digits[0:5])
+    sum_big = sum(alpha_digits[5:10])
+    p_dirichlet_big = sum_big / (sum_small + sum_big)
+
+    # 16. EWMA Fast vs Slow Momentum Crossover
+    s_bin = [1.0 if s == "BIG" else 0.0 for s in sizes]
+    ewma_fast, ewma_slow = 0.5, 0.5
+    for b in s_bin[-100:]:
+        ewma_fast = 0.20 * b + 0.80 * ewma_fast
+        ewma_slow = 0.05 * b + 0.95 * ewma_slow
+    p_ewma = max(0.05, min(0.95, 0.5 + (ewma_fast - ewma_slow) * 1.5))
+
+    # 17. 10,000-Path Monte Carlo Empirical Simulation
+    import random
+    trans_2 = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(sizes) - 2):
+        trans_2[(sizes[i], sizes[i + 1])][sizes[i + 2]] += 1
+    cur_mc_key = (sizes[-2], sizes[-1]) if len(sizes) >= 2 else None
+    c_mc = trans_2[cur_mc_key] if cur_mc_key else {"BIG": 0, "SMALL": 0}
+    tot_mc = c_mc["BIG"] + c_mc["SMALL"]
+    p_mc_base = (c_mc["BIG"] + 1.0) / (tot_mc + 2.0) if tot_mc >= 2 else 0.5
+    mc_trials = 10000
+    mc_wins = sum(1 for _ in range(mc_trials) if random.random() < p_mc_base)
+    p_monte_carlo = mc_wins / float(mc_trials)
+
+    # 18. Kelly Criterion Advantage & Fractional Edge
+    kelly_p = max(0.05, min(0.95, (p_markov_ensemble + p_dirichlet_big + p_ewma) / 3.0))
+    kelly_b = 0.96
+    kelly_q = 1.0 - kelly_p
+    kelly_f = max(0.0, (kelly_b * kelly_p - kelly_q) / kelly_b)
+    p_kelly_adv = max(0.05, min(0.95, 0.5 + (kelly_f * 0.8 if kelly_p >= 0.5 else -kelly_f * 0.8)))
+
+    # 19. Binary Outcome Bollinger Squeeze & Breakout
+    p_bollinger = 0.5
+    if len(sizes) >= 20:
+        mu_b = sizes[-20:].count("BIG") / 20.0
+        sigma_b = math.sqrt(max(1e-4, mu_b * (1.0 - mu_b)))
+        if mu_b >= 0.70: p_bollinger = 0.35
+        elif mu_b <= 0.30: p_bollinger = 0.65
+
     probabilities = {
         "p_freq_3": round(p_freq_3, 4),
         "p_freq_5": round(p_freq_5, 4),
@@ -2099,6 +1385,7 @@ def detect_market_patterns(history_items):
         "p_num_direct": round(p_num_direct, 4),
         "p_num_pair": round(p_num_pair, 4),
         "p_num_triplet": round(p_num_triplet, 4),
+        "p_num_quad": round(p_num_quad, 4),
         "p_markov": round(p_markov_ensemble, 4),
         "p_streak_hazard": round(p_streak_hazard, 4),
         "p_chop_prob": round(p_chop_prob, 4),
@@ -2111,10 +1398,15 @@ def detect_market_patterns(history_items):
         "p_mean_reversion": round(p_mean_reversion, 4),
         "p_boundary": round(p_boundary, 4),
         "p_autocorr": round(p_autocorr, 4),
-        "p_zscore": round(p_zscore, 4)
+        "p_zscore": round(p_zscore, 4),
+        "p_dirichlet_big": round(p_dirichlet_big, 4),
+        "p_ewma": round(p_ewma, 4),
+        "p_monte_carlo": round(p_monte_carlo, 4),
+        "p_bollinger": round(p_bollinger, 4),
+        "p_kelly_adv": round(p_kelly_adv, 4)
     }
 
-    # Bayesian Log-Odds Unified Evidence Aggregation
+    # Bayesian Log-Odds Unified Evidence Aggregation (30 Dimensions)
     def _lo(p):
         p_c = max(0.05, min(0.95, p))
         return math.log(p_c / (1.0 - p_c))
@@ -2126,9 +1418,13 @@ def detect_market_patterns(history_items):
         "p_33_prob": 3.0 if p_33_prob != 0.5 else 1.0,
         "p_step_prob": 2.8 if p_step_prob != 0.5 else 1.0,
         "p_knn_prob": 4.5 if tot_knn >= 3 else 1.5,
-        "p_markov": 3.8,
-        "p_num_triplet": 3.5 if tot_tr_ct >= 2 else 1.0,
-        "p_num_pair": 3.2 if tot_p_ct >= 3 else 1.2,
+        "p_markov": 4.0,
+        "p_dirichlet_big": 3.8,
+        "p_monte_carlo": 3.6,
+        "p_ewma": 3.4,
+        "p_num_quad": 3.5 if tot_qd_ct >= 2 else 1.0,
+        "p_num_triplet": 3.2 if tot_tr_ct >= 2 else 1.0,
+        "p_num_pair": 3.0 if tot_p_ct >= 3 else 1.2,
         "p_num_direct": 2.5 if tot_n_ct >= 5 else 1.0,
         "p_fourier_prob": 2.5,
         "p_bayes_decay": 2.5,
@@ -2136,6 +1432,8 @@ def detect_market_patterns(history_items):
         "p_boundary": 2.0 if last_num in (0, 1, 8, 9) else 0.8,
         "p_autocorr": 2.2,
         "p_zscore": 2.2,
+        "p_bollinger": 2.0,
+        "p_kelly_adv": 2.5,
         "p_freq_5": 2.0,
         "p_freq_10": 2.2,
         "p_freq_20": 2.5,
@@ -2280,7 +1578,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         {"name": "Agent 13 (Fourier Spectral Wave Quant)", "val": s_q13[0], "conf": s_q13[1], "arg": s_q13[2]},
         {"name": "Agent 14 (Kolmogorov Complexity Quant)", "val": s_q14[0], "conf": s_q14[1], "arg": s_q14[2]},
         {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15[0], "conf": s_q15[1], "arg": s_q15[2]},
-        {"name": "Agent 16 (Unified Multi-Probability Meta-Engine)", "val": meta_val, "conf": meta_conf, "arg": f"Unified Edge {unified_edge:.1f}% (P(BIG)={unified_p_big:.2f}, P(SMALL)={unified_p_small:.2f})"}
+        {"name": "Agent 16 (Dirichlet-Multinomial Bayesian Digit Quant)", "val": "BIG" if probabilities.get("p_dirichlet_big", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_dirichlet_big", 0.5), 1.0 - probabilities.get("p_dirichlet_big", 0.5)) * 100, 1), "arg": f"Dirichlet Digit P(BIG)={probabilities.get('p_dirichlet_big', 0.5):.2f}"},
+        {"name": "Agent 17 (Monte Carlo 10,000-Path Quant)", "val": "BIG" if probabilities.get("p_monte_carlo", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_monte_carlo", 0.5), 1.0 - probabilities.get("p_monte_carlo", 0.5)) * 100, 1), "arg": f"MC 10k Sim P(BIG)={probabilities.get('p_monte_carlo', 0.5):.2f}"},
+        {"name": "Agent 18 (EWMA Trend Momentum Quant)", "val": "BIG" if probabilities.get("p_ewma", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_ewma", 0.5), 1.0 - probabilities.get("p_ewma", 0.5)) * 100, 1), "arg": f"EWMA Crossover P(BIG)={probabilities.get('p_ewma', 0.5):.2f}"},
+        {"name": "Agent 19 (Kelly Criterion Edge Advantage Quant)", "val": "BIG" if probabilities.get("p_kelly_adv", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_kelly_adv", 0.5), 1.0 - probabilities.get("p_kelly_adv", 0.5)) * 100, 1), "arg": f"Kelly Advantage P(BIG)={probabilities.get('p_kelly_adv', 0.5):.2f}"},
+        {"name": "Agent 20 (Unified 30-Probability Meta-Engine)", "val": meta_val, "conf": meta_conf, "arg": f"Unified Edge {unified_edge:.1f}% (P(BIG)={unified_p_big:.2f}, P(SMALL)={unified_p_small:.2f})"}
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
@@ -2289,7 +1591,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     sym_weight = 4.2 if is_s_2_2 else 1.5
     mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
     roadmap_weight = 5.0 if s_q4[1] >= 80.0 else 2.5
-    markov_weight = 3.8 if s_q5[1] >= 75.0 else 2.5
+    markov_weight = 4.0 if s_q5[1] >= 75.0 else 2.8
     bayes_num_weight = 3.5 if s_q6[1] >= 70.0 else 2.2
     imbalance_weight = 3.0 if s_q7[1] >= 70.0 else 1.8
     rhythm_weight = 2.2 if s_q9[1] >= 65.0 else 1.4
@@ -2299,7 +1601,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     fourier_weight = 2.5 if s_q13[1] >= 68.0 else 1.5
     kolmo_weight = 1.8
     bayes_decay_weight = 2.5 if s_q15[1] >= 65.0 else 1.8
-    meta_weight = 5.5 if unified_edge >= 3.0 else 3.5
+    dirichlet_weight = 3.8
+    mc_weight = 3.6
+    ewma_weight = 3.4
+    kelly_weight = 3.2
+    meta_weight = 6.0 if unified_edge >= 3.0 else 4.0
 
     weights = [
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -2318,7 +1624,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         fourier_weight,       # Agent 13: Fourier Spectral DFT
         kolmo_weight,         # Agent 14: Kolmogorov Complexity
         bayes_decay_weight,   # Agent 15: Exponential Bayesian Decay
-        meta_weight           # Agent 16: Unified Multi-Probability Meta-Engine
+        dirichlet_weight,     # Agent 16: Dirichlet-Multinomial Bayesian Digit Quant
+        mc_weight,            # Agent 17: Monte Carlo 10k Simulation
+        ewma_weight,          # Agent 18: EWMA Trend Momentum
+        kelly_weight,         # Agent 19: Kelly Criterion Edge
+        meta_weight           # Agent 20: Unified 30-Probability Meta-Engine
     ]
 
     big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
@@ -2589,7 +1899,6 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
             print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: ⏸️ SKIP (Filtered Noise)", flush=True)
         except Exception as e:
             print(f"[USER ALERT ERROR] {e}", flush=True)
-        dispatch_dm_signals(target_period, "SKIP", "SKIP", 0.0, pattern_name)
         return
 
     if target_type == "COLOR":
@@ -2648,8 +1957,6 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
     # Dispatch personal signals to DM users
-    dispatch_dm_signals(target_period, target_type, target_val, confidence, pattern_name)
-
 # ====================================================
 # 🎯 RESULT EVALUATION (PROMINENT BOLD WIN & LOSS CARDS)
 # ====================================================
@@ -2787,9 +2094,6 @@ def send_user_result(period, actual_number, actual_color, pred):
         print(f"[USER RESULT ERROR] {e}", flush=True)
 
     # Dispatch personal results to DM users
-    dispatch_dm_results(period, actual_number, actual_color, actual_size)
-
-
 # ====================================================
 # 🔄 MAIN REAL-TIME LOOP
 # ====================================================
@@ -2820,9 +2124,7 @@ def run_live_bot():
     print("=" * 65, flush=True)
 
     load_cache()
-    load_user_sessions()
     threading.Thread(target=start_health_server, args=(int(os.environ.get("PORT", 8080)),), daemon=True).start()
-    start_telegram_polling()
     last_processed_period = None
 
     while True:
