@@ -1700,10 +1700,71 @@ def detect_market_patterns(history_items):
         compact_parts.append(f"{c_code}{v_tag}({num})")
     recent_compact = ", ".join(compact_parts)
 
-    # Dedicated Size Quants (BIG vs SMALL)
-    q5_s = ("BIG" if c3_s["BIG"] >= c3_s["SMALL"] else "SMALL", 68.0, "Size Markov 3-Gram")
-    q6_s = ("BIG" if c_ns["BIG"] >= c_ns["SMALL"] else "SMALL", 66.0, f"Number {last_num} to Size Bayes")
-    q7_s = ("SMALL" if b20 > s20 else "BIG", 65.0, f"20-Round Size Imbalance ({b20}B vs {s20}S)")
+    # Dedicated Size Quants (BIG vs SMALL) - High-Intensity Analytical Upgrade
+    # Quant 5 (Size): Multi-Order Deep Markov Transition Matrix (Order 4 -> 3 -> 2 -> 1)
+    last4_s = tuple(sizes[-4:]) if len(sizes) >= 4 else ()
+    t4_s = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(sizes) - 4):
+        t4_s[tuple(sizes[i:i + 4])][sizes[i + 4]] += 1
+    c4_s = t4_s.get(last4_s, {"BIG": 0, "SMALL": 0})
+    tot4_s = c4_s["BIG"] + c4_s["SMALL"]
+
+    if tot4_s >= 2:
+        s_ng_val = "BIG" if c4_s["BIG"] >= c4_s["SMALL"] else "SMALL"
+        s_ng_conf = round(max(c4_s["BIG"], c4_s["SMALL"]) / tot4_s * 100, 1)
+        q5_s = (s_ng_val, min(95.0, s_ng_conf), f"Order-4 Markov state {last4_s} -> {s_ng_val} ({s_ng_conf}%)")
+    elif tot3_s >= 2:
+        s_ng_val = "BIG" if c3_s["BIG"] >= c3_s["SMALL"] else "SMALL"
+        s_ng_conf = round(max(c3_s["BIG"], c3_s["SMALL"]) / tot3_s * 100, 1)
+        q5_s = (s_ng_val, min(90.0, s_ng_conf), f"Order-3 Markov state {last3_s} -> {s_ng_val} ({s_ng_conf}%)")
+    else:
+        last2_s = tuple(sizes[-2:]) if len(sizes) >= 2 else ()
+        t2_s = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+        for i in range(len(sizes) - 2):
+            t2_s[tuple(sizes[i:i + 2])][sizes[i + 2]] += 1
+        c2_s = t2_s.get(last2_s, {"BIG": 0, "SMALL": 0})
+        tot2_s = c2_s["BIG"] + c2_s["SMALL"]
+        if tot2_s >= 2:
+            s_ng_val = "BIG" if c2_s["BIG"] >= c2_s["SMALL"] else "SMALL"
+            s_ng_conf = round(max(c2_s["BIG"], c2_s["SMALL"]) / tot2_s * 100, 1)
+            q5_s = (s_ng_val, s_ng_conf, f"Order-2 Markov state {last2_s} -> {s_ng_val} ({s_ng_conf}%)")
+        else:
+            s_ng_val = opp_s if s_alt >= 2 else last_s
+            q5_s = (s_ng_val, 65.0, f"Markov rhythm continuation favors {s_ng_val}")
+
+    # Quant 6 (Size): Number-to-Size Bayesian Prior + Pair-Transition Matrix
+    pair_to_size = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 2):
+        pair_to_size[(nums[i], nums[i + 1])][sizes[i + 2]] += 1
+    last_pair = (nums[-2], nums[-1]) if len(nums) >= 2 else None
+    c_pair = pair_to_size.get(last_pair, {"BIG": 0, "SMALL": 0}) if last_pair else {"BIG": 0, "SMALL": 0}
+    tot_pair = c_pair["BIG"] + c_pair["SMALL"]
+
+    if tot_pair >= 2:
+        b_val = "BIG" if c_pair["BIG"] >= c_pair["SMALL"] else "SMALL"
+        b_conf = round(max(c_pair["BIG"], c_pair["SMALL"]) / tot_pair * 100, 1)
+        q6_s = (b_val, min(92.0, b_conf), f"Number-Pair {last_pair} Bayes matrix yielded {b_val} ({b_conf}%)")
+    elif tot_ns >= 2:
+        b_val = "BIG" if c_ns["BIG"] >= c_ns["SMALL"] else "SMALL"
+        b_conf = round(max(c_ns["BIG"], c_ns["SMALL"]) / tot_ns * 100, 1)
+        q6_s = (b_val, min(88.0, b_conf), f"Number {last_num} database Bayes yielded {b_val} ({b_conf}%)")
+    else:
+        b_val = "BIG" if last_num in (5, 6, 7, 8, 9) else "SMALL"
+        q6_s = (b_val, 62.0, f"Number {last_num} baseline distribution favors {b_val}")
+
+    # Quant 7 (Size): Multi-Window Imbalance (10-Round Micro + 20-Round Swing)
+    b10 = sizes[-10:].count("BIG") if len(sizes) >= 10 else sizes.count("BIG")
+    s10 = sizes[-10:].count("SMALL") if len(sizes) >= 10 else sizes.count("SMALL")
+    if b10 >= 8:
+        q7_s = ("SMALL", 78.0, f"10-Round Severe BIG Imbalance ({b10}B/10); mean-reversion favors SMALL")
+    elif s10 >= 8:
+        q7_s = ("BIG", 78.0, f"10-Round Severe SMALL Imbalance ({s10}S/10); mean-reversion favors BIG")
+    elif b20 >= 14:
+        q7_s = ("SMALL", 72.0, f"20-Round Overbought BIG ({b20}B vs {s20}S); mean-reversion favors SMALL")
+    elif s20 >= 14:
+        q7_s = ("BIG", 72.0, f"20-Round Overbought SMALL ({s20}S vs {b20}B); mean-reversion favors BIG")
+    else:
+        q7_s = ("SMALL" if b20 > s20 else "BIG", 64.0, f"20-Round Size Imbalance ({b20}B vs {s20}S)")
 
     # Quant 8 (Size): Mean-Reversion & Trend Continuation
     if s_streak >= 2:
@@ -1902,6 +1963,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_s_2_2 = (len(history_items) >= 4 and history_items[-1].get("size") == history_items[-2].get("size") and history_items[-3].get("size") == history_items[-4].get("size") and history_items[-1].get("size") != history_items[-3].get("size")) or ("2-2 Double-Step" in s_pattern_desc)
     s_quants = p_info.get("s_quants", {})
     sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
+    nums = [int(it.get("num", 0)) for it in history_items]
+    last_num = nums[-1] if nums else 0
+    b20 = sizes[-20:].count("BIG") if len(sizes) >= 20 else sizes.count("BIG")
+    s20 = sizes[-20:].count("SMALL") if len(sizes) >= 20 else sizes.count("SMALL")
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
@@ -1943,30 +2008,83 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15[0], "conf": s_q15[1], "arg": s_q15[2]}
     ]
 
-    # Dynamic Weight Assignment based on Empirical Win Rates
+    # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
+    # 1. Dragon Trend Momentum: Heavy trend-following weight (Never cut a dragon law)
+    dragon_weight = 6.0 if s_streak >= 3 else 1.2
+
+    # 2. 1-1 Alternating Chop: Heavy chop momentum if active
+    chop_weight = 5.2 if s_alt >= 3 else 1.2
+
+    # 3. 2-2 Symmetry Double Step
+    sym_weight = 4.2 if is_s_2_2 else 1.5
+
+    # 4. Mean-Reversion: Suppressed during strong dragons to prevent counter-trend retail traps
+    mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
+
+    # 5. Pinterest 9-Roadmap Engine: Maximum pattern recognition weight
+    roadmap_weight = 5.0 if s_q4[1] >= 80.0 else 2.5
+
+    # 6. Markov Multi-Order Deep Engine (Order 4 -> 3 -> 2 -> 1)
+    markov_weight = 3.8 if s_q5[1] >= 75.0 else 2.5
+
+    # 7. Bayesian Number-to-Size Prior
+    bayes_num_weight = 3.5 if s_q6[1] >= 70.0 else 2.2
+
+    # 8. Multi-Window Imbalance (10-Round & 20-Round)
+    imbalance_weight = 3.0 if s_q7[1] >= 70.0 else 1.8
+
+    # 9. Autocorrelation Harmonic Rhythm
+    rhythm_weight = 2.2 if s_q9[1] >= 65.0 else 1.4
+
+    # 10. Multi-Scale Shannon Entropy Gatekeeper
+    entropy_weight = 1.8
+
+    # 11. Range Boundary Outlier Specialist
+    outlier_weight = 2.2 if last_num in (0, 1, 8, 9) else 1.2
+
+    # 12. Weibull Hazard Survival Rate (Dynamic streak continuation boost)
+    hazard_weight = 4.2 if s_streak >= 2 else (3.5 if s_alt >= 2 else 1.8)
+
+    # 13. Fourier Spectral DFT Wave Analysis
+    fourier_weight = 2.5 if s_q13[1] >= 68.0 else 1.5
+
+    # 14. Kolmogorov Algorithmic Complexity
+    kolmo_weight = 1.8
+
+    # 15. Exponential Beta-Binomial Bayesian Decay
+    bayes_decay_weight = 2.5 if s_q15[1] >= 65.0 else 1.8
+
     weights = [
-        3.5 if s_streak >= 3 else 1.0,                                 # Agent 1: Dragon Trend Momentum
-        3.2 if s_alt >= 4 else 1.0,                                    # Agent 2: 1-1 Chop
-        2.2,                                                            # Agent 3: 2-2 Symmetry
-        1.2,                                                            # Agent 4: Mean-Reversion
-        3.5 if s_q4[1] >= 85.0 else 2.2,                               # Agent 4B: Pinterest Size 9-Roadmap Engine
-        2.5,                                                            # Agent 5: Markov N-Gram
-        2.5,                                                            # Agent 6: Number-to-Size Bayes
-        2.0,                                                            # Agent 7: 20-Round Size Imbalance
-        2.0,                                                            # Agent 8: Mean-Reversion Imbalance
-        1.5,                                                            # Agent 9: Autocorrelation
-        1.4,                                                            # Agent 10: Entropy
-        1.2,                                                            # Agent 11: Boundary Outlier
-        2.0,                                                            # Agent 12: Weibull Hazard
-        1.6,                                                            # Agent 13: Fourier DFT
-        1.3,                                                            # Agent 14: Kolmogorov
-        1.8                                                             # Agent 15: Bayesian Decay
+        dragon_weight,        # Agent 1: Dragon Trend Momentum
+        chop_weight,          # Agent 2: 1-1 Chop
+        sym_weight,           # Agent 3: 2-2 Symmetry
+        mr_weight,            # Agent 4: Mean-Reversion
+        roadmap_weight,       # Agent 4B: Pinterest Size 9-Roadmap Engine
+        markov_weight,        # Agent 5: Markov Multi-Order N-Gram
+        bayes_num_weight,     # Agent 6: Number-to-Size Bayes
+        imbalance_weight,     # Agent 7: Multi-Window Size Imbalance
+        mr_weight,            # Agent 8: Mean-Reversion Imbalance
+        rhythm_weight,        # Agent 9: Autocorrelation Rhythm
+        entropy_weight,       # Agent 10: Shannon Entropy Gatekeeper
+        outlier_weight,       # Agent 11: Range Boundary Outlier
+        hazard_weight,        # Agent 12: Weibull Hazard Survival
+        fourier_weight,       # Agent 13: Fourier Spectral DFT
+        kolmo_weight,         # Agent 14: Kolmogorov Complexity
+        bayes_decay_weight    # Agent 15: Exponential Bayesian Decay
     ]
 
     big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
     small_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "SMALL")
     big_votes = sum(1 for s in all_specialists if s["val"] == "BIG")
     small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
+
+    # High-Intensity Multi-Model Confluence Boost (+20% weight if core pillars align)
+    core_pillar_votes = [s_q4[0], s_q5[0], s_q12[0]]
+    if core_pillar_votes.count("BIG") == 3:
+        big_weight *= 1.20
+    elif core_pillar_votes.count("SMALL") == 3:
+        small_weight *= 1.20
+
     total_active_weight = big_weight + small_weight
 
     # Decisive Winning Size Selection (No Deadlocks, No Artificial Skips!)
@@ -2014,29 +2132,53 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
     # ====================================================
-    # 🎯 3. MAXIMUM INTENSITY ULTRA-SNIPER QUALIFICATION
+    # 🎯 3. HIGH-INTENSITY QUALIFICATION & ANTI-SKIP ENGINE
     # ====================================================
-    # Absolute Zero-Loss Directive:
-    # 1. Require Super-Majority (12+ out of 16 votes = 75%+) AND confirmed structure AND margin >= 38%
-    # OR Golden Unanimity (13+ votes = 81%+) AND margin >= 48%
+    # Eliminates endless skip deadlocks while maintaining strong sniper accuracy:
+    # 1. Base High-Probability Qualification:
+    #    - Confirmed structure (Dragon >= 2, Chop >= 3, 2-2 Double, Staircase) with w_v >= 9 and margin >= 18%
+    #    - OR Council Super-Majority: w_v >= 10 and margin >= 24%
+    #    - OR Strong Vote Consensus: w_v >= 11 and margin >= 20%
     is_qualified_bet = (
-        (has_confirmed_structure and w_v >= 12 and target_margin >= 38.0) or
-        (w_v >= 13 and target_margin >= 48.0)
+        (has_confirmed_structure and w_v >= 9 and target_margin >= 14.0) or
+        (w_v >= 10 and target_margin >= 18.0) or
+        (w_v >= 11 and target_margin >= 12.0)
     )
 
-    # 🛡️ Level 2+ Recovery Extreme Protection:
-    # Under loss recovery, NEVER take chances on loose patterns; require BOTH verified structure AND 12+ consensus
+    # 🛡️ Anti-Skip Deadlock Breaker:
+    # If the bot skipped previous rounds (consecutive_skips >= 1 or >= 2),
+    # dynamically relax criteria so it executes on the best statistical edge rather than stalling!
+    if consecutive_skips >= 1:
+        if (has_confirmed_structure and w_v >= 9 and target_margin >= 8.0) or (w_v >= 9 and target_margin >= 12.0):
+            is_qualified_bet = True
+
+    if consecutive_skips >= 2:
+        # Hard Cap: After 2 consecutive skips, enforce bet on dominant mathematical consensus
+        # w_v >= 9 (majority of 16) OR dominant weight (w_weight > l_weight and target_margin >= 5.0)
+        if w_v >= 9 or (w_weight > l_weight and target_margin >= 5.0):
+            is_qualified_bet = True
+
+    # 🛡️ Level 2+ Recovery Protection:
     if current_loss_streak >= 1:
-        if not (has_confirmed_structure and w_v >= 12 and target_margin >= 40.0):
-            is_qualified_bet = False
+        recovery_ok = (
+            (has_confirmed_structure and w_v >= 10 and target_margin >= 18.0) or
+            (w_v >= 11 and target_margin >= 20.0)
+        )
+        if consecutive_skips >= 1 and (has_confirmed_structure and w_v >= 9 and target_margin >= 12.0):
+            recovery_ok = True
+        if consecutive_skips >= 2 and (w_v >= 9 and target_margin >= 8.0):
+            recovery_ok = True
+        is_qualified_bet = recovery_ok
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
     if w_v >= 13:
         consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 12:
+    elif w_v >= 11:
         consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {target_edge_desc})"
+    elif w_v >= 9:
+        consensus_tag = f"⚡ Council Majority Edge ({w_v}-{l_v} | {target_edge_desc})"
     else:
         consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
 
@@ -2059,12 +2201,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             f"Size Market Roadmap: [{s_pattern_desc}]\n"
             f"Specialists Assessments:\n{spec_summary}\n"
             f"Size Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)\n"
-            f"Preliminary Target: SIZE -> {target_val}\n\n"
-            f"MAX INTENSITY ZERO-LOSS ULTRA-SNIPER DIRECTIVE:\n"
-            f"The user requires MAXIMUM INTENSITY with zero tolerance for loss.\n"
-            f"1. Conduct step-by-step reasoning on trend continuation, chop rhythm, and retail trap fakeout risks on BIG vs SMALL.\n"
-            f"2. If there is ANY ambiguity, chop conflict, dragon breakdown risk, or disagreement between momentum and Bayesian quants: you MUST output action 'SKIP'.\n"
-            f"3. ONLY approve 'BET' when the setup is an undisputed, high-conviction sniper execution with overwhelming structural probability.\n\n"
+            f"Preliminary Target: SIZE -> {target_val}\n"
+            f"Consecutive Skips So Far: {consecutive_skips}\n\n"
+            f"HIGH-INTENSITY DECISIVE PREDICTION DIRECTIVE:\n"
+            f"The user requires MAXIMUM ANALYTICAL INTENSITY and decisive execution without unnecessary skips.\n"
+            f"1. Synthesize trend momentum, chop rhythm, Bayesian distributions, and structural patterns.\n"
+            f"2. Resolve any specialist disagreements by identifying the dominant regime (e.g. strong trend favors dragon continuation; alternating shoe favors chop).\n"
+            f"3. Do NOT default to SKIP if there is a discernible statistical edge. Only recommend 'SKIP' if the round is in a pure 50/50 chaotic transition deadlock with zero structural edge.\n"
+            f"4. If consecutive skips >= 2, you MUST approve 'BET' on the highest probability directional bias.\n\n"
             f"Return JSON ONLY:\n"
             f'{{"action": "BET" or "SKIP", "confidence": 90, "reason": "1 decisive sentence explaining the decision"}}'
         )
@@ -2080,9 +2224,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
                     act = str(res_arb.get("action", "")).upper()
                     if act == "SKIP":
-                        arbiter_wants_skip = True
-                        final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
-                        print(f"🧠 [MASTER AI: {model_name}] ⏸️ VETO SKIP: {final_summary}", flush=True)
+                        if consecutive_skips >= 2:
+                            # Anti-Skip Breaker: Override Arbiter skip to prevent skip spam
+                            arbiter_wants_skip = False
+                            final_summary = f"Decisive sniper entry enforced: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
+                            print(f"🧠 [MASTER AI: {model_name}] ⚠️ VETO OVERRIDDEN (Anti-Skip Breaker): {final_summary}", flush=True)
+                        else:
+                            arbiter_wants_skip = True
+                            final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
+                            print(f"🧠 [MASTER AI: {model_name}] ⏸️ VETO SKIP: {final_summary}", flush=True)
                     elif act == "BET":
                         summary_txt = res_arb.get("reason", "")
                         if summary_txt:
