@@ -24,9 +24,9 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # 12-Quant Engine + Single Master AI Brain (with cascading failover to eliminate rate limits)
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # 27B parameter flagship reasoning engine
+    "allam-2-7b",               # 7B ultra-fast engine (Instant ~300ms, zero 429 rate limit delay)
+    "qwen/qwen3.8-27b",         # 27B parameter reasoning engine
     "openai/gpt-oss-120b",      # 120B parameter deep analysis engine
-    "allam-2-7b",               # 7B high-speed failover engine
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
@@ -832,10 +832,10 @@ def poll_telegram_updates():
                             handle_telegram_callback(update["callback_query"])
             elif r.status_code == 409:
                 consecutive_409 += 1
-                if not IS_STANDBY_MODE and consecutive_409 >= 2:
+                if not IS_STANDBY_MODE:
                     IS_STANDBY_MODE = True
                     print("🛡️ [FAILOVER CONTROLLER] Conflict 409: Another active instance holds Telegram lock. Entering passive standby to eliminate duplicates.", flush=True)
-                time.sleep(25)
+                time.sleep(60)
             else:
                 time.sleep(2)
         except Exception:
@@ -850,6 +850,8 @@ def start_telegram_polling():
     t.start()
 
 def dispatch_dm_signals(target_period, target_type, target_val, confidence=0.0, pattern_name=None):
+    if IS_STANDBY_MODE:
+        return
     with SESSIONS_LOCK:
         active_list = [
             dict(s) for s in USER_SESSIONS.values()
@@ -933,6 +935,8 @@ def _send_single_user_signal(user_id, target_period, target_type, target_val, co
     send_telegram_msg(chat_id, msg)
 
 def dispatch_dm_results(period, actual_number, actual_color, actual_size):
+    if IS_STANDBY_MODE:
+        return
     with SESSIONS_LOCK:
         eval_list = [
             str(uid) for uid, s in USER_SESSIONS.items()
@@ -1896,13 +1900,18 @@ def detect_market_patterns(history_items):
     s_q15_bayes = (bayes_fav_s, min(85.0, max(55.0, bayes_conf_s)), f"Bayesian Posterior favors {bayes_fav_s} ({bayes_conf_s}%)")
 
     # ====================================================
-    # 🧮 COMPREHENSIVE MULTI-PROBABILITY QUANTITATIVE ENGINE
+    # 🧮 25-DIMENSION MULTI-PROBABILITY QUANTITATIVE ENGINE
     # ====================================================
-    # 1. Multi-Horizon Rolling Empirical Probabilities
+    # 1. Multi-Horizon Rolling Empirical Probabilities (9 Windows)
+    p_freq_3 = (sizes[-3:].count("BIG") / 3.0) if len(sizes) >= 3 else 0.5
     p_freq_5 = (sizes[-5:].count("BIG") / 5.0) if len(sizes) >= 5 else 0.5
+    p_freq_8 = (sizes[-8:].count("BIG") / 8.0) if len(sizes) >= 8 else 0.5
     p_freq_10 = (sizes[-10:].count("BIG") / 10.0) if len(sizes) >= 10 else 0.5
+    p_freq_15 = (sizes[-15:].count("BIG") / 15.0) if len(sizes) >= 15 else 0.5
     p_freq_20 = (sizes[-20:].count("BIG") / 20.0) if len(sizes) >= 20 else 0.5
+    p_freq_30 = (sizes[-30:].count("BIG") / 30.0) if len(sizes) >= 30 else 0.5
     p_freq_50 = (sizes[-50:].count("BIG") / 50.0) if len(sizes) >= 50 else 0.5
+    p_freq_100 = (sizes[-100:].count("BIG") / 100.0) if len(sizes) >= 100 else 0.5
 
     # 2. Number-to-Size Direct Transition Probability
     num_trans_matrix = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
@@ -1912,7 +1921,7 @@ def detect_market_patterns(history_items):
     tot_n_ct = cnt_n["BIG"] + cnt_n["SMALL"]
     p_num_direct = (cnt_n["BIG"] + 1.0) / (tot_n_ct + 2.0) if tot_n_ct > 0 else 0.5
 
-    # 3. Number-Pair Sequence Transition Probability
+    # 3. Number-Pair Sequence Transition Probability (Bigram)
     pair_trans_matrix = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
     for i in range(len(nums) - 2):
         pair_trans_matrix[(nums[i], nums[i + 1])][sizes[i + 2]] += 1
@@ -1921,7 +1930,16 @@ def detect_market_patterns(history_items):
     tot_p_ct = cnt_p["BIG"] + cnt_p["SMALL"]
     p_num_pair = (cnt_p["BIG"] + 1.0) / (tot_p_ct + 2.0) if tot_p_ct >= 2 else p_num_direct
 
-    # 4. Multi-Order Markov State Transition Probabilities (Order 5, 4, 3, 2, 1)
+    # 3B. Number-Triplet Sequence Transition Probability (Trigram)
+    triplet_trans_matrix = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 3):
+        triplet_trans_matrix[(nums[i], nums[i + 1], nums[i + 2])][sizes[i + 3]] += 1
+    last_triplet_key = (nums[-3], nums[-2], nums[-1]) if len(nums) >= 3 else None
+    cnt_tr = triplet_trans_matrix[last_triplet_key] if last_triplet_key else {"BIG": 0, "SMALL": 0}
+    tot_tr_ct = cnt_tr["BIG"] + cnt_tr["SMALL"]
+    p_num_triplet = (cnt_tr["BIG"] + 1.0) / (tot_tr_ct + 2.0) if tot_tr_ct >= 2 else p_num_pair
+
+    # 4. Multi-Order Markov State Transition Probabilities (Orders 7 down to 1)
     def compute_markov_prob(order):
         if len(sizes) <= order:
             return 0.5, 0
@@ -1935,12 +1953,26 @@ def detect_market_patterns(history_items):
             return (trans_counts["BIG"] + 1.0) / (t_sum + 2.0), t_sum
         return 0.5, 0
 
+    p_m7, t_m7 = compute_markov_prob(7)
+    p_m6, t_m6 = compute_markov_prob(6)
     p_m5, t_m5 = compute_markov_prob(5)
     p_m4, t_m4 = compute_markov_prob(4)
     p_m3, t_m3 = compute_markov_prob(3)
     p_m2, t_m2 = compute_markov_prob(2)
     p_m1, t_m1 = compute_markov_prob(1)
-    p_markov_ensemble = p_m5 if t_m5 >= 3 else (p_m4 if t_m4 >= 3 else (p_m3 if t_m3 >= 3 else (p_m2 if t_m2 >= 3 else p_m1)))
+    p_markov_ensemble = (
+        p_m7 if t_m7 >= 3 else (
+            p_m6 if t_m6 >= 3 else (
+                p_m5 if t_m5 >= 3 else (
+                    p_m4 if t_m4 >= 3 else (
+                        p_m3 if t_m3 >= 3 else (
+                            p_m2 if t_m2 >= 3 else p_m1
+                        )
+                    )
+                )
+            )
+        )
+    )
 
     # 5. Streak Survival / Dragon Hazard Continuation Probability
     streaks_db = []
@@ -1986,27 +2018,31 @@ def detect_market_patterns(history_items):
     else:
         p_22_prob = 0.5
 
-    # 8. Full-History KNN Sequence Substring Match Probability
+    # 7B. 3-3 Triple-Step Completion Probability
+    p_33_prob = 0.5
+    if len(sizes) >= 5 and sizes[-1] == sizes[-2] and sizes[-2] != sizes[-3] and sizes[-3] == sizes[-4] and sizes[-4] == sizes[-5]:
+        p_33_prob = 0.70 if sizes[-1] == "BIG" else 0.30
+
+    # 7C. 1-2 / 2-1 Stepped Alternation Probability
+    p_step_prob = 0.5
+    if len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-2] != sizes[-3] and sizes[-3] != sizes[-4]:
+        p_step_prob = 0.65 if opp_s == "BIG" else 0.35
+
+    # 8. Full-History KNN Sequence Substring Match Probability (Length 6 -> 5 -> 4 -> 3)
     p_knn_prob = 0.5
     tot_knn = 0
-    if len(sizes) >= 4:
-        pat4 = tuple(sizes[-4:])
-        pat_cnt = {"BIG": 0, "SMALL": 0}
-        for i in range(len(sizes) - 4):
-            if tuple(sizes[i:i + 4]) == pat4:
-                pat_cnt[sizes[i + 4]] += 1
-        tot_knn = pat_cnt["BIG"] + pat_cnt["SMALL"]
-        if tot_knn >= 3:
-            p_knn_prob = (pat_cnt["BIG"] + 1.0) / (tot_knn + 2.0)
-    if tot_knn < 3 and len(sizes) >= 3:
-        pat3 = tuple(sizes[-3:])
-        pat3_cnt = {"BIG": 0, "SMALL": 0}
-        for i in range(len(sizes) - 3):
-            if tuple(sizes[i:i + 3]) == pat3:
-                pat3_cnt[sizes[i + 3]] += 1
-        tot_knn3 = pat3_cnt["BIG"] + pat3_cnt["SMALL"]
-        if tot_knn3 >= 3:
-            p_knn_prob = (pat3_cnt["BIG"] + 1.0) / (tot_knn3 + 2.0)
+    for k_len in (6, 5, 4, 3):
+        if len(sizes) >= k_len:
+            pat_k = tuple(sizes[-k_len:])
+            pat_k_cnt = {"BIG": 0, "SMALL": 0}
+            for i in range(len(sizes) - k_len):
+                if tuple(sizes[i:i + k_len]) == pat_k:
+                    pat_k_cnt[sizes[i + k_len]] += 1
+            tot_k = pat_k_cnt["BIG"] + pat_k_cnt["SMALL"]
+            if tot_k >= 3:
+                p_knn_prob = (pat_k_cnt["BIG"] + 1.0) / (tot_k + 2.0)
+                tot_knn = tot_k
+                break
 
     # 9. Continuous Fourier Harmonic Probability
     p_fourier_prob = 0.5
@@ -2030,22 +2066,52 @@ def detect_market_patterns(history_items):
     elif last_num == 5: p_boundary = 0.42
     else: p_boundary = 0.50
 
+    # 13. Autocorrelation Momentum Probability
+    p_autocorr = 0.5
+    if len(sizes) >= 20:
+        s_binary = [1 if s == "BIG" else 0 for s in sizes[-20:]]
+        mean_b = sum(s_binary) / 20.0
+        var_b = sum((x - mean_b) ** 2 for x in s_binary) / 20.0
+        if var_b > 1e-4:
+            cov1 = sum((s_binary[i] - mean_b) * (s_binary[i + 1] - mean_b) for i in range(19)) / 19.0
+            r1 = cov1 / var_b
+            if r1 > 0.2: p_autocorr = 0.65 if last_s == "BIG" else 0.35
+            elif r1 < -0.2: p_autocorr = 0.35 if last_s == "BIG" else 0.65
+
+    # 14. Cumulative Sum Z-Score Imbalance Probability
+    p_zscore = 0.5
+    if len(sizes) >= 30:
+        big_c = sizes[-30:].count("BIG")
+        z = (big_c - 15.0) / math.sqrt(7.5)
+        if z >= 1.5: p_zscore = 0.35
+        elif z <= -1.5: p_zscore = 0.65
+
     probabilities = {
+        "p_freq_3": round(p_freq_3, 4),
         "p_freq_5": round(p_freq_5, 4),
+        "p_freq_8": round(p_freq_8, 4),
         "p_freq_10": round(p_freq_10, 4),
+        "p_freq_15": round(p_freq_15, 4),
         "p_freq_20": round(p_freq_20, 4),
+        "p_freq_30": round(p_freq_30, 4),
         "p_freq_50": round(p_freq_50, 4),
+        "p_freq_100": round(p_freq_100, 4),
         "p_num_direct": round(p_num_direct, 4),
         "p_num_pair": round(p_num_pair, 4),
+        "p_num_triplet": round(p_num_triplet, 4),
         "p_markov": round(p_markov_ensemble, 4),
         "p_streak_hazard": round(p_streak_hazard, 4),
         "p_chop_prob": round(p_chop_prob, 4),
         "p_22_prob": round(p_22_prob, 4),
+        "p_33_prob": round(p_33_prob, 4),
+        "p_step_prob": round(p_step_prob, 4),
         "p_knn_prob": round(p_knn_prob, 4),
         "p_fourier_prob": round(p_fourier_prob, 4),
         "p_bayes_decay": round(p_bayes_decay, 4),
         "p_mean_reversion": round(p_mean_reversion, 4),
-        "p_boundary": round(p_boundary, 4)
+        "p_boundary": round(p_boundary, 4),
+        "p_autocorr": round(p_autocorr, 4),
+        "p_zscore": round(p_zscore, 4)
     }
 
     # Bayesian Log-Odds Unified Evidence Aggregation
@@ -2057,16 +2123,23 @@ def detect_market_patterns(history_items):
         "p_streak_hazard": 4.5 if s_streak >= 3 else 1.2,
         "p_chop_prob": 4.2 if s_alt >= 3 else 1.2,
         "p_22_prob": 3.8 if p_22_prob != 0.5 else 1.0,
-        "p_knn_prob": 4.0 if tot_knn >= 3 else 1.5,
-        "p_markov": 3.5,
+        "p_33_prob": 3.0 if p_33_prob != 0.5 else 1.0,
+        "p_step_prob": 2.8 if p_step_prob != 0.5 else 1.0,
+        "p_knn_prob": 4.5 if tot_knn >= 3 else 1.5,
+        "p_markov": 3.8,
+        "p_num_triplet": 3.5 if tot_tr_ct >= 2 else 1.0,
         "p_num_pair": 3.2 if tot_p_ct >= 3 else 1.2,
         "p_num_direct": 2.5 if tot_n_ct >= 5 else 1.0,
-        "p_fourier_prob": 2.2,
-        "p_bayes_decay": 2.2,
-        "p_mean_reversion": 0.5 if s_streak >= 3 else 2.0,
-        "p_boundary": 1.8 if last_num in (0, 1, 8, 9) else 0.8,
-        "p_freq_10": 2.0,
-        "p_freq_20": 2.2
+        "p_fourier_prob": 2.5,
+        "p_bayes_decay": 2.5,
+        "p_mean_reversion": 0.5 if s_streak >= 3 else 2.2,
+        "p_boundary": 2.0 if last_num in (0, 1, 8, 9) else 0.8,
+        "p_autocorr": 2.2,
+        "p_zscore": 2.2,
+        "p_freq_5": 2.0,
+        "p_freq_10": 2.2,
+        "p_freq_20": 2.5,
+        "p_freq_50": 1.5
     }
 
     sum_lo = sum(prob_weights[k] * _lo(probabilities[k]) for k in prob_weights)
@@ -2586,6 +2659,10 @@ def send_user_result(period, actual_number, actual_color, pred):
         return
     short_period = period[-4:] if len(period) >= 4 else period
 
+    if IS_STANDBY_MODE:
+        print(f"⏸️ [STANDBY SILENT RESULT] Period: ...{short_period} | Secondary instance silent (duplicate prevention active).", flush=True)
+        return
+
     bold_c_name = to_bold(actual_color)
     if actual_number == 0:
         c_display = f"🔴 {to_bold('RED')} + 🟣 {to_bold('VIOLET')} ({actual_number})"
@@ -2841,7 +2918,6 @@ def run_live_bot():
                                 send_user_result(p_chk, p_num, p_col, pred)
                                 del MEMORY_PREDICTIONS[p_chk]
                                 evaluated_any = True
-                                time.sleep(0.4)
 
                         if evaluated_any:
                             save_cache()
