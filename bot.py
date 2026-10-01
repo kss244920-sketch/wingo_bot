@@ -416,7 +416,7 @@ def save_to_memory(period, number, raw_color, auto_save=True):
 # ====================================================
 # 📡 TELEGRAM STORAGE CHANNEL SYNC
 # ====================================================
-def log_round_to_storage_channel(period, number, base_color, has_violet, size):
+def log_round_to_storage_channel(period, number, base_color, has_violet, size, pred_info=None):
     if not STORAGE_CHANNEL_ID:
         return
 
@@ -426,11 +426,24 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size):
         c_tag = "🔴 RED" if base_color == "RED" else "🟢 GREEN"
 
     s_emoji = "🐘 BIG" if size == "BIG" else "🐜 SMALL"
+    pred_line = ""
+    if pred_info:
+        p_val = pred_info.get("target_val", "")
+        p_type = pred_info.get("target_type", "SIZE")
+        if p_type == "SIZE":
+            is_win = (p_val == size)
+        else:
+            is_win = (p_val == base_color)
+        status_tag = "✅ WIN" if is_win else "❌ LOSS"
+        p_emoji = "🐘 BIG" if p_val == "BIG" else ("🐜 SMALL" if p_val == "SMALL" else p_val)
+        pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} | <b>Outcome:</b> {status_tag}"
+
     text = (
         f"📦 <b>[CLOUD DB RECORD]</b>\n"
         f"🔢 <b>Season ID (Period):</b> <code>{period}</code>\n"
         f"🎨 <b>Color:</b> <b>{c_tag}</b> | <b>{s_emoji}</b> (No. {number})\n"
         f"📊 <b>Total Synced:</b> {len(MEMORY_HISTORY)} rounds"
+        f"{pred_line}"
     )
     try:
         send_telegram_msg(STORAGE_CHANNEL_ID, text, timeout=8, retries=1)
@@ -1680,7 +1693,22 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_val = w_size
     target_conf = calc_conf
     target_margin = size_margin_pct
-    target_pattern = s_pattern_desc
+    
+    # Ensure pattern name matches target_val direction
+    if w_size == s_pred_val:
+        target_pattern = s_pattern_desc
+    else:
+        if s_streak >= 3 and w_size == last_s:
+            target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
+        elif s_alt >= 3 and w_size == opp_s:
+            target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
+        elif b20 >= 12 or s20 >= 12:
+            target_pattern = f"Mean-Reversion Imbalance ({w_size})"
+        elif is_s_2_2:
+            target_pattern = f"2-2 Symmetry ({w_size} Step)"
+        else:
+            target_pattern = f"Quant Consensus Edge ({w_size})"
+
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
     s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
@@ -2205,6 +2233,7 @@ def run_live_bot():
 
                         # A. Evaluate Previous Prediction Result (check recent items so no result is ever missed)
                         evaluated_any = False
+                        evaluated_pred_for_round = None
                         for itm in reversed(items[:5]):
                             p_chk = str(itm.get("issueNumber", ""))
                             if p_chk in MEMORY_PREDICTIONS:
@@ -2218,6 +2247,8 @@ def run_live_bot():
                                     p_col = "RED" if "red" in p_raw.lower() else "GREEN"
                                 pred = MEMORY_PREDICTIONS[p_chk]
                                 send_user_result(p_chk, p_num, p_col, pred)
+                                if p_chk == current_period:
+                                    evaluated_pred_for_round = pred
                                 del MEMORY_PREDICTIONS[p_chk]
                                 evaluated_any = True
 
@@ -2254,7 +2285,7 @@ def run_live_bot():
                         # C. Background async logging to Storage Channel
                         threading.Thread(
                             target=log_round_to_storage_channel,
-                            args=(current_period, num, actual_color, has_violet, actual_size),
+                            args=(current_period, num, actual_color, has_violet, actual_size, evaluated_pred_for_round),
                             daemon=True
                         ).start()
 
