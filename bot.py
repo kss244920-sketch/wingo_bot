@@ -25,9 +25,9 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # 27B parameter deep reasoning engine (Sub-second, deep math rigor)
-    "openai/gpt-oss-120b",      # 120B parameter supreme arbiter (Deep multi-perspective analysis)
+    "qwen/qwen3.8-27b",         # 27B parameter deep reasoning engine
     "openai/gpt-oss-20b",       # 20B fast failover
+    "openai/gpt-oss-120b",      # 120B supreme arbiter
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
@@ -456,104 +456,134 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
 # ====================================================
 def detect_sequence_pattern(seq, item_type="COLOR"):
     """
-    Detects 9 classic Pinterest, Scribd & Baccarat chart roadmaps:
-    1. 3-2-1 Staircase (Pyramid/Countdown)
-    2. 1-2-3 Reverse Staircase
-    3. 3-3 Triplet (AAABBB)
-    4. 2-2 Double-Step (AABB)
-    5. 1-2 Single-Double (ABB ABB)
-    6. 2-1 Double-Single (AAB AAB)
-    7. ABBA Mirror Pattern (Sandwich Symmetry)
-    8. Dragon Continuation (Streak >= 2)
-    9. 1-1 Chop / Alternation (AB AB >= 2)
+    Detects 9 classic Pinterest, Scribd & Baccarat chart roadmaps via Run-Length Analysis:
+    1. Dragon Trend (Streak >= 3, with Exhaustion >= 6)
+    2. 1-1 Chop / Alternation (Streak lengths [1, 1, 1, 1])
+    3. 1-2 Single-Double Pattern (A, BB, A, BB)
+    4. 2-1 Double-Single Pattern (AA, B, AA, B)
+    5. 2-2 Double-Step Pattern (AA, BB, AA, BB)
+    6. 3-3 Triplet Pattern (AAA, BBB)
+    7. 3-2-1 & 1-2-3 Staircase
+    8. Isolated Pair Context (Prevents false dragon trap on length 2)
+    9. Macro Wave / Mean-Reversion Balance
     """
+    default_val = "RED" if item_type == "COLOR" else "BIG"
     if not seq:
-        default_val = "RED" if item_type == "COLOR" else "BIG"
         return default_val, 65.0, "Baseline Flow"
 
-    last_val = seq[-1]
+    # Normalize values to clean upper-case strings
+    norm_seq = []
+    for x in seq:
+        if item_type == "COLOR":
+            norm_seq.append("RED" if "RED" in str(x).upper() else "GREEN")
+        else:
+            norm_seq.append("BIG" if str(x).upper() in ("BIG", "B") or (str(x).isdigit() and int(x) >= 5) else "SMALL")
+
+    # Decompose sequence into consecutive run lengths: [(value, length), ...]
+    runs = []
+    cur_v = norm_seq[0]
+    cur_l = 1
+    for x in norm_seq[1:]:
+        if x == cur_v:
+            cur_l += 1
+        else:
+            runs.append((cur_v, cur_l))
+            cur_v = x
+            cur_l = 1
+    runs.append((cur_v, cur_l))
+
+    last_val, cur_len = runs[-1]
     opp_val = ("GREEN" if last_val == "RED" else "RED") if item_type == "COLOR" else ("SMALL" if last_val == "BIG" else "BIG")
 
-    # Streak calculation
-    streak_len = 1
-    for x in reversed(seq[:-1]):
-        if x == last_val:
-            streak_len += 1
+    # 1. Dragon Trend (REAL streak >= 3)
+    if cur_len >= 3:
+        if cur_len >= 6:
+            return opp_val, 86.0, f"Dragon Exhaustion ({last_val} x{cur_len} -> Reversal)"
+        dragon_conf = min(97.5, 86.0 + cur_len * 2.5)
+        return last_val, dragon_conf, f"Dragon Trend ({last_val} x{cur_len})"
+
+    # 2. 1-1 Alternating Chop (Trailing runs of length 1)
+    chop_count = 0
+    for r in reversed(runs):
+        if r[1] == 1:
+            chop_count += 1
         else:
             break
+    if chop_count >= 4:
+        chop_conf = min(96.5, 84.0 + chop_count * 2.5)
+        return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
 
-    # Alternation calculation
-    alt_len = 1
-    for i in range(len(seq) - 1, 0, -1):
-        if seq[i] != seq[i - 1]:
-            alt_len += 1
+    # 3. 3-3 Triplet Pattern
+    if len(runs) >= 2:
+        r1 = runs[-1]
+        r2 = runs[-2]
+        if r2[1] == 3 and r1[1] == 3:
+            return opp_val, 92.0, f"3-3 Triplet ({opp_val} Shift)"
+        if r2[1] == 3 and r1[1] in (1, 2):
+            return last_val, 90.0, f"3-3 Triplet ({last_val} Step {r1[1]+1})"
+
+    # 4. 2-2 Double-Step Pattern (Only when confirmed by preceding pairs)
+    if len(runs) >= 2:
+        r1 = runs[-1]
+        r2 = runs[-2]
+        r3 = runs[-3] if len(runs) >= 3 else None
+        # Both r1 and r2 completed length 2 (AABB)
+        if r2[1] == 2 and r1[1] == 2:
+            return opp_val, 91.5, f"2-2 Double-Step ({opp_val} Shift)"
+        # r1 is length 1 following a pair r2=2 AND r3=2 (AABBA -> complete pair B)
+        if r1[1] == 1 and r2[1] == 2 and r3 and r3[1] == 2:
+            return last_val, 90.5, f"2-2 Double-Step ({last_val} Pair)"
+
+    # 5. 1-2 Single-Double & 2-1 Double-Single Roadmap Recognition
+    if len(runs) >= 3:
+        r1 = runs[-1]
+        r2 = runs[-2]
+        r3 = runs[-3]
+        r4 = runs[-4] if len(runs) >= 4 else None
+
+        # 1-2 Single-Double: (A, 1), (B, 2), (A, 1) -> A single complete, start double B
+        if r2[1] == 2 and r1[1] == 1 and (r3[1] == 1 or (r4 and r4[1] == 2)):
+            return opp_val, 92.0, f"1-2 Single-Double ({opp_val} Wave)"
+
+        # 1-2 Single-Double: (B, 2), (A, 1), (B, 1) -> B single in progress, complete B double
+        if r2[1] == 1 and r1[1] == 1 and (r3[1] == 2 or (r4 and r4[1] == 1)):
+            return last_val, 91.0, f"1-2 Double Completion ({last_val} Pair)"
+
+        # 1-2 Single-Double: (A, 1), (B, 2) -> B double complete, switch to single A
+        if r2[1] == 1 and r1[1] == 2 and (r3[1] == 2 or (r4 and r4[1] == 1)):
+            return opp_val, 91.5, f"1-2 Single-Double ({opp_val} Shift)"
+
+        # 2-1 Double-Single: (A, 2), (B, 1) -> B single complete, start double A
+        if r2[1] == 2 and r1[1] == 1 and (r3[1] == 2 or (r4 and r4[1] == 1)):
+            return opp_val, 91.5, f"2-1 Double-Single ({opp_val} Wave)"
+
+        # 2-1 Double-Single: (B, 1), (A, 1) -> A single in progress, complete A double
+        if r2[1] == 1 and r1[1] == 1 and r3[1] == 2:
+            return last_val, 91.0, f"2-1 Double Completion ({last_val} Pair)"
+
+    # 6. Isolated Pair Context (cur_len == 2) - Golden Fix: NEVER force Dragon on length 2!
+    if cur_len == 2:
+        prev_len = runs[-2][1] if len(runs) >= 2 else 0
+        if prev_len == 1:
+            return opp_val, 87.0, f"Pair Reversal ({opp_val} Shift)"
+        elif prev_len >= 3:
+            return opp_val, 86.0, f"Post-Dragon Double ({opp_val} Shift)"
         else:
-            break
+            return opp_val, 80.0, f"Pair Reversal ({opp_val})"
 
-    # 1. Dragon Momentum (Streak >= 2) - Golden Law: NEVER CUT A DRAGON! Follow the trend!
-    if streak_len >= 2:
-        dragon_conf = min(97.5, 84.0 + streak_len * 3.5)
-        return last_val, dragon_conf, f"Dragon Trend ({last_val} x{streak_len})"
+    # 7. Macro Dominance & Mean-Reversion
+    recent_20 = norm_seq[-20:] if len(norm_seq) >= 20 else norm_seq
+    target_major = "BIG" if item_type == "SIZE" else "RED"
+    target_minor = "SMALL" if item_type == "SIZE" else "GREEN"
+    c_major = recent_20.count(target_major)
+    c_minor = len(recent_20) - c_major
 
-    # 2. 1-1 Alternating Chop (AB AB >= 3) - Only active when true alternation is confirmed
-    if alt_len >= 3:
-        chop_conf = min(96.0, 82.0 + alt_len * 3.0)
-        return opp_val, chop_conf, f"1-1 Chop ({alt_len}x Alternation)"
+    if c_major >= (len(recent_20) * 0.65):
+        return target_minor, 84.0, f"Macro Mean-Reversion ({target_minor} Overdue {c_major}/20)"
+    elif c_minor >= (len(recent_20) * 0.65):
+        return target_major, 84.0, f"Macro Mean-Reversion ({target_major} Overdue {c_minor}/20)"
 
-    # 3. 2-2 Double-Step: AABB completed -> shift to new pair
-    if len(seq) >= 4:
-        a = seq[-4]
-        b = seq[-1]
-        if a != b and seq[-3] == a and seq[-2] == b:
-            return a, 91.0, f"2-2 Double-Step ({a} Shift)"
-
-    # 4. 2-2 Pair Completion: AA followed by single B -> complete second pair B
-    if len(seq) >= 3:
-        a = seq[-3]
-        b = seq[-1]
-        if a != b and seq[-2] == a:
-            return b, 90.0, f"2-2 Double-Step ({b} Pair)"
-
-    # 5. 3-2-1 Staircase (3 A's -> 2 B's -> predicts 1 A Peak)
-    if len(seq) >= 5:
-        a = seq[-5]
-        b = seq[-1]
-        if a != b and seq[-4] == a and seq[-3] == a and seq[-2] == b:
-            return a, 93.0, f"3-2-1 Staircase ({a} Peak)"
-
-    # 6. 1-2-3 Reverse Staircase (1 A -> 2 B's -> 1 A -> predicts A Extension)
-    if len(seq) >= 4:
-        a = seq[-4]
-        b = seq[-3]
-        if a != b and seq[-2] == b and seq[-1] == a:
-            return a, 91.0, f"1-2-3 Staircase ({a} Extension)"
-
-    # 7. 3-3 Triplet (3 A's -> 3 B's -> predicts A reset)
-    if len(seq) >= 6:
-        a = seq[-6]
-        b = seq[-1]
-        if a != b and seq[-5] == a and seq[-4] == a and seq[-3] == b and seq[-2] == b:
-            return a, 90.0, f"3-3 Triplet ({a} Reset)"
-
-    # 8. Completed ABBA Mirror Symmetry (A -> BB -> A -> next completes cycle)
-    if len(seq) >= 4:
-        a = seq[-4]
-        b = seq[-3]
-        if a != b and seq[-2] == b and seq[-1] == a:
-            return b, 89.0, f"ABBA Reversal ({b} Wave)"
-
-    # 9. Macro Dominance (Default for isolated single transitions)
-    recent_20 = seq[-20:] if len(seq) >= 20 else seq
-    big_c = recent_20.count("BIG" if item_type == "SIZE" else "RED")
-    sml_c = len(recent_20) - big_c
-    if big_c >= (len(recent_20) * 0.60):
-        val = "BIG" if item_type == "SIZE" else "RED"
-        return val, 86.0, f"Macro Wave ({val} Dominant {big_c}/{len(recent_20)})"
-    elif sml_c >= (len(recent_20) * 0.60):
-        val = "SMALL" if item_type == "SIZE" else "GREEN"
-        return val, 86.0, f"Macro Wave ({val} Dominant {sml_c}/{len(recent_20)})"
-
-    return last_val, 82.0, f"Trend Continuation ({last_val})"
+    return opp_val if chop_count >= 2 else last_val, 75.0, f"Rhythm Momentum ({opp_val if chop_count >= 2 else last_val})"
 
 # ====================================================
 # 📊 MATHEMATICAL MARKET STRUCTURE & PATTERN ENGINE
@@ -695,10 +725,10 @@ def detect_market_patterns(history_items):
     r_db = colors.count("RED")
     g_db = colors.count("GREEN")
 
-    if streak_len >= 2:
+    if streak_len >= 3:
         # Dragon Rider: Follow the shoe! Never cut a dragon!
         q8_mr = (last_c, min(90.0, 72.0 + streak_len * 3.0), f"Confirmed {last_c} dragon streak ({streak_len} rounds); riding momentum (Never cut a dragon)")
-    elif alt_len >= 2:
+    elif alt_len >= 4:
         # Active 1-1 alternation: continuation favors chop
         q8_mr = (opp_c, min(88.0, 70.0 + alt_len * 3.0), f"Active 1-1 alternating chop ({alt_len} rounds); rhythm continuation favors {opp_c}")
     elif is_double:
@@ -783,10 +813,10 @@ def detect_market_patterns(history_items):
     ended_t = [s[1] for s in streaks if s[1] == streak_len]
     h_rate = round((len(ended_t) / len(survived_t) * 100), 1) if survived_t else 50.0
 
-    if streak_len >= 2:
+    if streak_len >= 3:
         # Dragon support: ride the streak!
         q12_hazard = (last_c, min(88.0, 70.0 + streak_len * 2.5), f"Weibull streak survival favors {last_c} dragon continuation ({streak_len} rounds)")
-    elif alt_len >= 2:
+    elif alt_len >= 4:
         q12_hazard = (opp_c, min(86.0, 68.0 + alt_len * 2.5), f"Alternation survival favors chop continuation ({alt_len} rounds)")
     else:
         q12_hazard = (opp_c, 55.0, f"Hazard regime favors {opp_c}")
@@ -856,21 +886,19 @@ def detect_market_patterns(history_items):
     s_score_big = 0.0
     s_score_small = 0.0
 
-    # 1. Size Dragon Rider (Streak continuation >= 2)
-    if s_streak >= 2:
+    # 1. Size Dragon Rider (Streak continuation >= 3)
+    if s_streak >= 3:
         if last_s == "BIG": s_score_big += 4.5 + min(3.0, s_streak * 0.5)
         else: s_score_small += 4.5 + min(3.0, s_streak * 0.5)
-    # 2. Size Alternation Chop (Continuation)
-    elif s_alt >= 2:
+    # 2. Size Alternation Chop (Continuation >= 4)
+    elif s_alt >= 4:
         if opp_s == "BIG": s_score_big += 4.2 + min(2.0, s_alt * 0.4)
         else: s_score_small += 4.2 + min(2.0, s_alt * 0.4)
-    # 3. Size 2-2 Symmetry (Double Double paired steps)
-    elif is_s_2_2:
-        if last_s == "BIG": s_score_big += 3.8
-        else: s_score_small += 3.8
+    # 3. Roadmap Structure Guidance (1-2, 2-1, 2-2, Staircase, etc.)
+    elif s_pred_val == "BIG":
+        s_score_big += 4.0
     else:
-        if opp_s == "BIG": s_score_big += 1.5
-        else: s_score_small += 1.5
+        s_score_small += 4.0
 
     # 5. Rolling 20-Round Micro Imbalance for Size
     b20 = sizes[-20:].count("BIG") if len(sizes) >= 20 else sizes.count("BIG")
@@ -1036,12 +1064,12 @@ def detect_market_patterns(history_items):
         q7_s = ("SMALL" if b20 > s20 else "BIG", 64.0, f"20-Round Size Imbalance ({b20}B vs {s20}S)")
 
     # Quant 8 (Size): Mean-Reversion & Trend Continuation
-    if s_streak >= 2:
+    if s_streak >= 3:
         s_q8_mr = (last_s, min(90.0, 72.0 + s_streak * 3.0), f"Confirmed {last_s} size dragon ({s_streak} rounds); riding momentum")
-    elif is_s_2_2:
-        s_q8_mr = (s_pred_val, 80.0, f"2-2 double-step structure favors {s_pred_val}")
-    elif s_alt >= 3:
+    elif s_alt >= 4:
         s_q8_mr = (opp_s, min(88.0, 70.0 + s_alt * 3.0), f"Active 1-1 alternating size chop ({s_alt} rounds); favors {opp_s}")
+    elif is_s_2_2 or "Double" in s_pattern_desc or "Single" in s_pattern_desc:
+        s_q8_mr = (s_pred_val, 80.0, f"Roadmap structure favors {s_pred_val}")
     else:
         if b20 >= 14:
             s_q8_mr = ("SMALL", 70.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
@@ -1058,7 +1086,7 @@ def detect_market_patterns(history_items):
         if rec_pct_s >= 55.0:
             rhy_s = sizes[-2]
             s_q9_rhy = (rhy_s, round(rec_pct_s, 1), f"Size Lag-2 harmonic active ({rec_lag2_s}/{len(rec20_s)-2}); wave favors {rhy_s}")
-        elif s_alt >= 3:
+        elif s_alt >= 4:
             s_q9_rhy = (opp_s, 68.0, f"Size alternating harmonic favors {opp_s}")
         else:
             s_q9_rhy = (s_pred_val, 58.0, f"Harmonic roadmap flow favors {s_pred_val}")
@@ -1074,10 +1102,10 @@ def detect_market_patterns(history_items):
         if p > 0:
             entropy_12_s -= p * math.log2(p)
     if entropy_12_s >= 0.92:
-        ent_s = opp_s if s_alt >= 3 else s_pred_val
+        ent_s = opp_s if s_alt >= 4 else s_pred_val
         s_q10_ent = (ent_s, 63.0, f"High size entropy ({entropy_12_s:.2f}); chop rhythm favors {ent_s}")
     else:
-        ent_s = last_s if s_streak >= 2 else (opp_s if s_alt >= 3 else s_pred_val)
+        ent_s = last_s if s_streak >= 3 else (opp_s if s_alt >= 4 else s_pred_val)
         s_q10_ent = (ent_s, 64.0, f"Structured size entropy ({entropy_12_s:.2f}); favors {ent_s}")
 
     # Quant 11 (Size): Range Boundary & Extreme Outlier Specialist
@@ -1091,7 +1119,7 @@ def detect_market_patterns(history_items):
         ext_fav = "BIG" if last_num == 4 else "SMALL"
         s_q11_ext = (ext_fav, 62.0, f"Median border transition ({last_num})")
     else:
-        s_q11_ext = (opp_s if s_alt >= 3 else s_pred_val, 55.0, f"Standard distribution ({last_num})")
+        s_q11_ext = (opp_s if s_alt >= 4 else s_pred_val, 55.0, f"Standard distribution ({last_num})")
 
     s_streaks = []
     if len(sizes) >= 2:
@@ -1104,11 +1132,11 @@ def detect_market_patterns(history_items):
                 cur_sz = s
                 cur_l = 1
         s_streaks.append((cur_sz, cur_l))
-    if s_streak >= 2:
+    if s_streak >= 3:
         s_q12_hazard = (last_s, min(88.0, 70.0 + s_streak * 2.5), f"Weibull size streak survival favors {last_s} ({s_streak} rounds)")
-    elif is_s_2_2:
-        s_q12_hazard = (s_pred_val, 78.0, f"Weibull 2-2 symmetry hazard favors {s_pred_val}")
-    elif s_alt >= 3:
+    elif is_s_2_2 or "Double" in s_pattern_desc or "Single" in s_pattern_desc:
+        s_q12_hazard = (s_pred_val, 78.0, f"Weibull roadmap structure hazard favors {s_pred_val}")
+    elif s_alt >= 4:
         s_q12_hazard = (opp_s, min(86.0, 68.0 + s_alt * 2.5), f"Alternation survival favors {opp_s} chop ({s_alt} rounds)")
     else:
         s_q12_hazard = (s_pred_val, 58.0, f"Hazard regime favors {s_pred_val}")
@@ -1553,10 +1581,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
     # --- Phase 1: 17 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
-    s_dragon = last_s if s_streak >= 2 else s_pred_val
-    s_chop = opp_s if s_alt >= 3 else (last_s if s_streak >= 2 else s_pred_val)
-    s_22 = s_pred_val if is_s_2_2 else s_pred_val
-    s_contrarian = opp_s if (s_streak >= 5 or b20 >= 14 or s20 >= 14) else s_pred_val
+    s_dragon = last_s if s_streak >= 3 else s_pred_val
+    s_chop = opp_s if s_alt >= 4 else s_pred_val
+    s_22 = s_pred_val
+    s_contrarian = opp_s if (s_streak >= 6 or b20 >= 14 or s20 >= 14) else s_pred_val
 
     s_q4 = s_quants.get("s_q4", (s_pred_val, 80.0, "Pinterest Size Roadmap"))
     s_q5 = s_quants.get("s_q5", (s_pred_val, 70.0, "Size Markov 3-Gram"))
@@ -1574,8 +1602,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
     all_specialists = [
-        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 2 else 60.0, "arg": f"Size streak len: {s_streak}"},
-        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 3 else 60.0, "arg": f"Size chop len: {s_alt}"},
+        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else 60.0, "arg": f"Size streak len: {s_streak}"},
+        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 4 else 60.0, "arg": f"Size chop len: {s_alt}"},
         {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 82.0 if is_s_2_2 else 60.0, "arg": "Size 2-2 pair symmetry"},
         {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0, "arg": "Anti-exhaustion balance"},
         {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4[0], "conf": s_q4[1], "arg": s_q4[2]},
@@ -1598,18 +1626,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    dragon_weight = 8.5 if s_streak >= 2 else 2.0
-    chop_weight = 7.0 if s_alt >= 3 else 1.5
-    sym_weight = 4.5 if is_s_2_2 else 1.8
+    dragon_weight = 8.5 if s_streak >= 3 else 2.0
+    chop_weight = 7.0 if s_alt >= 4 else 1.5
+    sym_weight = 5.0 if ("Double" in s_pattern_desc or "Single" in s_pattern_desc) else 2.0
     mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
-    roadmap_weight = 5.0 if s_q4[1] >= 80.0 else 2.5
+    roadmap_weight = 6.0 if s_q4[1] >= 85.0 else 3.5
     markov_weight = 4.0 if s_q5[1] >= 75.0 else 2.8
     bayes_num_weight = 3.5 if s_q6[1] >= 70.0 else 2.2
     imbalance_weight = 3.0 if s_q7[1] >= 70.0 else 1.8
     rhythm_weight = 2.2 if s_q9[1] >= 65.0 else 1.4
     entropy_weight = 1.8
     outlier_weight = 2.2 if last_num in (0, 1, 8, 9) else 1.2
-    hazard_weight = 4.2 if s_streak >= 2 else (3.5 if s_alt >= 2 else 1.8)
+    hazard_weight = 4.2 if s_streak >= 3 else (3.5 if s_alt >= 4 else 1.8)
     fourier_weight = 2.5 if s_q13[1] >= 68.0 else 1.5
     kolmo_weight = 1.8
     bayes_decay_weight = 2.5 if s_q15[1] >= 65.0 else 1.8
@@ -1681,8 +1709,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
     # ====================================================
-    # Protect established dragons (streak >= 2) against counter-trend bets
-    if s_streak >= 2 and w_size != last_s:
+    # Protect established dragons (streak >= 3, up to 5) against counter-trend bets
+    if s_streak >= 3 and s_streak < 6 and w_size != last_s:
         w_size = last_s
 
     # ====================================================
@@ -1697,23 +1725,23 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if w_size == s_pred_val:
         target_pattern = s_pattern_desc
     else:
-        if s_streak >= 2 and w_size == last_s:
+        if s_streak >= 3 and w_size == last_s:
             target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
-        elif s_alt >= 3 and w_size == opp_s:
+        elif s_alt >= 4 and w_size == opp_s:
             target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
         elif b20 >= 12 or s20 >= 12:
             target_pattern = f"Mean-Reversion Imbalance ({w_size})"
-        elif is_s_2_2:
-            target_pattern = f"2-2 Symmetry ({w_size} Step)"
+        elif is_s_2_2 or "Double" in s_pattern_desc:
+            target_pattern = f"Roadmap Pattern ({w_size})"
         else:
             target_pattern = f"Quant Consensus Edge ({w_size})"
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 2)
-    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 3)
-    s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and len(sizes) >= 3)
-    s_strong_stair = ("Staircase" in s_pattern_desc or "Mountain" in s_pattern_desc)
+    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
+    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 4)
+    s_strong_22 = ("Double" in s_pattern_desc or "Single" in s_pattern_desc)
+    s_strong_stair = ("Staircase" in s_pattern_desc or "Mountain" in s_pattern_desc or "Triplet" in s_pattern_desc)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
     # ====================================================
@@ -1734,13 +1762,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # 🛡️ Level 2+ Recovery Protection (Anti-Loss Armor):
     if current_loss_streak >= 1:
         recovery_ok = (
-            (w_v >= 12) or
-            (target_margin >= 15.0) or
-            (s_streak >= 2) or
-            (s_alt >= 3) or
-            (has_confirmed_structure and w_v >= 9)
+            (w_v >= 12 and target_margin >= 15.0) or
+            (s_streak >= 3) or
+            (s_alt >= 4) or
+            ("Single-Double" in s_pattern_desc and w_v >= 10) or
+            ("Double-Single" in s_pattern_desc and w_v >= 10) or
+            ("Double-Step" in s_pattern_desc and w_v >= 10) or
+            (has_confirmed_structure and w_v >= 11)
         )
-        if consecutive_skips >= 1:
+        if consecutive_skips >= 2:
             recovery_ok = True
         is_qualified_bet = recovery_ok
 
@@ -1803,38 +1833,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     print(f"📊 [DATABASE INTEL] Synced: {tot_synced} rounds | N={last_num} -> {n_trans_str} | 100R=({b100}B/{s100}S)", flush=True)
 
+    recent_15_str = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-15:]])
     prompt_arbiter = (
-        f"You are the Supreme AI Predictor with PRIMARY DECISION AUTHORITY for WinGo 30S.\n"
-        f"Prediction Domain: STRICTLY SIZE (BIG [5-9] vs SMALL [0-4]). Zero violet payout penalty.\n\n"
-        f"FULL HISTORICAL DATABASE INTELLIGENCE ({tot_synced} SYNCED ROUNDS):\n"
-        f"- Total Verified Synced Rounds: {tot_synced} rounds in memory\n"
-        f"- Full Historical Database Bias: {b_all} BIG ({pct_b_all:.1f}%) vs {s_all} SMALL ({100-pct_b_all:.1f}%)\n"
-        f"- Multi-Window Horizon: 100-Round=({b100}B vs {s100}S), 50-Round=({b50}B vs {s50}S), 20-Round=({b20}B vs {s20}S)\n"
-        f"- Full Historical Number Transition: {n_trans_str}\n"
-        f"- Full Historical Pair Transition: {p_trans_str}\n\n"
-        f"RECENT 30-DRAW SEQUENCE (oldest -> newest):\n"
-        f"{recent_history_detailed}\n\n"
-        f"CURRENT REGIME & PROBABILITIES:\n"
-        f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
-        f"- Active Size Streak: {last_s} x{s_streak}\n"
-        f"- Active Alternation (Chop) Count: {s_alt}\n"
-        f"- Multi-Horizon Probabilities: {top_prob_lines}\n"
-        f"- Unified Math Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
-        f"- Quant Specialists Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% margin)\n"
-        f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
-        f"PRIMARY DECISION DIRECTIVE:\n"
-        f"Synthesize the {tot_synced} synced rounds of database ground truth with sequence roadmaps.\n"
-        f"1. Dragon Trend Law: When an active dragon trend is alive (streak >= 2), NEVER cut the trend unless severe exhaustion (streak >= 6).\n"
-        f"2. Structural Baccarat/WinGo Law: Watch for 2-2 double-step repetition (pair completion) when a streak breaks. Only declare 1-1 chop if alternation >= 3.\n"
-        f"3. Decisive Edge: Pick the winning target 'BIG' or 'SMALL' with high confidence (94.0%-98.5%).\n"
-        f"4. Capital Guard: If the market state is pure chaotic noise without an authentic directional edge, return 'SKIP' to preserve capital.\n\n"
-        f"Return JSON ONLY with this exact schema:\n"
-        f'{{\n'
-        f'  "action": "BET" or "SKIP",\n'
-        f'  "target": "BIG" or "SMALL",\n'
-        f'  "confidence": 96.5,\n'
-        f'  "summary": "Crisp 3-5 word strategy summary (e.g. Dragon Trend Momentum or 2-2 Pair Reversal)"\n'
-        f'}}'
+        f"WinGo 30S Size Arbiter (BIG: 5-9, SMALL: 0-4).\n"
+        f"Recent 15 Draws: {recent_15_str}\n"
+        f"Detected Roadmap: [{s_pattern_desc}]\n"
+        f"Streak: {last_s} x{s_streak} | Chop: {s_alt} | Last Num: {last_num} ({n_trans_str})\n"
+        f"Math Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% | Council Votes: {w_size} ({w_v} vs {l_v})\n"
+        f"Active Stage: {cur_stage_str} (Skips: {consecutive_skips})\n"
+        f"Directives: Detect chart roadmaps (Dragon>=3, Chop>=4, 1-2, 2-1, 2-2). If clear, bet with 94-98% conf. If noisy transition in recovery, skip.\n"
+        f"Return JSON ONLY:\n"
+        f'{{"action": "BET" or "SKIP", "target": "BIG" or "SMALL", "confidence": 96.0, "summary": "3-5 word strategy"}}'
     )
 
     ai_called_successfully = False
@@ -1843,7 +1852,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt_arbiter}],
-                "response_format": {"type": "json_object"}
+                "response_format": {"type": "json_object"},
+                "max_tokens": 60,
+                "temperature": 0.2
             }, timeout=3.5)
             if r_arb.status_code == 200:
                 res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
@@ -1866,7 +1877,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                         is_qualified_bet = True
                         final_summary = f"Deadlock override: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
                         print(f"🧠 [MASTER AI: {model_name}] ⚡ Deadlock override after {consecutive_skips} skips. Betting {target_val}.", flush=True)
-                    elif current_loss_streak >= 1 and not (s_streak >= 2 or s_alt >= 3):
+                    elif current_loss_streak >= 1 and not (s_streak >= 3 or s_alt >= 4):
                         arbiter_wants_skip = True
                         final_summary = arb_reason or "Capital preservation: Filtered out ambiguous transition round during recovery stage."
                         print(f"🧠 [MASTER AI: {model_name}] ⏸️ RECOVERY SNIPER SKIP HONORED: {final_summary}", flush=True)
@@ -1883,7 +1894,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     arbiter_wants_skip = False
                     is_qualified_bet = True
                     if arb_target in ("BIG", "SMALL"):
-                        if s_streak >= 2 and s_streak < 5 and arb_target != last_s:
+                        if s_streak >= 3 and s_streak < 6 and arb_target != last_s:
                             print(f"🧠 [MASTER AI: {model_name}] 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {arb_target}", flush=True)
                             target_val = last_s
                         else:
