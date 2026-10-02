@@ -26,7 +26,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
     "allam-2-7b",               # Fast, high-capacity primary reasoning engine (7000 req/day active quota)
-    "qwen/qwen3.8-27b",         # 27B deep math & quant reasoning failover
+    "openai/gpt-oss-20b",       # 20B frontier reasoning failover
+    "openai/gpt-oss-120b"       # 120B parameter ultimate powerhouse
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
@@ -1611,6 +1612,7 @@ def detect_market_patterns(history_items):
             emp_reaches_k_plus_1 += 1
 
     p_survive = (emp_reaches_k_plus_1 + 1.0) / (emp_reaches_k + 2.0) if emp_reaches_k >= 3 else 0.50
+    streak_survival_rate = round(p_survive, 4)
 
     if emp_k >= 2 and emp_reaches_k >= 3:
         if p_survive >= 0.52:
@@ -1848,6 +1850,9 @@ def detect_market_patterns(history_items):
         "unified_p_big": round(unified_p_big, 4),
         "unified_p_small": round(unified_p_small, 4),
         "unified_edge": unified_edge,
+        "streak_survival_rate": streak_survival_rate,
+        "emp_reaches_k": emp_reaches_k,
+        "emp_reaches_k_plus_1": emp_reaches_k_plus_1,
         "avg_delta": round(avg_delta, 2),
         "is_high_volatility": is_high_volatility,
         "rsi_14": round(rsi_14, 1),
@@ -1958,7 +1963,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
     # --- Phase 1: 28 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
-    s_dragon = last_s if s_streak >= 3 else None
+    s_dragon = last_s if s_streak >= 2 else None
     s_chop = opp_s if s_alt >= 2 else None
     s_22 = s_pred_val if "2-2" in s_pattern_desc else None
     s_contrarian = opp_s if (s_streak >= 6 or b20 >= 14 or s20 >= 14) else None
@@ -2052,7 +2057,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
     all_specialists = [
-        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else 50.0, "arg": f"Size streak len: {s_streak}"},
+        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 2 else 50.0, "arg": f"Size streak len: {s_streak}"},
         {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 2 else 50.0, "arg": f"Size chop len: {s_alt}"},
         {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 82.0 if is_s_2_2 else 50.0, "arg": "Size 2-2 pair symmetry"},
         {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0 if s_contrarian else 50.0, "arg": "Anti-exhaustion balance"},
@@ -2088,7 +2093,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    dragon_weight = 8.5 if s_streak >= 3 else 2.0
+    dragon_weight = 8.5 if s_streak >= 2 else 2.0
     chop_weight = 7.5 if s_alt >= 2 else 1.5
     sym_weight = 5.0 if ("Confirmed 2-2" in s_pattern_desc) else 2.0
     mr_weight = 3.5 if (b20 >= 13 or s20 >= 13) else 1.0
@@ -2204,7 +2209,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if w_size == s_pred_val and s_pred_conf >= 75.0:
         target_pattern = s_pattern_desc
     else:
-        if s_streak >= 3 and w_size == last_s:
+        if s_streak >= 2 and w_size == last_s:
             target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
         elif s_alt >= 2 and w_size == opp_s:
             target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
@@ -2217,37 +2222,28 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
-    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 2)
+    s_strong_dragon = (s_streak >= 2)
+    s_strong_chop = (s_alt == 2)
     s_strong_22 = ("Confirmed 2-2" in s_pattern_desc)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22)
 
     # ====================================================
-    # 🎯 3. HIGH-INTENSITY CONVICTION QUALIFICATION ENGINE
+    # 🎯 3. TRIANGULATED LOSS HAZARD DETECTION
     # ====================================================
-    if has_confirmed_structure:
-        is_qualified_bet = (w_v >= 4 and size_margin_pct >= 20.0 and active_votes >= 5)
-    else:
-        # In transitional noise without confirmed structure:
-        # Strictly require solid active independent consensus!
-        is_qualified_bet = (w_v >= 7 and size_margin_pct >= 35.0 and active_votes >= 9)
+    streak_surv = p_info.get("streak_survival_rate", 0.50)
+    p_m10_val = probabilities.get("p_10x10_markov", 0.50)
 
-    # 🛡️ Early Chop Armor & Volatility Gate (Anti-Streak-Trap):
-    if p_info.get("is_high_volatility", False) and s_alt in (2, 3):
-        if w_size != opp_s and not s_strong_dragon:
-            is_qualified_bet = False
-            print(f"🛡️ [CHOP ARMOR] Filtered counter-chop streak bet during volatile swing (Δ={p_info.get('avg_delta')})", flush=True)
-
-    # 🛡️ Level 2+ Recovery Protection (Anti-Loss Armor):
-    # During recovery (Level 2 = 3X, Level 3 = 9X), risk tolerance is ZERO.
-    # NEVER bet into ambiguous noise!
-    if current_loss_streak >= 1:
-        if not has_confirmed_structure:
-            is_qualified_bet = False
-            print(f"🛡️ [RECOVERY ARMOR] Level {current_loss_streak + 1} bet blocked: Market lacks confirmed structure (Dragon/Chop/2-2). Forcing SAFE SKIP.", flush=True)
-        elif w_v < 5 or size_margin_pct < 25.0:
-            is_qualified_bet = False
-            print(f"🛡️ [RECOVERY ARMOR] Level {current_loss_streak + 1} bet blocked: Insufficient consensus ({size_margin_pct:.1f}% margin). Forcing SAFE SKIP.", flush=True)
+    # Statistical Loss Hazards (True failure modes):
+    # 1. Streak Exhaustion Trap: Streaks rarely survive beyond length 4; or length 3 with decay
+    is_streak_exhausted = (s_streak >= 4) or (s_streak == 3 and streak_surv < 0.45)
+    # 2. Late Chop Breakdown: 1-1 alternation breaks down into pairs/streaks at length >= 3
+    is_late_chop_trap = (s_alt >= 3)
+    # 3. Violent Delta Chaos: Erratic multi-digit jump velocity with zero directionality
+    is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.2 and p_info.get("is_high_volatility", False))
+    # 4. Dead 50/50 Noise: Low quant margin (< 12%) and Markov is 50/50 neutral
+    is_dead_5050_noise = (size_margin_pct < 12.0 and 0.46 <= p_m10_val <= 0.54 and s_streak < 2 and s_alt < 2)
+    # 5. Recovery Level 3 Guard: In 9X recovery, zero tolerance for ambiguous transitions
+    is_l3_recovery_risk = (current_loss_streak >= 2 and s_streak < 2 and s_alt != 2)
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
@@ -2259,32 +2255,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     else:
         consensus_tag = f"⚡ Council Lead ({w_v}-{l_v} | {target_edge_desc})"
 
-    # --- Phase 4: Master AI Arbiter Consultation (Groq with Automatic Model Failover) ---
-    top_prob_lines = ", ".join([f"{k}={probabilities[k]}" for k in list(probabilities.keys())[:6]])
-    spec_summary = "\n".join([
-        f"- {s['name']}: {s['val']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
-        for s in all_specialists[:10]
-    ])
-
-    final_summary = f"Selected SIZE {target_val} based on {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc} | Edge {unified_edge:.1f}%)."
-    v_alert = False
-    arbiter_wants_skip = False
-
-    # --- Phase 4: Master AI Primary Decision Engine (Groq with Automatic Model Failover) ---
+    # --- Database sequential metrics ---
     tot_synced = len(history_items)
-    recent_history_detailed = ", ".join([f"...{it.get('period','')[-3:]}:{it.get('size')}({it.get('num')})" for it in history_items[-30:]])
     cur_stage_str = f"Level {current_loss_streak + 1} ({3**current_loss_streak}X)"
-
-    # Multi-window counts across the synced database
     b100 = sizes[-100:].count("BIG") if len(sizes) >= 100 else sizes.count("BIG")
     s100 = sizes[-100:].count("SMALL") if len(sizes) >= 100 else sizes.count("SMALL")
     b50 = sizes[-50:].count("BIG") if len(sizes) >= 50 else sizes.count("BIG")
     s50 = sizes[-50:].count("SMALL") if len(sizes) >= 50 else sizes.count("SMALL")
-    b_all = sizes.count("BIG")
-    s_all = sizes.count("SMALL")
-    pct_b_all = (b_all / len(sizes) * 100) if sizes else 50.0
 
-    # Historical transition stats for last_num across the full synced database
     num_trans_db = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
     for i in range(len(nums) - 1):
         num_trans_db[nums[i]][sizes[i + 1]] += 1
@@ -2292,210 +2270,239 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     tot_last_n = cnt_last_n["BIG"] + cnt_last_n["SMALL"]
     n_trans_str = f"After number {last_num} (occurred {tot_last_n} times in database): P(BIG)={cnt_last_n['BIG']/tot_last_n*100:.1f}%, P(SMALL)={cnt_last_n['SMALL']/tot_last_n*100:.1f}%" if tot_last_n > 0 else f"Number {last_num} baseline transition"
 
-    # Historical transition stats for pair (penultimate_num, last_num)
-    if len(nums) >= 2:
-        last_p = (nums[-2], nums[-1])
-        pair_trans_db = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
-        for i in range(len(nums) - 2):
-            pair_trans_db[(nums[i], nums[i + 1])][sizes[i + 2]] += 1
-        cnt_last_p = pair_trans_db[last_p]
-        tot_last_p = cnt_last_p["BIG"] + cnt_last_p["SMALL"]
-        p_trans_str = f"After pair {last_p} (occurred {tot_last_p} times): BIG={cnt_last_p['BIG']}, SMALL={cnt_last_p['SMALL']}" if tot_last_p > 0 else "Pair baseline"
-    else:
-        p_trans_str = "Pair baseline"
-
-    print(f"📊 [DATABASE INTEL] Synced: {tot_synced} rounds | N={last_num} -> {n_trans_str} | 100R=({b100}B/{s100}S)", flush=True)
-
     recent_20_detailed = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-20:]])
-    prompt_strategist = (
-        f"You are the Lead Market Strategist for WinGo 30S.\n"
-        f"MANDATE: COGNITIVE RIGOR & HIGH CONVICTION. ZERO LOSSES.\n\n"
-        f"GROUND TRUTH DATABASE & SEQUENTIAL INTELLIGENCE:\n"
-        f"- Total Synced Memory: {tot_synced} rounds\n"
-        f"- Macro Multi-Window: 100-Round=({b100}B/{s100}S), 50-Round=({b50}B/{s50}S), 20-Round=({b20}B/{s20}S)\n"
-        f"- Database Number Transition Ground Truth: {n_trans_str}\n"
-        f"- 10x10 Full Markov Matrix (No.{last_num}): P(BIG)={probabilities.get('p_10x10_markov', 0.5)*100:.1f}%, P(SMALL)={(1.0 - probabilities.get('p_10x10_markov', 0.5))*100:.1f}%\n"
-        f"- Empirical Streak Survival Matrix: P(Streak x{s_streak}->x{s_streak+1})={p_info.get('probabilities',{}).get('p_empirical_survival',0.5)*100:.1f}%\n"
-        f"- Digit RSI(14): {p_info.get('rsi_14', 50.0):.1f} ({p_info.get('rsi_status', 'Neutral')})\n"
-        f"- Digit Bollinger & Z-Score: {s_quants.get('s_q_bollinger', ('', 0, ''))[2]}\n"
-        f"- Digit Momentum Derivative: {s_quants.get('s_q_momentum', ('', 0, ''))[2]}\n"
-        f"- PRNG Residue Engine: {s_quants.get('s_q_residue', ('', 0, ''))[2]}\n"
-        f"- Baccarat Derived Roads: {p_info.get('derived_road_desc', 'Balanced')}\n"
-        f"- Delta Jump Velocity: Avg Δ={p_info.get('avg_delta', 4.5):.1f} (High Volatility Chop: {'YES' if p_info.get('is_high_volatility') else 'NO'})\n"
-        f"- Recent 20-Draw Shoe Sequence (oldest->newest): {recent_20_detailed}\n"
-        f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
-        f"- Active Streak: {last_s} x{s_streak} | Active Alternation (Chop): {s_alt}\n"
-        f"- Multi-Probability Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
-        f"- 32 Quant Specialists Votes: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
-        f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
-        f"ANALYTICAL DECISION DIRECTIVES:\n"
-        f"1. Synthesize all sequence roadmaps, 10x10 Markov, RSI, Momentum, and Empirical Survival.\n"
-        f"2. Decisive Selection: When edge or trend roadmap is distinct, choose 'BET' on the high-probability side ('BIG' [5-9] or 'SMALL' [0-4]).\n"
-        f"3. Strict Win-Streak Defense (Safe Skip): If market is in high-volatility chop without consensus, 50/50 noise, or ambiguous, choose 'SKIP' to preserve winning streak and avoid losses.\n\n"
-        f"Return JSON ONLY with this schema:\n"
-        f'{{\n'
-        f'  "action": "BET" or "SKIP",\n'
-        f'  "target": "BIG" or "SMALL",\n'
-        f'  "summary": "Crisp 3-6 word strategy summary"\n'
-        f'}}'
-    )
-
-    prompt_cro = (
-        f"You are the Chief Risk Officer (CRO) and Adversarial Auditor for a zero-loss WinGo 30S trading desk.\n"
-        f"CRITICAL MANDATE: MAXIMUM TENSION & STRESS. ZERO TOLERANCE FOR CASUAL BETS OR GAMBLER'S FALLACIES.\n"
-        f"YOUR PRIMARY BURDEN IS CAPITAL PRESERVATION. YOU HAVE FULL VETO POWER.\n\n"
-        f"MARKET METRICS & STRESS AUDIT:\n"
-        f"- Recent 20 Shoe: {recent_20_detailed}\n"
-        f"- Current Pattern: {s_pattern_desc} | Streak: {last_s} x{s_streak} | Chop: {s_alt}x\n"
-        f"- Empirical Streak Survival Rate: {p_info.get('probabilities',{}).get('p_empirical_survival',0.5)*100:.1f}%\n"
-        f"- Digit Bollinger Z-Score: {s_quants.get('s_q_bollinger', ('', 0, ''))[2]}\n"
-        f"- Digit Momentum Derivative: {s_quants.get('s_q_momentum', ('', 0, ''))[2]}\n"
-        f"- PRNG Residue: {s_quants.get('s_q_residue', ('', 0, ''))[2]}\n"
-        f"- Quant Votes: {w_size} ({w_v} vs {l_v} | Margin: {size_margin_pct:.0f}%)\n"
-        f"- Martingale Stage: {cur_stage_str}\n\n"
-        f"STRICT AUDIT RULES:\n"
-        f"1. If current streak has low survival odds (<50%), or if chop is ambiguous, or if margin is <30%, VETO by outputting 'SKIP'.\n"
-        f"2. In Recovery Level 2 (3X) or Level 3 (9X), DO NOT take speculative bets! Demand 100% structural clarity or VETO ('SKIP').\n"
-        f"3. Only approve 'BET' if market structure is undeniable (confirmed Dragon or confirmed Chop) and quant consensus agrees.\n"
-        f"Remember: A timely SKIP preserves capital and maintains our 100% win-streak. A loss destroys it.\n\n"
-        f"Return JSON ONLY with this schema:\n"
-        f'{{\n'
-        f'  "action": "BET" or "SKIP",\n'
-        f'  "target": "BIG" or "SMALL",\n'
-        f'  "summary": "Crisp 3-6 word risk assessment"\n'
-        f'}}'
-    )
-
-    def _query_groq_single(model_name, prompt_text, role_desc):
-        try:
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt_text}],
-                "max_tokens": 120,
-                "temperature": 0.12
-            }, timeout=3.2)
-            if r.status_code == 200:
-                raw_c = r.json()["choices"][0]["message"]["content"]
-                parsed_act, parsed_tgt, parsed_conf, parsed_summary = None, None, None, ""
-                m = re.search(r'\{.*\}', raw_c, re.DOTALL)
-                if m:
-                    try:
-                        res = json.loads(m.group(0))
-                        parsed_act = str(res.get("action", "")).upper()
-                        parsed_tgt = str(res.get("target", "")).upper()
-                        parsed_conf = res.get("confidence")
-                        parsed_summary = str(res.get("summary") or res.get("reason") or "").strip()
-                    except Exception:
-                        pass
-                if not parsed_act:
-                    m_act = re.search(r"(?:action|decision)\s*[:=]\s*[\"'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
-                    m_tgt = re.search(r"(?:target|prediction|side)\s*[:=]\s*[\"'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
-                    m_sum = re.search(r"(?:summary|reason)\s*[:=]\s*[\"'\`]?([^\n\r]+)", raw_c, re.IGNORECASE)
-                    if m_act:
-                        parsed_act = m_act.group(1).upper()
-                        parsed_tgt = m_tgt.group(1).upper() if m_tgt else ""
-                        parsed_summary = m_sum.group(1).strip() if m_sum else ""
-
-                if parsed_act in ("BET", "SKIP"):
-                    raw_summary = re.sub(r"\(Note:.*?\)", "", parsed_summary, flags=re.DOTALL).strip()
-                    raw_summary = re.sub(r"[\*\_\`]", "", raw_summary).strip()
-                    if "." in raw_summary: raw_summary = raw_summary.split(".")[0].strip()
-                    if "\n" in raw_summary: raw_summary = raw_summary.split("\n")[0].strip()
-                    if len(raw_summary.split()) > 7:
-                        raw_summary = " ".join(raw_summary.split()[:7])
-                    return {
-                        "ok": True,
-                        "model": model_name,
-                        "role": role_desc,
-                        "action": parsed_act,
-                        "target": parsed_tgt,
-                        "confidence": parsed_conf,
-                        "summary": raw_summary
-                    }
-            elif r.status_code == 429:
-                print(f"⚠️ [{role_desc}: {model_name}] Rate limited (429)", flush=True)
-            else:
-                print(f"⚠️ [{role_desc}: {model_name}] HTTP {r.status_code}: {r.text[:80]}", flush=True)
-        except Exception as e:
-            print(f"⚠️ [{role_desc}: {model_name}] API Notice: {e}", flush=True)
-        return {"ok": False, "model": model_name, "role": role_desc}
-
-    def _query_with_failover(primary_model, backup_model, prompt_text, role_desc):
-        res = _query_groq_single(primary_model, prompt_text, role_desc)
-        if res.get("ok"):
-            return res
-        return _query_groq_single(backup_model, prompt_text, role_desc)
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f_strat = executor.submit(_query_with_failover, "allam-2-7b", "qwen/qwen3.8-27b", prompt_strategist, "Lead Strategist")
-        f_cro = executor.submit(_query_with_failover, "qwen/qwen3.8-27b", "allam-2-7b", prompt_cro, "Chief Risk Officer")
-        res_strat = f_strat.result()
-        res_cro = f_cro.result()
-
-    # Protocol Decision Matrix:
-    # 1. Chief Risk Officer VETO check (Absolute Veto Authority)
-    if res_cro.get("ok") and res_cro.get("action") == "SKIP":
-        arbiter_wants_skip = True
-        is_qualified_bet = False
-        final_summary = f"CRO Veto: {res_cro.get('summary', 'Capital preservation')}"
-        print(f"🧠 [CHIEF RISK OFFICER: {res_cro.get('model')}] 🛡️ VETO ENFORCED: {final_summary}", flush=True)
-
-    # 2. Lead Strategist SKIP check
-    elif res_strat.get("ok") and res_strat.get("action") == "SKIP":
-        arbiter_wants_skip = True
-        is_qualified_bet = False
-        final_summary = res_strat.get("summary") or "Strategist: Ambiguous transition filtered."
-        print(f"🧠 [LEAD STRATEGIST: {res_strat.get('model')}] ⏸️ SNIPER SKIP HONORED: {final_summary}", flush=True)
-
-    # 3. Both models approve BET (or at least one approved and other was offline)
-    elif (res_strat.get("action") == "BET" or res_cro.get("action") == "BET"):
-        # Double-Sniper Guard: Mathematical quant consensus must qualify!
-        if not is_qualified_bet:
-            print(f"🛡️ [DOUBLE-SNIPER] LLM approved BET, but quantitative noise filter blocked entry. SAFE SKIP HONORED.", flush=True)
-            arbiter_wants_skip = True
-        else:
-            arbiter_wants_skip = False
-            chosen_target = None
-            if res_cro.get("action") == "BET" and res_cro.get("target") in ("BIG", "SMALL"):
-                chosen_target = res_cro.get("target")
-            elif res_strat.get("action") == "BET" and res_strat.get("target") in ("BIG", "SMALL"):
-                chosen_target = res_strat.get("target")
-
-            if chosen_target:
-                # Fundamental Trend Laws:
-                if s_streak >= 3 and s_streak < 6 and chosen_target != last_s:
-                    print(f"🧠 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {chosen_target}", flush=True)
-                    target_val = last_s
-                elif s_alt >= 2 and chosen_target != opp_s:
-                    print(f"🧠 🛡️ Chop Trend Law: Preserved {opp_s} (Chop x{s_alt}) over counter-chop suggestion {chosen_target}", flush=True)
-                    target_val = opp_s
-                else:
-                    if chosen_target != target_val:
-                        print(f"🧠 🎯 Master AI Strategic Target: {target_val} -> {chosen_target}", flush=True)
-                        target_val = chosen_target
-                        target_pattern = f"Master Brain Direction ({target_val})"
-
-            strat_conf = res_strat.get("confidence") or res_cro.get("confidence")
-            if isinstance(strat_conf, (int, float)) and 50 <= strat_conf <= 99.5:
-                target_conf = max(float(target_conf), float(strat_conf))
-
-            strat_sum = res_strat.get("summary") or res_cro.get("summary")
-            if strat_sum:
-                final_summary = strat_sum
-            print(f"🧠 [DUAL-COUNCIL VERIFIED] ✅ BET CONFIRMED: SIZE {target_val} ({target_conf:.1f}%) | {final_summary}", flush=True)
-
-    else:
-        # Fallback if both AI calls failed / offline
-        if not is_qualified_bet:
-            arbiter_wants_skip = True
-            final_summary = "Quant filter: Transition noise filtered."
-            print(f"📊 [QUANT BACKUP] Master AI unreachable. Quant noise filter enforced SAFE SKIP.", flush=True)
-        else:
-            arbiter_wants_skip = False
-            print(f"📊 [QUANT BACKUP] Master AI unreachable. Pure Quant Consensus BET: {target_val}", flush=True)
 
     # ====================================================
-    # 🎯 4. FINAL SNIPER FILTER (Real Skips on Noise)
+    # 🎯 4. MASTER AI COGNITIVE RIGOR & REASONING ENGINE
+    # ====================================================
+    prompt_master_ai = (
+        f"You are the Senior Quantitative Arbiter and Master AI Brain for WinGo 30S.\n"
+        f"MANDATE: HIGH COGNITIVE INTENSITY & DEEP MATHEMATICAL CALCULATION.\n"
+        f"STRESS & TENSION DIRECTIVE: Channel 100% of your cognitive tension into rigorous probabilistic analysis. Do NOT lazily default to skipping out of fear.\n\n"
+        f"SEQUENTIAL INTELLIGENCE & INDICATORS:\n"
+        f"- Total Synced Memory: {tot_synced} rounds\n"
+        f"- Recent 20-Draw Shoe Sequence (oldest->newest): {recent_20_detailed}\n"
+        f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
+        f"- Active Streak: {last_s} x{s_streak} (Survival Rate: {streak_surv*100:.1f}%) | Active Alternation (Chop): {s_alt}x\n"
+        f"- 10x10 Full Markov Transition (after No.{last_num}): P(BIG)={p_m10_val*100:.1f}%, P(SMALL)={(1.0 - p_m10_val)*100:.1f}%\n"
+        f"- Ground Truth Database Transition: {n_trans_str}\n"
+        f"- Digit RSI(14): {p_info.get('rsi_14', 50.0):.1f} ({p_info.get('rsi_status', 'Neutral')})\n"
+        f"- Digit Velocity & Acceleration: {s_quants.get('s_q_momentum', ('', 0, ''))[2]}\n"
+        f"- PRNG Residue Engine: {s_quants.get('s_q_residue', ('', 0, ''))[2]}\n"
+        f"- Baccarat Derived Roads: {p_info.get('derived_road_desc', 'Balanced')}\n"
+        f"- Delta Jump Velocity: Avg Δ={p_info.get('avg_delta', 4.5):.1f} (High Volatility: {'YES' if p_info.get('is_high_volatility') else 'NO'})\n"
+        f"- 32 Quant Specialists Consensus: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
+        f"- Active Martingale Level: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
+        f"DECISION DIRECTIVES:\n"
+        f"1. DEEP THINKING: Weigh sequence roadmaps, Markov transition, and quant consensus.\n"
+        f"2. CONFIDENT BETTING: When a legitimate edge or fresh trend exists (Dragon streak x2-x3, fresh 1-1 chop, or quant margin >= 15%), approve 'BET' decisively on the dominant side ('BIG' [5-9] or 'SMALL' [0-4]).\n"
+        f"3. GENUINE LOSS HAZARD ONLY: Only output 'SKIP' when you detect an explicit loss hazard (streak exhaustion trap where continuation probability drops, late chop breakdown, violent chaotic swings, or dead 50/50 noise where playing has high probability of a loss).\n\n"
+        f"Return JSON ONLY with this schema:\n"
+        f'{{\n'
+        f'  "action": "BET" or "SKIP",\n'
+        f'  "target": "BIG" or "SMALL",\n'
+        f'  "confidence": 70-98,\n'
+        f'  "summary": "Crisp 3-6 word strategic diagnosis"\n'
+        f'}}'
+    )
+
+    def _query_master_ai(prompt_text):
+        for model_name in MASTER_AI_MODELS:
+            try:
+                r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt_text}],
+                    "max_tokens": 350,
+                    "temperature": 0.12
+                }, timeout=3.5)
+                if r.status_code == 200:
+                    raw_c = r.json()["choices"][0]["message"]["content"]
+                    parsed_act, parsed_tgt, parsed_conf, parsed_summary = None, None, None, ""
+                    m = re.search(r'\{.*\}', raw_c, re.DOTALL)
+                    if m:
+                        try:
+                            res = json.loads(m.group(0))
+                            parsed_act = str(res.get("action", "")).upper()
+                            parsed_tgt = str(res.get("target", "")).upper()
+                            parsed_conf = res.get("confidence")
+                            parsed_summary = str(res.get("summary") or res.get("reason") or "").strip()
+                        except Exception:
+                            pass
+                    if not parsed_act:
+                        m_act = re.search(r"(?:action|decision)\s*[:=]\s*[\"\'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
+                        m_tgt = re.search(r"(?:target|prediction|side)\s*[:=]\s*[\"\'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
+                        m_sum = re.search(r"(?:summary|reason)\s*[:=]\s*[\"\'\`]?([^\n\r]+)", raw_c, re.IGNORECASE)
+                        if m_act:
+                            parsed_act = m_act.group(1).upper()
+                            parsed_tgt = m_tgt.group(1).upper() if m_tgt else ""
+                            parsed_summary = m_sum.group(1).strip() if m_sum else ""
+
+                    if parsed_act in ("BET", "SKIP"):
+                        raw_summary = re.sub(r"\(Note:.*?\)", "", parsed_summary, flags=re.DOTALL).strip()
+                        raw_summary = re.sub(r"[\*\_\`]", "", raw_summary).strip()
+                        if "." in raw_summary: raw_summary = raw_summary.split(".")[0].strip()
+                        if "\n" in raw_summary: raw_summary = raw_summary.split("\n")[0].strip()
+                        if len(raw_summary.split()) > 7:
+                            raw_summary = " ".join(raw_summary.split()[:7])
+                        return {
+                            "ok": True,
+                            "model": model_name,
+                            "action": parsed_act,
+                            "target": parsed_tgt,
+                            "confidence": parsed_conf,
+                            "summary": raw_summary
+                        }
+                elif r.status_code == 429:
+                    print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429), failing over...", flush=True)
+                else:
+                    print(f"⚠️ [MASTER AI: {model_name}] HTTP {r.status_code}: {r.text[:80]}", flush=True)
+            except Exception as e:
+                print(f"⚠️ [MASTER AI: {model_name}] Notice: {e}", flush=True)
+        return {"ok": False}
+
+    ai_res = _query_master_ai(prompt_master_ai)
+    ai_ok = ai_res.get("ok", False)
+    ai_act = ai_res.get("action") if ai_ok else None
+    ai_tgt = ai_res.get("target") if ai_ok else None
+    ai_conf = ai_res.get("confidence") if ai_ok else None
+    ai_sum = ai_res.get("summary") if ai_ok else ""
+    ai_model = ai_res.get("model", "Fallback")
+
+    # ====================================================
+    # 🎯 5. TRIANGULATED COORDINATION HANDSHAKE
+    # ====================================================
+    is_qualified_bet = False
+    arbiter_wants_skip = False
+    final_summary = ""
+
+    # 1. Quantitative Loss Hazard Checks (Capital Shield)
+    if is_l3_recovery_risk:
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = "L3 Recovery Guard: Ambiguous transition filtered to protect bankroll."
+        print(f"🛡️ [L3 RECOVERY SHIELD] Ambiguous transition filtered during 9X recovery.", flush=True)
+
+    elif is_streak_exhausted:
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = f"Exhaustion Trap: Streak x{s_streak} continuation risk high ({streak_surv*100:.0f}% surv)."
+        print(f"🛡️ [EXHAUSTION TRAP] Streak x{s_streak} continuation risk high. SAFE SKIP enforced.", flush=True)
+
+    elif is_late_chop_trap:
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = f"Late Chop Breakdown: 1-1 Alternation x{s_alt} breakdown hazard."
+        print(f"🛡️ [CHOP BREAKDOWN] Alternation x{s_alt} breakdown hazard. SAFE SKIP enforced.", flush=True)
+
+    elif is_violent_chaos:
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
+        print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings. SAFE SKIP enforced.", flush=True)
+
+    elif is_dead_5050_noise:
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = f"Dead 50/50 Noise: Neutral Markov ({p_m10_val*100:.0f}%) and zero margin."
+        print(f"🛡️ [50/50 NOISE] Neutral Markov and no quant margin. SAFE SKIP enforced.", flush=True)
+
+    # 2. Master AI Deep Thinking Loss Hazard Audit
+    elif ai_ok and ai_act == "SKIP":
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = ai_sum or "AI Risk Diagnosis: Unfavorable risk-to-reward ratio filtered."
+        print(f"🧠 [MASTER AI: {ai_model}] ⏸️ HAZARD AUDIT SKIP: {final_summary}", flush=True)
+
+    # 3. Coordinated Bet Execution (Trends & Supermajority Convergence)
+    elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+        # Trend Law takes precedent
+        if s_streak >= 2 and not is_streak_exhausted:
+            target_val = last_s
+            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum if ai_tgt == last_s else f"Fresh Dragon Momentum ({last_s} x{s_streak})"
+            print(f"🧠🤝📊 [COORDINATED BET: {ai_model}] Fresh Dragon Momentum Confirmed: {target_val} x{s_streak}", flush=True)
+
+        elif s_alt == 2:
+            target_val = opp_s
+            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum if ai_tgt == opp_s else f"Early 1-1 Chop Swing -> {opp_s}"
+            print(f"🧠🤝📊 [COORDINATED BET: {ai_model}] Fresh 1-1 Chop Swing Confirmed -> {target_val}", flush=True)
+
+        elif ai_tgt == w_size:
+            target_val = w_size
+            target_pattern = f"Unanimous Quant & AI Edge ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            if isinstance(ai_conf, (int, float)) and 50 <= ai_conf <= 99:
+                target_conf = max(calc_conf, float(ai_conf))
+            final_summary = ai_sum or f"Unanimous Quant & AI Convergence on {target_val}"
+            print(f"🧠🤝📊 [UNANIMOUS CONVERGENCE: {ai_model}] AI & Quants agree on {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
+
+        elif size_margin_pct >= 22.0 and w_v >= 8:
+            target_val = w_size
+            target_pattern = f"Quant Supermajority Edge ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"Quant Supermajority ({target_val} | {w_v}-{l_v} votes)"
+            print(f"📊 [QUANT SUPERMAJORITY] Overriding AI divergence with {w_v}-{l_v} votes ({size_margin_pct:.0f}% margin)", flush=True)
+
+        elif p_m10_val >= 0.58 and ai_tgt == "BIG":
+            target_val = "BIG"
+            target_pattern = "Markov 10x10 High Edge (BIG)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum or "Markov 10x10 Transition -> BIG"
+            print(f"🧠 [MARKOV + AI CONVERGENCE: {ai_model}] Confirmed BIG from 10x10 Markov Matrix", flush=True)
+
+        elif p_m10_val <= 0.42 and ai_tgt == "SMALL":
+            target_val = "SMALL"
+            target_pattern = "Markov 10x10 High Edge (SMALL)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum or "Markov 10x10 Transition -> SMALL"
+            print(f"🧠 [MARKOV + AI CONVERGENCE: {ai_model}] Confirmed SMALL from 10x10 Markov Matrix", flush=True)
+
+        else:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"Coordination Shield: AI ({ai_tgt}) vs Quants ({w_size}) divergence filtered."
+            print(f"🛡️ [COORDINATION GUARD] AI ({ai_tgt}) conflicts with Quants ({w_size}) without decisive edge. SAFE SKIP.", flush=True)
+
+    else:
+        # Fallback when AI is unreachable or failed
+        if s_streak >= 2 and not is_streak_exhausted:
+            target_val = last_s
+            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"Quant Dragon Momentum ({last_s} x{s_streak})"
+            print(f"📊 [QUANT BACKUP] AI unreachable. Confirmed Dragon Momentum: {target_val}", flush=True)
+        elif s_alt == 2:
+            target_val = opp_s
+            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"Quant 1-1 Chop Swing -> {opp_s}"
+            print(f"📊 [QUANT BACKUP] AI unreachable. Confirmed Chop Swing: {target_val}", flush=True)
+        elif size_margin_pct >= 18.0 and w_v >= 6:
+            target_val = w_size
+            target_pattern = f"Quant Consensus Edge ({w_size})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
+            print(f"📊 [QUANT BACKUP] AI unreachable. Confirmed Quant Edge: {target_val}", flush=True)
+        else:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = "Ambiguous transition without AI verification filtered."
+            print(f"📊 [QUANT BACKUP] Master AI unreachable and quant edge insufficient. SAFE SKIP.", flush=True)
+
+    # ====================================================
+    # 🎯 6. FINAL SNIPER FILTER (Real Skips on Noise)
     # ====================================================
     opposite_nums_tip = None
     if not is_qualified_bet or arbiter_wants_skip:
@@ -2505,7 +2512,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         signal_grade = "SKIP"
         detected_pattern_name = "Filtered Noise"
         jackpot_tip = None
-        final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
+        if not final_summary:
+            final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
     else:
         detected_pattern_name = target_pattern
         # High-Conviction Sure-Shot Number Engine (9X Payout)
