@@ -6,6 +6,7 @@ import math
 import threading
 import requests
 import re
+import html
 import datetime
 import cmath
 import zlib
@@ -997,7 +998,7 @@ def detect_market_patterns(history_items):
             s_ng_conf = round(max(c2_s["BIG"], c2_s["SMALL"]) / tot2_s * 100, 1)
             q5_s = (s_ng_val, s_ng_conf, f"Order-2 Markov state {last2_s} -> {s_ng_val} ({s_ng_conf}%)")
         else:
-            s_ng_val = opp_s if s_alt >= 2 else last_s
+            s_ng_val = opp_s if s_alt >= 3 else s_pred_val
             q5_s = (s_ng_val, 65.0, f"Markov rhythm continuation favors {s_ng_val}")
 
     # Quant 6 (Size): Number-to-Size Bayesian Prior + Pair-Transition Matrix
@@ -1037,17 +1038,17 @@ def detect_market_patterns(history_items):
     # Quant 8 (Size): Mean-Reversion & Trend Continuation
     if s_streak >= 2:
         s_q8_mr = (last_s, min(90.0, 72.0 + s_streak * 3.0), f"Confirmed {last_s} size dragon ({s_streak} rounds); riding momentum")
-    elif s_alt >= 2:
-        s_q8_mr = (opp_s, min(88.0, 70.0 + s_alt * 3.0), f"Active 1-1 alternating size chop ({s_alt} rounds); favors {opp_s}")
     elif is_s_2_2:
-        s_q8_mr = (last_s, 76.0, "2-2 paired double size step")
+        s_q8_mr = (s_pred_val, 80.0, f"2-2 double-step structure favors {s_pred_val}")
+    elif s_alt >= 3:
+        s_q8_mr = (opp_s, min(88.0, 70.0 + s_alt * 3.0), f"Active 1-1 alternating size chop ({s_alt} rounds); favors {opp_s}")
     else:
-        if b20 >= 13:
-            s_q8_mr = ("SMALL", 67.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
-        elif s20 >= 13:
-            s_q8_mr = ("BIG", 67.0, f"SMALL short-term overbought ({s20}S vs {b20}B); mean-reversion favors BIG")
+        if b20 >= 14:
+            s_q8_mr = ("SMALL", 70.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
+        elif s20 >= 14:
+            s_q8_mr = ("BIG", 70.0, f"SMALL short-term overbought ({s20}S vs {b20}B); mean-reversion favors BIG")
         else:
-            s_q8_mr = (opp_s, 56.0, "Size micro-balance favors alternation")
+            s_q8_mr = (s_pred_val, 60.0, f"Structure baseline favors {s_pred_val}")
 
     # Quant 9 (Size): Micro-Cycle Autocorrelation Rhythm (Lag-2 & Lag-3)
     if len(sizes) >= 6:
@@ -1057,12 +1058,12 @@ def detect_market_patterns(history_items):
         if rec_pct_s >= 55.0:
             rhy_s = sizes[-2]
             s_q9_rhy = (rhy_s, round(rec_pct_s, 1), f"Size Lag-2 harmonic active ({rec_lag2_s}/{len(rec20_s)-2}); wave favors {rhy_s}")
-        elif s_alt >= 2:
-            s_q9_rhy = (opp_s, 66.0, f"Size alternating harmonic favors {opp_s}")
+        elif s_alt >= 3:
+            s_q9_rhy = (opp_s, 68.0, f"Size alternating harmonic favors {opp_s}")
         else:
-            s_q9_rhy = (opp_s, 54.0, "Size harmonic balance")
+            s_q9_rhy = (s_pred_val, 58.0, f"Harmonic roadmap flow favors {s_pred_val}")
     else:
-        s_q9_rhy = (opp_s, 50.0, "Size neutral cycle")
+        s_q9_rhy = (s_pred_val, 50.0, "Size neutral cycle")
 
     # Quant 10 (Size): Multi-Scale Shannon Entropy Gatekeeper
     recent_12_s = sizes[-12:] if len(sizes) >= 12 else sizes
@@ -1073,10 +1074,10 @@ def detect_market_patterns(history_items):
         if p > 0:
             entropy_12_s -= p * math.log2(p)
     if entropy_12_s >= 0.92:
-        ent_s = opp_s
+        ent_s = opp_s if s_alt >= 3 else s_pred_val
         s_q10_ent = (ent_s, 63.0, f"High size entropy ({entropy_12_s:.2f}); chop rhythm favors {ent_s}")
     else:
-        ent_s = last_s if s_streak >= 3 else opp_s
+        ent_s = last_s if s_streak >= 2 else (opp_s if s_alt >= 3 else s_pred_val)
         s_q10_ent = (ent_s, 64.0, f"Structured size entropy ({entropy_12_s:.2f}); favors {ent_s}")
 
     # Quant 11 (Size): Range Boundary & Extreme Outlier Specialist
@@ -1090,7 +1091,7 @@ def detect_market_patterns(history_items):
         ext_fav = "BIG" if last_num == 4 else "SMALL"
         s_q11_ext = (ext_fav, 62.0, f"Median border transition ({last_num})")
     else:
-        s_q11_ext = (opp_s if s_alt >= 2 else last_s, 55.0, f"Standard distribution ({last_num})")
+        s_q11_ext = (opp_s if s_alt >= 3 else s_pred_val, 55.0, f"Standard distribution ({last_num})")
 
     s_streaks = []
     if len(sizes) >= 2:
@@ -1105,10 +1106,12 @@ def detect_market_patterns(history_items):
         s_streaks.append((cur_sz, cur_l))
     if s_streak >= 2:
         s_q12_hazard = (last_s, min(88.0, 70.0 + s_streak * 2.5), f"Weibull size streak survival favors {last_s} ({s_streak} rounds)")
-    elif s_alt >= 2:
+    elif is_s_2_2:
+        s_q12_hazard = (s_pred_val, 78.0, f"Weibull 2-2 symmetry hazard favors {s_pred_val}")
+    elif s_alt >= 3:
         s_q12_hazard = (opp_s, min(86.0, 68.0 + s_alt * 2.5), f"Alternation survival favors {opp_s} chop ({s_alt} rounds)")
     else:
-        s_q12_hazard = (opp_s, 55.0, f"Hazard regime favors {opp_s}")
+        s_q12_hazard = (s_pred_val, 58.0, f"Hazard regime favors {s_pred_val}")
 
     n_fs = min(len(sizes), 64)
     if n_fs >= 8:
@@ -1766,25 +1769,37 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # Only invoke Master AI if mathematically qualified
     if is_qualified_bet:
+        recent_history_detailed = ", ".join([f"...{it.get('period','')[-3:]}:{it.get('size')}({it.get('num')})" for it in history_items[-14:]])
+        cur_stage_str = f"Level {current_loss_streak + 1} ({3**current_loss_streak}X)"
+
         prompt_arbiter = (
-            f"You are Supreme Master Arbiter presiding over the 17-Agent AI & Math WinGo Council.\n"
-            f"Prediction Domain: STRICTLY SIZE (BIG [5-9] vs SMALL [0-4]). Zero violet payout penalty.\n"
-            f"Recent History Window: {recent_str[-50:]}\n"
-            f"Size Market Roadmap: [{s_pattern_desc}]\n"
-            f"Unified Mathematical Edge: {unified_edge:.1f}% | P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}%\n"
-            f"Key Multi-Horizon Probabilities: {top_prob_lines}\n"
-            f"Specialists Assessments:\n{spec_summary}\n"
-            f"Size Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)\n"
-            f"Preliminary Target: SIZE -> {target_val}\n"
-            f"Consecutive Skips So Far: {consecutive_skips}\n\n"
-            f"HIGH-INTENSITY DECISIVE PREDICTION DIRECTIVE:\n"
-            f"The user requires MAXIMUM ANALYTICAL INTENSITY and decisive execution without unnecessary skips.\n"
-            f"1. Synthesize trend momentum, chop rhythm, Bayesian distributions, and structural patterns.\n"
-            f"2. Resolve any specialist disagreements by identifying the dominant regime.\n"
-            f"3. Do NOT default to SKIP if there is a discernible statistical edge.\n"
-            f"4. If consecutive skips >= 1, you MUST approve 'BET' on the highest probability directional bias.\n\n"
-            f"Return JSON ONLY:\n"
-            f'{{"action": "BET" or "SKIP", "confidence": 90, "reason": "1 decisive sentence explaining the decision"}}'
+            f"You are Supreme Master AI Arbiter presiding over the 16-Agent AI & Math WinGo Council.\n"
+            f"Prediction Domain: STRICTLY SIZE (BIG [5-9] vs SMALL [0-4]). Zero violet payout penalty.\n\n"
+            f"RECENT DRAW HISTORY (oldest -> newest):\n"
+            f"{recent_history_detailed}\n\n"
+            f"MARKET STRUCTURE & MULTI-PROBABILITY ANALYSIS:\n"
+            f"- Chart Roadmap: [{s_pattern_desc}]\n"
+            f"- Current Active Size Streak: {last_s} x{s_streak}\n"
+            f"- Current Active Alternation (Chop) Count: {s_alt}\n"
+            f"- 20-Round Macro Count: {b20} BIG vs {s20} SMALL\n"
+            f"- Multi-Horizon Probabilities: {top_prob_lines}\n"
+            f"- Unified Math Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
+            f"- Specialists Votes: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% margin)\n"
+            f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
+            f"MAXIMUM THINKING RIGOR DIRECTIVE:\n"
+            f"The user mandates MAXIMUM INTENSITY, MAXIMUM THINKING DEPTH, AND MINIMAL LOSSES.\n"
+            f"1. Dragon Trend Momentum Law: When an active dragon trend is alive (streak >= 2), NEVER cut the trend unless severe exhaustion (streak >= 6).\n"
+            f"2. Structural Baccarat/WinGo Law: When a streak breaks, watch for 2-2 double-step repetition (pair completion) before calling a 1-1 chop. True 1-1 chop requires alternation >= 3.\n"
+            f"3. Decisive Edge: Pick the winning target 'BIG' or 'SMALL' with high confidence (94.0%-98.5%).\n"
+            f"4. Capital Guard: If the market state is pure chaotic noise without an authentic directional edge, return 'SKIP' to preserve capital.\n\n"
+            f"Return JSON ONLY with this exact schema:\n"
+            f'{{\n'
+            f'  "action": "BET" or "SKIP",\n'
+            f'  "target": "BIG" or "SMALL",\n'
+            f'  "confidence": 96.5,\n'
+            f'  "intensity": "MAXIMUM",\n'
+            f'  "reason": "1-2 decisive sentences with deep multi-factor quantitative synthesis"\n'
+            f'}}'
         )
 
         for model_name in MASTER_AI_MODELS:
@@ -1793,27 +1808,48 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     "model": model_name,
                     "messages": [{"role": "user", "content": prompt_arbiter}],
                     "response_format": {"type": "json_object"}
-                }, timeout=2.5)
+                }, timeout=3.5)
                 if r_arb.status_code == 200:
                     res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
                     act = str(res_arb.get("action", "")).upper()
+                    arb_target = str(res_arb.get("target", "")).upper()
+                    arb_conf = res_arb.get("confidence")
+                    arb_reason = str(res_arb.get("reason", "")).strip()
+
                     if act == "SKIP":
-                        # The pure mathematical multi-probability engine (15+ dimensions, 3600+ rounds)
-                        # strictly overrides an LLM text hallucination when qualified or edge exists!
-                        if is_qualified_bet or w_v >= 9 or unified_edge >= 2.0 or consecutive_skips >= 1:
+                        if consecutive_skips >= 2:
                             arbiter_wants_skip = False
-                            final_summary = f"Decisive statistical entry: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc} | Edge {unified_edge:.1f}%)."
-                            print(f"🧠 [MASTER AI: {model_name}] ⚠️ VETO OVERRIDDEN BY QUANT ENGINE: Math edge confirmed ({w_v}-{l_v} | Edge {unified_edge:.1f}%). Proceeding with bet.", flush=True)
+                            final_summary = f"Deadlock override: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
+                            print(f"🧠 [MASTER AI: {model_name}] ⚡ Deadlock override after {consecutive_skips} skips. Betting {target_val}.", flush=True)
+                        elif current_loss_streak >= 1 and not (s_streak >= 2 or s_alt >= 3):
+                            arbiter_wants_skip = True
+                            final_summary = arb_reason or "Capital preservation: Filtered out ambiguous transition round during recovery stage."
+                            print(f"🧠 [MASTER AI: {model_name}] ⏸️ RECOVERY SNIPER SKIP HONORED: {final_summary}", flush=True)
+                        elif w_v >= 16 and unified_edge >= 4.5:
+                            arbiter_wants_skip = False
+                            final_summary = f"Quant golden unanimity ({w_v}-{l_v} | Edge {unified_edge:.1f}%) confirms SIZE {target_val}."
+                            print(f"🧠 [MASTER AI: {model_name}] ⚠️ VETO OVERRIDDEN BY QUANT ENGINE: Extreme math edge ({w_v}-{l_v}).", flush=True)
                         else:
                             arbiter_wants_skip = True
-                            final_summary = res_arb.get("reason", "Filtered out ambiguous market round for sniper accuracy")
-                            print(f"🧠 [MASTER AI: {model_name}] ⏸️ VETO SKIP: {final_summary}", flush=True)
+                            final_summary = arb_reason or "Filtered out noisy round for sniper precision."
+                            print(f"🧠 [MASTER AI: {model_name}] ⏸️ SNIPER SKIP: {final_summary}", flush=True)
                     elif act == "BET":
                         arbiter_wants_skip = False
-                        summary_txt = res_arb.get("reason", "")
-                        if summary_txt:
-                            final_summary = summary_txt
-                        print(f"🧠 [MASTER AI: {model_name}] ✅ BET CONFIRMED: SIZE {target_val} | {final_summary}", flush=True)
+                        if arb_target in ("BIG", "SMALL"):
+                            if s_streak >= 2 and s_streak < 5 and arb_target != last_s:
+                                print(f"🧠 [MASTER AI: {model_name}] 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {arb_target}", flush=True)
+                                target_val = last_s
+                            else:
+                                if arb_target != target_val:
+                                    print(f"🧠 [MASTER AI: {model_name}] 🎯 Master AI Strategic Target Override: {target_val} -> {arb_target}", flush=True)
+                                    target_val = arb_target
+                                    target_pattern = f"Master Brain Direction ({target_val})"
+                        
+                        if isinstance(arb_conf, (int, float)) and 50 <= arb_conf <= 99.5:
+                            target_conf = max(float(target_conf), float(arb_conf))
+                        if arb_reason:
+                            final_summary = arb_reason
+                        print(f"🧠 [MASTER AI: {model_name}] ✅ BET CONFIRMED: SIZE {target_val} ({target_conf:.1f}%) | {final_summary}", flush=True)
                     break
                 elif r_arb.status_code == 429:
                     print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429), failing over to next model...", flush=True)
@@ -1959,14 +1995,22 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     elif violet_alert:
         v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
 
+    clean_reason = html.escape(reason.strip()) if reason else ""
+    reason_line = f"\n🧠 <b>Master Brain</b> : <i>{clean_reason}</i>" if clean_reason else ""
+    consensus_line = f"\n🏛️ <b>Council Synergy</b> : <b>{to_bold(consensus_tag)}</b>" if consensus_tag else ""
+    intensity_tag = to_bold("MAXIMUM (DEEP AI QUANT)")
+
     msg = (
         f"{banner}\n"
         f"<blockquote>"
         f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
         f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
+        f"🔥 <b>Intensity</b> : <b>{intensity_tag}</b>\n"
         f"📊 <b>Stage</b> : <b>{stage_str}</b>\n"
         f"📈 <b>Confidence</b> : <b>{conf_str}</b>\n"
         f"🧩 <b>Pattern</b> : <b>{pattern_str}</b>"
+        f"{consensus_line}"
+        f"{reason_line}"
         f"{v_tip_line}\n"
         f"</blockquote>\n"
         f"{footer}"
