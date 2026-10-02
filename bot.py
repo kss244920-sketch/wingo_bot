@@ -1797,8 +1797,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             f'  "action": "BET" or "SKIP",\n'
             f'  "target": "BIG" or "SMALL",\n'
             f'  "confidence": 96.5,\n'
-            f'  "intensity": "MAXIMUM",\n'
-            f'  "reason": "1-2 decisive sentences with deep multi-factor quantitative synthesis"\n'
+            f'  "summary": "Crisp 3-6 word strategy summary (e.g. Dragon Trend Momentum or 2-2 Pair Reversal)"\n'
             f'}}'
         )
 
@@ -1814,7 +1813,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     act = str(res_arb.get("action", "")).upper()
                     arb_target = str(res_arb.get("target", "")).upper()
                     arb_conf = res_arb.get("confidence")
-                    arb_reason = str(res_arb.get("reason", "")).strip()
+                    raw_summary = str(res_arb.get("summary") or res_arb.get("reason") or "").strip()
+                    raw_summary = re.sub(r"\(Note:.*?\)", "", raw_summary, flags=re.DOTALL).strip()
+                    raw_summary = re.sub(r"[\*\_\`]", "", raw_summary).strip()
+                    if "." in raw_summary: raw_summary = raw_summary.split(".")[0].strip()
+                    if "\n" in raw_summary: raw_summary = raw_summary.split("\n")[0].strip()
+                    if len(raw_summary.split()) > 7:
+                        raw_summary = " ".join(raw_summary.split()[:7])
+                    arb_reason = raw_summary
 
                     if act == "SKIP":
                         if consecutive_skips >= 2:
@@ -1995,22 +2001,27 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     elif violet_alert:
         v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
 
-    clean_reason = html.escape(reason.strip()) if reason else ""
-    reason_line = f"\n🧠 <b>Master Brain</b> : <i>{clean_reason}</i>" if clean_reason else ""
-    consensus_line = f"\n🏛️ <b>Council Synergy</b> : <b>{to_bold(consensus_tag)}</b>" if consensus_tag else ""
-    intensity_tag = to_bold("MAXIMUM (DEEP AI QUANT)")
+    # Clean, concise strategy summary (choti si summary: max 5-8 words)
+    strategy_text = pattern_name or "Market Structure"
+    if reason:
+        clean_r = re.sub(r"\(Note:.*?\)", "", reason, flags=re.DOTALL).strip()
+        clean_r = re.sub(r"[\*\_\`]", "", clean_r).strip()
+        if "." in clean_r: clean_r = clean_r.split(".")[0].strip()
+        if "\n" in clean_r: clean_r = clean_r.split("\n")[0].strip()
+        words = clean_r.split()
+        if 2 <= len(words) <= 8 and len(clean_r) <= 50:
+            strategy_text = clean_r
+
+    strat_str = to_bold(strategy_text)
 
     msg = (
         f"{banner}\n"
         f"<blockquote>"
         f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
         f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
-        f"🔥 <b>Intensity</b> : <b>{intensity_tag}</b>\n"
         f"📊 <b>Stage</b> : <b>{stage_str}</b>\n"
         f"📈 <b>Confidence</b> : <b>{conf_str}</b>\n"
-        f"🧩 <b>Pattern</b> : <b>{pattern_str}</b>"
-        f"{consensus_line}"
-        f"{reason_line}"
+        f"🧩 <b>Strategy</b> : <b>{strat_str}</b>"
         f"{v_tip_line}\n"
         f"</blockquote>\n"
         f"{footer}"
