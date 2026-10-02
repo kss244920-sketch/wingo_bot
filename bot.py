@@ -25,7 +25,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
-    "allam-2-7b",               # Fast, high-capacity primary reasoning engine (7000 req/day active quota)
+    "qwen/qwen3.8-27b",         # High token quota & fast reasoning engine
+    "allam-2-7b",               # Fast primary reasoning engine (7000 req/day active quota)
     "openai/gpt-oss-20b",       # 20B frontier reasoning failover
     "openai/gpt-oss-120b"       # 120B parameter ultimate powerhouse
 ]
@@ -1094,20 +1095,21 @@ def detect_market_patterns(history_items):
     else:
         q7_s = ("SMALL" if b20 > s20 else "BIG", 64.0, f"20-Round Size Imbalance ({b20}B vs {s20}S)")
 
-    # Quant 8 (Size): Mean-Reversion & Trend Continuation
-    if s_streak >= 3:
-        s_q8_mr = (last_s, min(90.0, 72.0 + s_streak * 3.0), f"Confirmed {last_s} size dragon ({s_streak} rounds); riding momentum")
-    elif s_alt >= 3:
-        s_q8_mr = (opp_s, min(88.0, 70.0 + s_alt * 3.0), f"Active 1-1 alternating size chop ({s_alt} rounds); favors {opp_s}")
-    elif is_s_2_2 or "Double" in s_pattern_desc or "Single" in s_pattern_desc:
-        s_q8_mr = (s_pred_val, 80.0, f"Roadmap structure favors {s_pred_val}")
+    # Quant 8 (Size): True Mean-Reversion & Distribution Imbalance
+    if b20 >= 14:
+        s_q8_mr = ("SMALL", 78.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
+    elif s20 >= 14:
+        s_q8_mr = ("BIG", 78.0, f"SMALL short-term overbought ({s20}S vs {b20}B); mean-reversion favors BIG")
+    elif s_streak >= 4:
+        s_q8_mr = (opp_s, 72.0, f"Streak exhaustion hazard ({last_s} x{s_streak}); mean-reversion favors {opp_s}")
+    elif s_alt >= 5:
+        s_q8_mr = (last_s, 72.0, f"Chop exhaustion hazard ({s_alt} rounds); mean-reversion favors {last_s}")
+    elif b20 >= 12:
+        s_q8_mr = ("SMALL", 65.0, f"Mild BIG skew ({b20}B vs {s20}S); favors SMALL")
+    elif s20 >= 12:
+        s_q8_mr = ("BIG", 65.0, f"Mild SMALL skew ({s20}S vs {b20}B); favors BIG")
     else:
-        if b20 >= 14:
-            s_q8_mr = ("SMALL", 70.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
-        elif s20 >= 14:
-            s_q8_mr = ("BIG", 70.0, f"SMALL short-term overbought ({s20}S vs {b20}B); mean-reversion favors BIG")
-        else:
-            s_q8_mr = (s_pred_val, 60.0, f"Structure baseline favors {s_pred_val}")
+        s_q8_mr = (s_pred_val, 55.0, f"Structure baseline favors {s_pred_val}")
 
     # Quant 9 (Size): Micro-Cycle Autocorrelation Rhythm (Lag-2 & Lag-3)
     if len(sizes) >= 6:
@@ -1521,18 +1523,15 @@ def detect_market_patterns(history_items):
     else:
         avg_delta = 4.5
     is_high_volatility = (avg_delta >= 4.75)
-    if s_alt >= 2 and is_high_volatility:
-        p_delta_chop = 0.72 if opp_s == "BIG" else 0.28
-        s_q_delta = (opp_s, 88.0, f"Violent Delta Chop (Δ={avg_delta:.1f}, Alt x{s_alt}) -> Favors {opp_s}")
-    elif s_alt >= 2:
+    if avg_delta >= 5.0:
         p_delta_chop = 0.65 if opp_s == "BIG" else 0.35
-        s_q_delta = (opp_s, 82.0, f"Early Chop Active (Alt x{s_alt}) -> Favors {opp_s}")
-    elif s_streak >= 3:
-        p_delta_chop = 0.70 if last_s == "BIG" else 0.30
-        s_q_delta = (last_s, 85.0, f"Low Delta Streak Ride (x{s_streak}) -> Favors {last_s}")
+        s_q_delta = (opp_s, 75.0, f"High Delta Velocity (Δ={avg_delta:.1f}) -> Boundary Cross Favors {opp_s}")
+    elif avg_delta <= 3.0:
+        p_delta_chop = 0.65 if last_s == "BIG" else 0.35
+        s_q_delta = (last_s, 75.0, f"Low Delta Clustering (Δ={avg_delta:.1f}) -> Number Cluster Favors {last_s}")
     else:
         p_delta_chop = 0.50
-        s_q_delta = (s_pred_val, 60.0, f"Delta Velocity Δ={avg_delta:.1f}")
+        s_q_delta = (s_pred_val, 55.0, f"Delta Velocity Baseline (Δ={avg_delta:.1f})")
 
     # 25. Parity-Color Invariant Cluster Correlation
     recent_colors_10 = colors[-10:] if len(colors) >= 10 else colors
@@ -2091,38 +2090,38 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    dragon_weight = 8.5 if (s_streak >= 3 or (s_streak == 2 and not is_s_2_2)) else 2.0
-    chop_weight = 7.5 if s_alt in (3, 4) else 1.0
-    sym_weight = 8.5 if is_s_2_2 else (5.0 if "Confirmed 2-2" in s_pattern_desc else 2.0)
-    mr_weight = 3.5 if (b20 >= 13 or s20 >= 13) else 1.0
-    roadmap_weight = 6.0 if (s_q4_val is not None) else 1.0
-    markov_weight = 4.0 if (s_q5_val is not None) else 1.0
-    bayes_num_weight = 3.5 if (s_q6_val is not None) else 1.0
-    imbalance_weight = 3.5 if (s_q7_val is not None) else 1.0
-    rhythm_weight = 2.2 if (s_q9_val is not None) else 1.0
-    entropy_weight = 1.8 if (s_q10_val is not None) else 1.0
+    dragon_weight = 4.5 if (s_streak >= 3 or (s_streak == 2 and not is_s_2_2)) else 2.0
+    chop_weight = 4.0 if s_alt in (3, 4) else 1.5
+    sym_weight = 4.5 if is_s_2_2 else (3.5 if "Confirmed 2-2" in s_pattern_desc else 2.0)
+    mr_weight = 4.5 if (b20 >= 13 or s20 >= 13) else 1.5
+    roadmap_weight = 4.5 if (s_q4_val is not None) else 1.0
+    markov_weight = 5.0 if (s_q5_val is not None) else 1.0
+    bayes_num_weight = 5.0 if (s_q6_val is not None) else 1.0
+    imbalance_weight = 4.0 if (s_q7_val is not None) else 1.0
+    rhythm_weight = 2.5 if (s_q9_val is not None) else 1.0
+    entropy_weight = 2.0 if (s_q10_val is not None) else 1.0
     outlier_weight = 2.5 if (s_q11_val is not None) else 1.0
-    hazard_weight = 4.2 if (s_streak >= 3 or s_alt >= 2) else 1.0
-    fourier_weight = 2.5 if (s_q13_val is not None) else 1.0
-    kolmo_weight = 1.8 if (s_q14_val is not None) else 1.0
-    bayes_decay_weight = 2.5 if (s_q15_val is not None) else 1.0
-    dirichlet_weight = 3.8 if (diri_val is not None) else 1.0
-    mc_weight = 3.6 if (mc_val is not None) else 1.0
-    ewma_weight = 3.4 if (ewma_val is not None) else 1.0
-    kelly_weight = 3.2 if (kelly_val is not None) else 1.0
+    hazard_weight = 3.5 if (s_streak >= 3 or s_alt >= 2) else 1.0
+    fourier_weight = 3.5 if (s_q13_val is not None) else 1.0
+    kolmo_weight = 2.0 if (s_q14_val is not None) else 1.0
+    bayes_decay_weight = 3.5 if (s_q15_val is not None) else 1.0
+    dirichlet_weight = 4.0 if (diri_val is not None) else 1.0
+    mc_weight = 3.8 if (mc_val is not None) else 1.0
+    ewma_weight = 3.5 if (ewma_val is not None) else 1.0
+    kelly_weight = 3.5 if (kelly_val is not None) else 1.0
     meta_weight = 5.0 if (meta_val is not None) else 1.0
-    rsi_weight = 5.0 if (s_q_rsi_val is not None) else 1.0
-    markov10_weight = 5.5 if (s_q_10x10_val is not None) else 1.0
-    dorm_weight = 3.5 if (s_q_dorm_val is not None) else 1.0
+    rsi_weight = 4.5 if (s_q_rsi_val is not None) else 1.0
+    markov10_weight = 6.0 if (s_q_10x10_val is not None) else 1.0
+    dorm_weight = 4.0 if (s_q_dorm_val is not None) else 1.0
     derived_weight = 4.5 if (s_q_derived_val is not None) else 1.0
-    delta_weight = 6.0 if (s_alt >= 2 or s_streak >= 3) else 1.0
+    delta_weight = 3.5 if (s_q_delta_val is not None) else 1.0
     parity_weight = 3.0 if (s_q_parity_val is not None) else 1.0
-    mod_weight = 2.0 if (s_q_mod_val is not None) else 1.0
-    mirror_weight = 2.5 if (s_q_mirror_val is not None) else 1.0
-    emp_weight = 6.5 if (s_q_emp_val is not None) else 1.0
+    mod_weight = 2.5 if (s_q_mod_val is not None) else 1.0
+    mirror_weight = 3.0 if (s_q_mirror_val is not None) else 1.0
+    emp_weight = 4.5 if (s_q_emp_val is not None) else 1.0
     boll_weight = 4.0 if (s_q_boll_val is not None) else 1.0
-    mom_weight = 4.2 if (s_q_mom_val is not None) else 1.0
-    res_weight = 3.8 if (s_q_res_val is not None) else 1.0
+    mom_weight = 4.5 if (s_q_mom_val is not None) else 1.0
+    res_weight = 4.0 if (s_q_res_val is not None) else 1.0
 
     weights = [
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -2189,10 +2188,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
     calc_conf = min(97.5, max(80.0, round(78.0 + (size_margin_pct * 0.25) + (w_v * 0.4), 1)))
 
+    streak_surv = p_info.get("streak_survival_rate", 0.50)
+
     # ====================================================
-    # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
+    # 🎯 1. DRAGON TREND CONTINUITY (Established Streak Law)
     # ====================================================
-    if s_streak >= 3 and s_streak < 6 and w_size != last_s:
+    # Only lock in dragon if streak >= 5 and empirical survival rate is high
+    if s_streak >= 5 and s_streak < 8 and streak_surv >= 0.55 and w_size != last_s:
         w_size = last_s
 
     # ====================================================
@@ -2242,7 +2244,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.2 and p_info.get("is_high_volatility", False))
     is_dead_5050_noise = (size_margin_pct < 12.0 and 0.46 <= p_m10_val <= 0.54 and s_streak < 2 and s_alt < 3)
 
-    cur_lvl = CURRENT_LOSS_STREAK + 1
+    cur_lvl = current_loss_streak + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
     if w_v >= 10:
@@ -2355,64 +2357,74 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # LEVEL 3 (9X FINAL RECOVERY): Strict Capital Shield - Zero Ambiguity!
     if current_loss_streak >= 2:
-        if is_2_2:
-            target_val = opp_s
-            target_pattern = f"Confirmed 2-2 Double-Step Shift ({opp_s})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Confirmed 2-2 Double -> {opp_s}"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed 2-2 Double-Step: {target_val}", flush=True)
-        elif is_dragon_confirmed and not is_streak_exhausted:
-            target_val = last_s
-            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Confirmed Dragon ({last_s} x{s_streak})"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed:
-            target_val = opp_s
-            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Confirmed Chop -> {opp_s}"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Chop: {target_val}", flush=True)
-        elif size_margin_pct >= 28.0 and w_v >= 8:
+        if is_violent_chaos or p_info.get("is_derived_chaotic", False):
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = "L3 Shield: Volatile delta chaos / Derived Roads Blue filtered to protect 9X bankroll."
+            print(f"🛡️ [L3 CAPITAL SHIELD] Volatile / Chaotic regime filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
+        elif size_margin_pct >= 20.0 and w_v >= 8:
             target_val = w_size
             target_pattern = f"Supermajority Quant Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Supermajority Quant ({w_size} | {size_margin_pct:.0f}%)"
             print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Quant Edge: {target_val}", flush=True)
+        elif is_2_2 and w_size == opp_s and size_margin_pct >= 12.0:
+            target_val = opp_s
+            target_pattern = f"Confirmed 2-2 Double-Step Shift ({opp_s})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L3 Armor: Confluent 2-2 Double -> {opp_s}"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confluent 2-2 Double-Step: {target_val}", flush=True)
+        elif is_dragon_confirmed and w_size == last_s and s_streak >= 4 and streak_surv >= 0.50:
+            target_val = last_s
+            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L3 Armor: Confluent Dragon ({last_s} x{s_streak})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confluent Dragon: {target_val} x{s_streak}", flush=True)
+        elif is_chop_confirmed and w_size == opp_s and size_margin_pct >= 12.0:
+            target_val = opp_s
+            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L3 Armor: Confluent Chop -> {opp_s}"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confluent Chop: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = "L3 Capital Shield: Ambiguous transition filtered to protect bankroll."
+            final_summary = f"L3 Capital Shield: Ambiguous transition filtered (margin={size_margin_pct:.0f}%)."
             print(f"🛡️ [L3 RECOVERY SHIELD] Ambiguous transition filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
 
     # LEVEL 2 (3X RECOVERY): High-Confidence Confirmation Required
     elif current_loss_streak == 1:
-        if is_2_2:
+        if is_violent_chaos or p_info.get("is_derived_chaotic", False):
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = "L2 Shield: Violent delta chaos / Derived Roads Blue filtered."
+            print(f"🛡️ [L2 RECOVERY SHIELD] Volatile / Chaotic regime filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
+        elif is_2_2 and (w_size == opp_s or size_margin_pct >= 16.0):
             target_val = opp_s
             target_pattern = f"Confirmed 2-2 Double-Step Shift ({opp_s})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Confirmed 2-2 Double -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed 2-2 Double-Step: {target_val}", flush=True)
-        elif is_dragon_confirmed and not is_streak_exhausted:
+        elif is_dragon_confirmed and w_size == last_s and not is_streak_exhausted:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Dragon ({last_s} x{s_streak})"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed:
+        elif is_chop_confirmed and w_size == opp_s:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Chop -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Chop: {target_val}", flush=True)
-        elif size_margin_pct >= 20.0 and w_v >= 7:
+        elif size_margin_pct >= 18.0 and w_v >= 7:
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             is_qualified_bet = True
@@ -2438,11 +2450,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = f"Late Chop Breakdown: 1-1 Alternation x{s_alt} breakdown hazard."
             print(f"🛡️ [CHOP BREAKDOWN] Alternation x{s_alt} breakdown hazard. SAFE SKIP enforced.", flush=True)
-        elif is_violent_chaos:
+        elif is_violent_chaos or p_info.get("is_derived_chaotic", False):
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
-            print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings. SAFE SKIP enforced.", flush=True)
+            final_summary = f"Violent Delta Chaos: Erratic swings (Δ={p_info.get('avg_delta', 4.5):.1f}) / Derived Blue."
+            print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP enforced.", flush=True)
         elif is_dead_5050_noise:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2454,22 +2466,22 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = ai_sum or "AI Risk Diagnosis: Unfavorable risk-to-reward ratio filtered."
             print(f"🧠 [MASTER AI: {ai_model}] ⏸️ HAZARD AUDIT SKIP: {final_summary}", flush=True)
 
-        # 2. Pattern Priority Execution
-        elif is_2_2:
+        # 2. Pattern Priority Execution (Confluence Required!)
+        elif is_2_2 and w_size == opp_s:
             target_val = opp_s
             target_pattern = f"2-2 Double-Step Shift ({opp_s})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"2-2 Double-Step Shift -> {opp_s}"
             print(f"🔄 [2-2 PATTERN] Double-Step Shift Confirmed -> {target_val}", flush=True)
-        elif is_dragon_confirmed:
+        elif is_dragon_confirmed and w_size == last_s:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
             print(f"🐉 [DRAGON TREND] Trend Momentum Confirmed: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed:
+        elif is_chop_confirmed and w_size == opp_s:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
@@ -2483,7 +2495,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = ai_sum if (ai_ok and ai_tgt == w_size) else f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
             print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-        elif s_streak == 2 and not is_2_2:
+        elif s_streak == 2 and not is_2_2 and w_size == last_s and size_margin_pct >= 10.0:
             target_val = last_s
             target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
             is_qualified_bet = True
@@ -2764,7 +2776,7 @@ def send_user_result(period, actual_number, actual_color, pred):
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
             CURRENT_LOSS_STREAK = 0
-            POST_STOP_LOSS_COOLDOWN = 2
+            POST_STOP_LOSS_COOLDOWN = 4
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
