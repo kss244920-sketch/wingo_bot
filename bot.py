@@ -508,8 +508,8 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
             chop_count += 1
         else:
             break
-    if chop_count >= 4:
-        chop_conf = min(96.5, 84.0 + chop_count * 2.5)
+    if chop_count >= 2:
+        chop_conf = min(96.5, 82.0 + chop_count * 2.5)
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
 
     # 3. 3-3 Triplet Pattern
@@ -582,7 +582,75 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
     elif c_minor >= (len(recent_20) * 0.65):
         return target_major, 84.0, f"Macro Mean-Reversion ({target_major} Overdue {c_minor}/20)"
 
-    return opp_val if chop_count >= 2 else last_val, 75.0, f"Rhythm Momentum ({opp_val if chop_count >= 2 else last_val})"
+# ====================================================
+# 🎴 BACCARAT DERIVED ROADS ENGINE (Big Eye, Small, Cockroach)
+# ====================================================
+def compute_baccarat_derived_roads(sizes_list):
+    """
+    Computes Asian Baccarat Derived Roads:
+    1. Big Road (runs of identical outcomes in columns)
+    2. Big Eye Boy (d=1, compares with column i-1)
+    3. Small Road (d=2, compares with column i-2)
+    4. Cockroach Pig (d=3, compares with column i-3)
+    Red = regular / symmetric (predictable), Blue = chaos / pattern breaking.
+    """
+    if len(sizes_list) < 6:
+        return 0.5, "Derived Roads: Neutral (insufficient data)", False, "BALANCED"
+
+    big_road = []
+    cur_col = [sizes_list[0]]
+    for s in sizes_list[1:]:
+        if s == cur_col[0]:
+            cur_col.append(s)
+        else:
+            big_road.append(cur_col)
+            cur_col = [s]
+    big_road.append(cur_col)
+
+    def eval_derived_road(d):
+        entries = []
+        for col_idx in range(d + 1, len(big_road)):
+            cur_c = big_road[col_idx]
+            for row_idx in range(len(cur_c)):
+                if row_idx == 0:
+                    len_prev1 = len(big_road[col_idx - 1])
+                    len_prev_d = len(big_road[col_idx - 1 - d])
+                    entries.append(len_prev1 == len_prev_d)
+                else:
+                    ref_col = big_road[col_idx - d]
+                    entries.append(len(ref_col) >= (row_idx + 1))
+        return entries
+
+    big_eye = eval_derived_road(1)
+    small_road = eval_derived_road(2)
+    cockroach = eval_derived_road(3)
+
+    recent_be = big_eye[-8:] if len(big_eye) >= 8 else big_eye
+    red_count = sum(1 for e in recent_be if e)
+    tot_be = len(recent_be)
+
+    is_chaotic = (tot_be >= 4 and (red_count / tot_be) <= 0.25)
+    is_patterned = (tot_be >= 4 and (red_count / tot_be) >= 0.70)
+
+    last_s = sizes_list[-1]
+    opp_s = "SMALL" if last_s == "BIG" else "BIG"
+
+    if is_patterned:
+        fav_s = last_s if len(big_road[-1]) >= 2 else opp_s
+        p_derived = 0.68 if fav_s == "BIG" else 0.32
+        desc = "Derived Roads Strongly Red (Disciplined Roadmap)"
+        road_tag = "RED_PATTERNED"
+    elif is_chaotic:
+        fav_s = opp_s
+        p_derived = 0.62 if opp_s == "BIG" else 0.38
+        desc = "Derived Roads Blue (Asymmetric / Chop Regime)"
+        road_tag = "BLUE_CHAOTIC"
+    else:
+        p_derived = 0.50
+        desc = "Derived Roads Balanced"
+        road_tag = "BALANCED"
+
+    return p_derived, desc, is_chaotic, road_tag
 
 # ====================================================
 # 📊 MATHEMATICAL MARKET STRUCTURE & PATTERN ENGINE
@@ -889,8 +957,8 @@ def detect_market_patterns(history_items):
     if s_streak >= 3:
         if last_s == "BIG": s_score_big += 4.5 + min(3.0, s_streak * 0.5)
         else: s_score_small += 4.5 + min(3.0, s_streak * 0.5)
-    # 2. Size Alternation Chop (Continuation >= 4)
-    elif s_alt >= 4:
+    # 2. Size Alternation Chop (Continuation >= 2)
+    elif s_alt >= 2:
         if opp_s == "BIG": s_score_big += 4.2 + min(2.0, s_alt * 0.4)
         else: s_score_small += 4.2 + min(2.0, s_alt * 0.4)
     # 3. Roadmap Structure Guidance (1-2, 2-1, 2-2, Staircase, etc.)
@@ -1065,7 +1133,7 @@ def detect_market_patterns(history_items):
     # Quant 8 (Size): Mean-Reversion & Trend Continuation
     if s_streak >= 3:
         s_q8_mr = (last_s, min(90.0, 72.0 + s_streak * 3.0), f"Confirmed {last_s} size dragon ({s_streak} rounds); riding momentum")
-    elif s_alt >= 4:
+    elif s_alt >= 2:
         s_q8_mr = (opp_s, min(88.0, 70.0 + s_alt * 3.0), f"Active 1-1 alternating size chop ({s_alt} rounds); favors {opp_s}")
     elif is_s_2_2 or "Double" in s_pattern_desc or "Single" in s_pattern_desc:
         s_q8_mr = (s_pred_val, 80.0, f"Roadmap structure favors {s_pred_val}")
@@ -1085,7 +1153,7 @@ def detect_market_patterns(history_items):
         if rec_pct_s >= 55.0:
             rhy_s = sizes[-2]
             s_q9_rhy = (rhy_s, round(rec_pct_s, 1), f"Size Lag-2 harmonic active ({rec_lag2_s}/{len(rec20_s)-2}); wave favors {rhy_s}")
-        elif s_alt >= 4:
+        elif s_alt >= 2:
             s_q9_rhy = (opp_s, 68.0, f"Size alternating harmonic favors {opp_s}")
         else:
             s_q9_rhy = (s_pred_val, 58.0, f"Harmonic roadmap flow favors {s_pred_val}")
@@ -1101,10 +1169,10 @@ def detect_market_patterns(history_items):
         if p > 0:
             entropy_12_s -= p * math.log2(p)
     if entropy_12_s >= 0.92:
-        ent_s = opp_s if s_alt >= 4 else s_pred_val
+        ent_s = opp_s if s_alt >= 2 else s_pred_val
         s_q10_ent = (ent_s, 63.0, f"High size entropy ({entropy_12_s:.2f}); chop rhythm favors {ent_s}")
     else:
-        ent_s = last_s if s_streak >= 3 else (opp_s if s_alt >= 4 else s_pred_val)
+        ent_s = last_s if s_streak >= 3 else (opp_s if s_alt >= 2 else s_pred_val)
         s_q10_ent = (ent_s, 64.0, f"Structured size entropy ({entropy_12_s:.2f}); favors {ent_s}")
 
     # Quant 11 (Size): Range Boundary & Extreme Outlier Specialist
@@ -1118,7 +1186,7 @@ def detect_market_patterns(history_items):
         ext_fav = "BIG" if last_num == 4 else "SMALL"
         s_q11_ext = (ext_fav, 62.0, f"Median border transition ({last_num})")
     else:
-        s_q11_ext = (opp_s if s_alt >= 4 else s_pred_val, 55.0, f"Standard distribution ({last_num})")
+        s_q11_ext = (opp_s if s_alt >= 2 else s_pred_val, 55.0, f"Standard distribution ({last_num})")
 
     s_streaks = []
     if len(sizes) >= 2:
@@ -1135,7 +1203,7 @@ def detect_market_patterns(history_items):
         s_q12_hazard = (last_s, min(88.0, 70.0 + s_streak * 2.5), f"Weibull size streak survival favors {last_s} ({s_streak} rounds)")
     elif is_s_2_2 or "Double" in s_pattern_desc or "Single" in s_pattern_desc:
         s_q12_hazard = (s_pred_val, 78.0, f"Weibull roadmap structure hazard favors {s_pred_val}")
-    elif s_alt >= 4:
+    elif s_alt >= 2:
         s_q12_hazard = (opp_s, min(86.0, 68.0 + s_alt * 2.5), f"Alternation survival favors {opp_s} chop ({s_alt} rounds)")
     else:
         s_q12_hazard = (s_pred_val, 58.0, f"Hazard regime favors {s_pred_val}")
@@ -1411,6 +1479,153 @@ def detect_market_patterns(history_items):
         if mu_b >= 0.70: p_bollinger = 0.35
         elif mu_b <= 0.30: p_bollinger = 0.65
 
+    # 20. Digit RSI (14-Period Relative Strength Index)
+    if len(nums) >= 15:
+        recent_nums = nums[-15:]
+        gains = [max(0.0, float(recent_nums[i] - recent_nums[i - 1])) for i in range(1, len(recent_nums))]
+        losses = [max(0.0, float(recent_nums[i - 1] - recent_nums[i])) for i in range(1, len(recent_nums))]
+        avg_gain = sum(gains) / 14.0
+        avg_loss = sum(losses) / 14.0
+        if avg_loss < 1e-4:
+            rsi_14 = 100.0 if avg_gain > 0 else 50.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi_14 = 100.0 - (100.0 / (1.0 + rs))
+    else:
+        rsi_14 = 50.0
+
+    if rsi_14 >= 65.0:
+        p_rsi_prob = max(0.18, 1.0 - (rsi_14 / 100.0))
+        rsi_status = f"Overbought (RSI {rsi_14:.1f})"
+        s_q_rsi = ("SMALL", 78.0, f"Digit RSI Overbought ({rsi_14:.1f}) -> Favors SMALL")
+    elif rsi_14 <= 35.0:
+        p_rsi_prob = min(0.82, 1.0 - (rsi_14 / 100.0))
+        rsi_status = f"Oversold (RSI {rsi_14:.1f})"
+        s_q_rsi = ("BIG", 78.0, f"Digit RSI Oversold ({rsi_14:.1f}) -> Favors BIG")
+    else:
+        p_rsi_prob = 0.50
+        rsi_status = f"Neutral (RSI {rsi_14:.1f})"
+        s_q_rsi = (s_pred_val, 60.0, f"Digit RSI Neutral ({rsi_14:.1f})")
+
+    # 21. Full 10x10 Digit Markov Transition Matrix
+    digit_matrix_10 = [[0] * 10 for _ in range(10)]
+    for i in range(len(nums) - 1):
+        d1 = nums[i]
+        d2 = nums[i + 1]
+        if 0 <= d1 <= 9 and 0 <= d2 <= 9:
+            digit_matrix_10[d1][d2] += 1
+    row_10 = digit_matrix_10[last_num] if 0 <= last_num <= 9 else [0] * 10
+    tot_row_10 = sum(row_10)
+    if tot_row_10 >= 5:
+        small_trans_sum = sum(row_10[0:5])
+        big_trans_sum = sum(row_10[5:10])
+        p_10x10_markov = (big_trans_sum + 1.0) / (tot_row_10 + 2.0)
+        m10_fav = "BIG" if big_trans_sum >= small_trans_sum else "SMALL"
+        m10_conf = round(max(big_trans_sum, small_trans_sum) / tot_row_10 * 100, 1)
+        s_q_10x10 = (m10_fav, min(92.0, m10_conf), f"10x10 Markov: No.{last_num} -> {m10_fav} ({m10_conf}%)")
+    else:
+        p_10x10_markov = 0.50
+        s_q_10x10 = (s_pred_val, 60.0, f"10x10 Markov No.{last_num} baseline")
+
+    # 22. Digit Gap & Dormancy Pressure Analysis
+    dormancy_map = {}
+    for d in range(10):
+        gap = 0
+        found = False
+        for n in reversed(nums):
+            if n == d:
+                found = True
+                break
+            gap += 1
+        dormancy_map[d] = gap if found else len(nums)
+    small_dormancy_sum = sum(dormancy_map[d] for d in range(0, 5))
+    big_dormancy_sum = sum(dormancy_map[d] for d in range(5, 10))
+    tot_dorm = small_dormancy_sum + big_dormancy_sum
+    p_dormancy_big = (big_dormancy_sum / tot_dorm) if tot_dorm > 0 else 0.5
+    dorm_fav = "BIG" if big_dormancy_sum >= small_dormancy_sum else "SMALL"
+    dorm_edge = abs(big_dormancy_sum - small_dormancy_sum)
+    s_q_dorm = (dorm_fav, min(85.0, 65.0 + (dorm_edge * 0.5)), f"Digit Dormancy: {dorm_fav} overdue (Gap {max(big_dormancy_sum, small_dormancy_sum)} vs {min(big_dormancy_sum, small_dormancy_sum)})")
+
+    # 23. Baccarat Derived Roads Regularity
+    p_derived_roads, derived_road_desc, is_derived_chaotic, derived_road_tag = compute_baccarat_derived_roads(sizes)
+    s_q_derived = ("BIG" if p_derived_roads >= 0.5 else "SMALL", 82.0 if not is_derived_chaotic else 60.0, derived_road_desc)
+
+    # 24. Delta Jump Velocity & Early Chop Armor
+    if len(nums) >= 6:
+        recent_deltas = [abs(nums[i] - nums[i - 1]) for i in range(len(nums) - 5, len(nums))]
+        avg_delta = sum(recent_deltas) / float(len(recent_deltas))
+    else:
+        avg_delta = 4.5
+    is_high_volatility = (avg_delta >= 4.75)
+    if s_alt >= 2 and is_high_volatility:
+        p_delta_chop = 0.72 if opp_s == "BIG" else 0.28
+        s_q_delta = (opp_s, 88.0, f"Violent Delta Chop (Δ={avg_delta:.1f}, Alt x{s_alt}) -> Favors {opp_s}")
+    elif s_alt >= 2:
+        p_delta_chop = 0.65 if opp_s == "BIG" else 0.35
+        s_q_delta = (opp_s, 82.0, f"Early Chop Active (Alt x{s_alt}) -> Favors {opp_s}")
+    elif s_streak >= 3:
+        p_delta_chop = 0.70 if last_s == "BIG" else 0.30
+        s_q_delta = (last_s, 85.0, f"Low Delta Streak Ride (x{s_streak}) -> Favors {last_s}")
+    else:
+        p_delta_chop = 0.50
+        s_q_delta = (s_pred_val, 60.0, f"Delta Velocity Δ={avg_delta:.1f}")
+
+    # 25. Parity-Color Invariant Cluster Correlation
+    recent_colors_10 = colors[-10:] if len(colors) >= 10 else colors
+    red_ratio = recent_colors_10.count("RED") / float(len(recent_colors_10)) if recent_colors_10 else 0.5
+    if red_ratio >= 0.70:
+        p_parity_color = 0.38
+        s_q_parity = ("SMALL", 74.0, f"Parity RED Dominance ({red_ratio*100:.0f}% Even/Red) -> Small Edge")
+    elif red_ratio <= 0.30:
+        p_parity_color = 0.62
+        s_q_parity = ("BIG", 74.0, f"Parity GREEN Dominance ({(1-red_ratio)*100:.0f}% Odd/Green) -> Big Edge")
+    else:
+        p_parity_color = 0.50
+        s_q_parity = (s_pred_val, 60.0, "Parity-Color Balanced")
+
+    # 26. Period Modulo Micro-Cycle Quant
+    try:
+        last_period_str = str(history_items[-1].get("period", "0"))
+        last_p_val = int(last_period_str[-5:]) if len(last_period_str) >= 5 else int(last_period_str)
+        target_mod5 = (last_p_val + 1) % 5
+        mod5_stats = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+        for it in history_items:
+            ps = str(it.get("period", "0"))
+            try:
+                pv = int(ps[-5:]) if len(ps) >= 5 else int(ps)
+                sz = it.get("size", "")
+                if sz in ("BIG", "SMALL"):
+                    mod5_stats[pv % 5][sz] += 1
+            except Exception:
+                pass
+        c_m5 = mod5_stats[target_mod5]
+        tot_m5 = c_m5["BIG"] + c_m5["SMALL"]
+        p_period_mod = (c_m5["BIG"] + 1.0) / (tot_m5 + 2.0) if tot_m5 >= 10 else 0.50
+        mod_fav = "BIG" if c_m5["BIG"] >= c_m5["SMALL"] else "SMALL"
+        mod_conf = round(max(c_m5["BIG"], c_m5["SMALL"]) / tot_m5 * 100, 1) if tot_m5 > 0 else 50.0
+        s_q_mod = (mod_fav, min(80.0, mod_conf), f"Period Mod-5 [{target_mod5}] Cycle -> {mod_fav} ({mod_conf}%)")
+    except Exception:
+        p_period_mod = 0.50
+        s_q_mod = (s_pred_val, 55.0, "Period Mod Neutral")
+
+    # 27. Mirror Number Coupling (Sum = 9 Symmetry)
+    mirror_num = 9 - last_num
+    mirror_group = "BIG" if mirror_num >= 5 else "SMALL"
+    mirror_matches = 0
+    tot_last_appearances = 0
+    for i in range(len(nums) - 1):
+        if nums[i] == last_num:
+            tot_last_appearances += 1
+            if nums[i + 1] in (mirror_num, mirror_num - 1, mirror_num + 1):
+                mirror_matches += 1
+    p_mirror_affinity = (mirror_matches + 1.0) / (tot_last_appearances + 2.0) if tot_last_appearances >= 3 else 0.20
+    if p_mirror_affinity >= 0.28:
+        p_mirror_prob = 0.65 if mirror_group == "BIG" else 0.35
+        s_q_mirror = (mirror_group, 75.0, f"Mirror Partner {last_num}<->{mirror_num} Affinity ({p_mirror_affinity*100:.0f}%) -> {mirror_group}")
+    else:
+        p_mirror_prob = 0.50
+        s_q_mirror = (s_pred_val, 58.0, "Mirror Coupling Neutral")
+
     probabilities = {
         "p_freq_3": round(p_freq_3, 4),
         "p_freq_5": round(p_freq_5, 4),
@@ -1442,17 +1657,25 @@ def detect_market_patterns(history_items):
         "p_ewma": round(p_ewma, 4),
         "p_monte_carlo": round(p_monte_carlo, 4),
         "p_bollinger": round(p_bollinger, 4),
-        "p_kelly_adv": round(p_kelly_adv, 4)
+        "p_kelly_adv": round(p_kelly_adv, 4),
+        "p_rsi_prob": round(p_rsi_prob, 4),
+        "p_10x10_markov": round(p_10x10_markov, 4),
+        "p_dormancy_big": round(p_dormancy_big, 4),
+        "p_derived_roads": round(p_derived_roads, 4),
+        "p_delta_chop": round(p_delta_chop, 4),
+        "p_parity_color": round(p_parity_color, 4),
+        "p_period_mod": round(p_period_mod, 4),
+        "p_mirror_prob": round(p_mirror_prob, 4)
     }
 
-    # Bayesian Log-Odds Unified Evidence Aggregation (30 Dimensions)
+    # Bayesian Log-Odds Unified Evidence Aggregation (38 Dimensions)
     def _lo(p):
         p_c = max(0.05, min(0.95, p))
         return math.log(p_c / (1.0 - p_c))
 
     prob_weights = {
         "p_streak_hazard": 4.5 if s_streak >= 3 else 1.2,
-        "p_chop_prob": 4.2 if s_alt >= 3 else 1.2,
+        "p_chop_prob": 4.5 if s_alt >= 2 else 1.2,
         "p_22_prob": 3.8 if p_22_prob != 0.5 else 1.0,
         "p_33_prob": 3.0 if p_33_prob != 0.5 else 1.0,
         "p_step_prob": 2.8 if p_step_prob != 0.5 else 1.0,
@@ -1476,7 +1699,15 @@ def detect_market_patterns(history_items):
         "p_freq_5": 2.0,
         "p_freq_10": 2.2,
         "p_freq_20": 2.5,
-        "p_freq_50": 1.5
+        "p_freq_50": 1.5,
+        "p_rsi_prob": 3.8 if (rsi_14 >= 60.0 or rsi_14 <= 40.0) else 1.2,
+        "p_10x10_markov": 4.5 if tot_row_10 >= 10 else 2.0,
+        "p_dormancy_big": 3.0,
+        "p_derived_roads": 4.0 if (derived_road_tag == "RED_PATTERNED" or is_derived_chaotic) else 1.5,
+        "p_delta_chop": 4.5 if (s_alt >= 2 or s_streak >= 3) else 1.5,
+        "p_parity_color": 2.8 if (red_ratio >= 0.65 or red_ratio <= 0.35) else 1.0,
+        "p_period_mod": 2.0 if tot_m5 >= 10 else 0.5,
+        "p_mirror_prob": 2.8 if p_mirror_affinity >= 0.28 else 0.8
     }
 
     sum_lo = sum(prob_weights[k] * _lo(probabilities[k]) for k in prob_weights)
@@ -1511,6 +1742,13 @@ def detect_market_patterns(history_items):
         "unified_p_big": round(unified_p_big, 4),
         "unified_p_small": round(unified_p_small, 4),
         "unified_edge": unified_edge,
+        "avg_delta": round(avg_delta, 2),
+        "is_high_volatility": is_high_volatility,
+        "rsi_14": round(rsi_14, 1),
+        "rsi_status": rsi_status,
+        "derived_road_desc": derived_road_desc,
+        "is_derived_chaotic": is_derived_chaotic,
+        "derived_road_tag": derived_road_tag,
         "quants": {
             "q4": q4_roadmap,
             "q5": q5_ngram,
@@ -1537,7 +1775,15 @@ def detect_market_patterns(history_items):
             "s_q12": s_q12_hazard,
             "s_q13": s_q13_fourier,
             "s_q14": s_q14_kolmo,
-            "s_q15": s_q15_bayes
+            "s_q15": s_q15_bayes,
+            "s_q_rsi": s_q_rsi,
+            "s_q_10x10": s_q_10x10,
+            "s_q_dorm": s_q_dorm,
+            "s_q_derived": s_q_derived,
+            "s_q_delta": s_q_delta,
+            "s_q_parity": s_q_parity,
+            "s_q_mod": s_q_mod,
+            "s_q_mirror": s_q_mirror
         }
     }
 
@@ -1579,9 +1825,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
-    # --- Phase 1: 17 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
+    # --- Phase 1: 28 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
     s_dragon = last_s if s_streak >= 3 else s_pred_val
-    s_chop = opp_s if s_alt >= 4 else s_pred_val
+    s_chop = opp_s if s_alt >= 2 else s_pred_val
     s_22 = s_pred_val
     s_contrarian = opp_s if (s_streak >= 6 or b20 >= 14 or s20 >= 14) else s_pred_val
 
@@ -1597,12 +1843,21 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     s_q13 = s_quants.get("s_q13", (s_pred_val, 65.0, "Fourier DFT Size"))
     s_q14 = s_quants.get("s_q14", (s_pred_val, 65.0, "Kolmogorov Size Complexity"))
     s_q15 = s_quants.get("s_q15", (s_pred_val, 68.0, "Bayesian Decay Size"))
+    s_q_rsi = s_quants.get("s_q_rsi", (opp_s, 65.0, "Digit RSI(14)"))
+    s_q_10x10 = s_quants.get("s_q_10x10", (s_pred_val, 75.0, "10x10 Markov Transition"))
+    s_q_dorm = s_quants.get("s_q_dorm", (s_pred_val, 65.0, "Digit Dormancy Pressure"))
+    s_q_derived = s_quants.get("s_q_derived", (s_pred_val, 70.0, "Baccarat Derived Roads"))
+    s_q_delta = s_quants.get("s_q_delta", (opp_s if s_alt >= 2 else s_pred_val, 70.0, "Delta Jump Velocity"))
+    s_q_parity = s_quants.get("s_q_parity", (s_pred_val, 65.0, "Parity-Color Invariant"))
+    s_q_mod = s_quants.get("s_q_mod", (s_pred_val, 60.0, "Period Modulo Micro-Cycle"))
+    s_q_mirror = s_quants.get("s_q_mirror", (s_pred_val, 60.0, "Mirror Number Coupling"))
+
     meta_val = "BIG" if unified_p_big >= 0.50 else "SMALL"
     meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
     all_specialists = [
         {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else 60.0, "arg": f"Size streak len: {s_streak}"},
-        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 4 else 60.0, "arg": f"Size chop len: {s_alt}"},
+        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 2 else 60.0, "arg": f"Size chop len: {s_alt}"},
         {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 82.0 if is_s_2_2 else 60.0, "arg": "Size 2-2 pair symmetry"},
         {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0, "arg": "Anti-exhaustion balance"},
         {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4[0], "conf": s_q4[1], "arg": s_q4[2]},
@@ -1621,12 +1876,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         {"name": "Agent 17 (Monte Carlo 10,000-Path Quant)", "val": "BIG" if probabilities.get("p_monte_carlo", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_monte_carlo", 0.5), 1.0 - probabilities.get("p_monte_carlo", 0.5)) * 100, 1), "arg": f"MC 10k Sim P(BIG)={probabilities.get('p_monte_carlo', 0.5):.2f}"},
         {"name": "Agent 18 (EWMA Trend Momentum Quant)", "val": "BIG" if probabilities.get("p_ewma", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_ewma", 0.5), 1.0 - probabilities.get("p_ewma", 0.5)) * 100, 1), "arg": f"EWMA Crossover P(BIG)={probabilities.get('p_ewma', 0.5):.2f}"},
         {"name": "Agent 19 (Kelly Criterion Edge Advantage Quant)", "val": "BIG" if probabilities.get("p_kelly_adv", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_kelly_adv", 0.5), 1.0 - probabilities.get("p_kelly_adv", 0.5)) * 100, 1), "arg": f"Kelly Advantage P(BIG)={probabilities.get('p_kelly_adv', 0.5):.2f}"},
-        {"name": "Agent 20 (Unified 30-Probability Meta-Engine)", "val": meta_val, "conf": meta_conf, "arg": f"Unified Edge {unified_edge:.1f}% (P(BIG)={unified_p_big:.2f}, P(SMALL)={unified_p_small:.2f})"}
+        {"name": "Agent 20 (Unified 38-Probability Meta-Engine)", "val": meta_val, "conf": meta_conf, "arg": f"Unified Edge {unified_edge:.1f}% (P(BIG)={unified_p_big:.2f}, P(SMALL)={unified_p_small:.2f})"},
+        {"name": "Agent 21 (Digit RSI-14 Momentum Quant)", "val": s_q_rsi[0], "conf": s_q_rsi[1], "arg": s_q_rsi[2]},
+        {"name": "Agent 22 (10x10 Full Digit Markov Quant)", "val": s_q_10x10[0], "conf": s_q_10x10[1], "arg": s_q_10x10[2]},
+        {"name": "Agent 23 (Digit Gap & Dormancy Pressure)", "val": s_q_dorm[0], "conf": s_q_dorm[1], "arg": s_q_dorm[2]},
+        {"name": "Agent 24 (Baccarat Derived Roads Regularity)", "val": s_q_derived[0], "conf": s_q_derived[1], "arg": s_q_derived[2]},
+        {"name": "Agent 25 (Delta Jump Velocity & Early Chop)", "val": s_q_delta[0], "conf": s_q_delta[1], "arg": s_q_delta[2]},
+        {"name": "Agent 26 (Parity-Color Cluster Invariant)", "val": s_q_parity[0], "conf": s_q_parity[1], "arg": s_q_parity[2]},
+        {"name": "Agent 27 (Period Modulo Micro-Cycle Quant)", "val": s_q_mod[0], "conf": s_q_mod[1], "arg": s_q_mod[2]},
+        {"name": "Agent 28 (Mirror Number Coupling Quant)", "val": s_q_mirror[0], "conf": s_q_mirror[1], "arg": s_q_mirror[2]}
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
     dragon_weight = 8.5 if s_streak >= 3 else 2.0
-    chop_weight = 7.0 if s_alt >= 4 else 1.5
+    chop_weight = 7.5 if s_alt >= 2 else 1.5
     sym_weight = 5.0 if ("Double" in s_pattern_desc or "Single" in s_pattern_desc) else 2.0
     mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
     roadmap_weight = 6.0 if s_q4[1] >= 85.0 else 3.5
@@ -1636,7 +1899,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     rhythm_weight = 2.2 if s_q9[1] >= 65.0 else 1.4
     entropy_weight = 1.8
     outlier_weight = 2.2 if last_num in (0, 1, 8, 9) else 1.2
-    hazard_weight = 4.2 if s_streak >= 3 else (3.5 if s_alt >= 4 else 1.8)
+    hazard_weight = 4.2 if s_streak >= 3 else (3.5 if s_alt >= 2 else 1.8)
     fourier_weight = 2.5 if s_q13[1] >= 68.0 else 1.5
     kolmo_weight = 1.8
     bayes_decay_weight = 2.5 if s_q15[1] >= 65.0 else 1.8
@@ -1645,6 +1908,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ewma_weight = 3.4
     kelly_weight = 3.2
     meta_weight = 6.0 if unified_edge >= 3.0 else 4.0
+    rsi_weight = 4.8 if s_q_rsi[1] >= 70.0 else 2.5
+    markov10_weight = 5.5 if s_q_10x10[1] >= 70.0 else 3.0
+    dorm_weight = 3.5
+    derived_weight = 4.5 if s_q_derived[1] >= 70.0 else 2.0
+    delta_weight = 6.0 if (s_alt >= 2 or s_streak >= 3) else 2.5
+    parity_weight = 3.0
+    mod_weight = 2.0
+    mirror_weight = 2.5
 
     weights = [
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -1667,7 +1938,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         mc_weight,            # Agent 17: Monte Carlo 10k Simulation
         ewma_weight,          # Agent 18: EWMA Trend Momentum
         kelly_weight,         # Agent 19: Kelly Criterion Edge
-        meta_weight           # Agent 20: Unified 30-Probability Meta-Engine
+        meta_weight,          # Agent 20: Unified 38-Probability Meta-Engine
+        rsi_weight,           # Agent 21: Digit RSI-14 Momentum
+        markov10_weight,      # Agent 22: 10x10 Full Digit Markov
+        dorm_weight,          # Agent 23: Digit Gap & Dormancy Pressure
+        derived_weight,       # Agent 24: Baccarat Derived Roads Regularity
+        delta_weight,         # Agent 25: Delta Jump Velocity & Early Chop
+        parity_weight,        # Agent 26: Parity-Color Cluster Invariant
+        mod_weight,           # Agent 27: Period Modulo Micro-Cycle
+        mirror_weight         # Agent 28: Mirror Number Coupling
     ]
 
     big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
@@ -1676,10 +1955,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
 
     # High-Intensity Multi-Model Confluence Boost (+25% weight if core pillars align)
-    core_pillar_votes = [s_q4[0], s_q5[0], s_q12[0], meta_val]
-    if core_pillar_votes.count("BIG") >= 3:
+    core_pillar_votes = [s_q4[0], s_q5[0], s_q12[0], s_q_10x10[0], meta_val]
+    if core_pillar_votes.count("BIG") >= 4:
         big_weight *= 1.25
-    elif core_pillar_votes.count("SMALL") >= 3:
+    elif core_pillar_votes.count("SMALL") >= 4:
         small_weight *= 1.25
 
     total_active_weight = big_weight + small_weight
@@ -1703,7 +1982,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     size_edge = abs(big_weight - small_weight)
     size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-    calc_conf = min(97.5, max(84.0, round(84.0 + (size_margin_pct * 0.22) + (w_v * 0.5), 1)))
+    calc_conf = min(97.5, max(84.0, round(84.0 + (size_margin_pct * 0.22) + (w_v * 0.35), 1)))
 
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
@@ -1726,7 +2005,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     else:
         if s_streak >= 3 and w_size == last_s:
             target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
-        elif s_alt >= 4 and w_size == opp_s:
+        elif s_alt >= 2 and w_size == opp_s:
             target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
         elif b20 >= 12 or s20 >= 12:
             target_pattern = f"Mean-Reversion Imbalance ({w_size})"
@@ -1738,43 +2017,49 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
     s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
-    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 4)
+    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 2)
     s_strong_22 = ("Double" in s_pattern_desc or "Single" in s_pattern_desc)
     s_strong_stair = ("Staircase" in s_pattern_desc or "Mountain" in s_pattern_desc or "Triplet" in s_pattern_desc)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
     # ====================================================
-    # 🎯 3. HIGH-INTENSITY CONVICTION QUALIFICATION ENGINE
+    # 🎯 3. HIGH-INTENSITY CONVICTION QUALIFICATION ENGINE (28 Agents)
     # ====================================================
-    # Safe Skip & Win-Streak Protection: Only qualify if statistical edge or structure is valid
+    is_supermajority = (w_v >= 16 and target_margin >= 10.0) # 16/28 = 57%+ majority
+    is_strong_consensus = (w_v >= 18)
     is_qualified_bet = (
-        (w_v >= 9) or
-        (unified_edge >= 2.0) or
-        (has_confirmed_structure and w_v >= 8) or
-        (target_margin >= 10.0)
+        is_strong_consensus or
+        (is_supermajority and unified_edge >= 2.0) or
+        (has_confirmed_structure and w_v >= 14 and target_margin >= 8.0)
     )
+
+    # 🛡️ Early Chop Armor & Volatility Gate (Anti-Streak-Trap):
+    # If market is in high-volatility jump (|Δ| >= 4.75) and alternating (s_alt in 2, 3):
+    # Bet ONLY if following chop or if unanimity is massive; otherwise force SAFE SKIP!
+    if p_info.get("is_high_volatility", False) and s_alt in (2, 3):
+        if w_size != opp_s and not is_strong_consensus:
+            is_qualified_bet = False
+            print(f"🛡️ [CHOP ARMOR] Filtered counter-chop streak bet during volatile swing (Δ={p_info.get('avg_delta')})", flush=True)
 
     # 🛡️ Level 2+ Recovery Protection (Anti-Loss Armor):
     if current_loss_streak >= 1:
         recovery_ok = (
-            (w_v >= 11 and target_margin >= 12.0) or
-            (s_streak >= 3) or
-            (s_alt >= 4) or
-            ("Single-Double" in s_pattern_desc and w_v >= 10) or
-            ("Double-Single" in s_pattern_desc and w_v >= 10) or
-            ("Double-Step" in s_pattern_desc and w_v >= 10) or
-            (has_confirmed_structure and w_v >= 10)
+            (w_v >= 18 and target_margin >= 12.0) or
+            (s_streak >= 3 and w_size == last_s) or
+            (s_alt >= 2 and w_size == opp_s and w_v >= 15) or
+            ("Double" in s_pattern_desc and w_v >= 15) or
+            (has_confirmed_structure and w_v >= 16)
         )
         is_qualified_bet = recovery_ok
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
-    if w_v >= 13:
+    if w_v >= 19:
         consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 11:
+    elif w_v >= 16:
         consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 9:
+    elif w_v >= 14:
         consensus_tag = f"⚡ Council Majority Edge ({w_v}-{l_v} | {target_edge_desc})"
     else:
         consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
@@ -1783,7 +2068,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     top_prob_lines = ", ".join([f"{k}={probabilities[k]}" for k in list(probabilities.keys())[:6]])
     spec_summary = "\n".join([
         f"- {s['name']}: {s['val']} ({s['conf']:.0f}%) -> \"{s['arg']}\""
-        for s in all_specialists[:8]
+        for s in all_specialists[:10]
     ])
 
     final_summary = f"Selected SIZE {target_val} based on {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc} | Edge {unified_edge:.1f}%)."
@@ -1834,16 +2119,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         f"- Total Synced Memory: {tot_synced} rounds\n"
         f"- Macro Multi-Window: 100-Round=({b100}B/{s100}S), 50-Round=({b50}B/{s50}S), 20-Round=({b20}B/{s20}S)\n"
         f"- Database Number Transition Ground Truth: {n_trans_str}\n"
+        f"- 10x10 Full Markov Matrix (No.{last_num}): P(BIG)={probabilities.get('p_10x10_markov', 0.5)*100:.1f}%, P(SMALL)={(1.0 - probabilities.get('p_10x10_markov', 0.5))*100:.1f}%\n"
+        f"- Digit RSI(14): {p_info.get('rsi_14', 50.0):.1f} ({p_info.get('rsi_status', 'Neutral')})\n"
+        f"- Baccarat Derived Roads: {p_info.get('derived_road_desc', 'Balanced')}\n"
+        f"- Delta Jump Velocity: Avg Δ={p_info.get('avg_delta', 4.5):.1f} (High Volatility Chop: {'YES' if p_info.get('is_high_volatility') else 'NO'})\n"
         f"- Recent 20-Draw Shoe Sequence (oldest->newest): {recent_20_detailed}\n"
         f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
         f"- Active Streak: {last_s} x{s_streak} | Active Alternation (Chop): {s_alt}\n"
         f"- Multi-Probability Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
-        f"- 15 Quant Specialists Votes: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
+        f"- 28 Quant Specialists Votes: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
         f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
         f"ANALYTICAL DECISION DIRECTIVES:\n"
-        f"1. Bear the full decision stress: Synthesize sequence roadmaps (Dragon >=3, 1-1 Chop >=4, 1-2 Single-Double, 2-1 Double-Single, 2-2 Double-Step, Triplets) with database ground truth.\n"
+        f"1. Bear the full decision stress: Synthesize sequence roadmaps (Dragon >=3, 1-1 Chop >=2, 1-2 Single-Double, 2-1 Double-Single, 2-2 Double-Step, Triplets), 10x10 Markov, RSI, and Derived Roads.\n"
         f"2. Decisive Selection: When edge or trend roadmap is distinct, choose 'BET' on the high-probability side ('BIG' [5-9] or 'SMALL' [0-4]).\n"
-        f"3. Strict Win-Streak Defense (Safe Skip): If market is 50/50 noise, ambiguous chop, or uncertain, choose 'SKIP' to preserve winning streak and avoid losses. A timely skip is always superior to a loss.\n\n"
+        f"3. Strict Win-Streak Defense (Safe Skip): If market is in high-volatility chop without consensus, 50/50 noise, or ambiguous, choose 'SKIP' to preserve winning streak and avoid losses. A timely skip is always superior to a loss.\n\n"
         f"Return JSON ONLY with this schema:\n"
         f'{{\n'
         f'  "action": "BET" or "SKIP",\n'
