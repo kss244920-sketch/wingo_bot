@@ -1744,36 +1744,27 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
     # ====================================================
-    # 🎯 3. HIGH-INTENSITY QUALIFICATION & ANTI-SKIP ENGINE
+    # 🎯 3. HIGH-INTENSITY CONVICTION QUALIFICATION ENGINE
     # ====================================================
-    # At Level 1 (base play), always qualify bet (User directive: "bs skip necesry")
-    if current_loss_streak == 0:
-        is_qualified_bet = True
-    else:
-        is_qualified_bet = (
-            (w_v >= 9) or
-            (unified_edge >= 2.0) or
-            (has_confirmed_structure and w_v >= 8) or
-            (target_margin >= 10.0)
-        )
-
-    # 🛡️ Anti-Skip Deadlock Breaker: Never skip twice
-    if consecutive_skips >= 1:
-        is_qualified_bet = True
+    # Safe Skip & Win-Streak Protection: Only qualify if statistical edge or structure is valid
+    is_qualified_bet = (
+        (w_v >= 9) or
+        (unified_edge >= 2.0) or
+        (has_confirmed_structure and w_v >= 8) or
+        (target_margin >= 10.0)
+    )
 
     # 🛡️ Level 2+ Recovery Protection (Anti-Loss Armor):
     if current_loss_streak >= 1:
         recovery_ok = (
-            (w_v >= 12 and target_margin >= 15.0) or
+            (w_v >= 11 and target_margin >= 12.0) or
             (s_streak >= 3) or
             (s_alt >= 4) or
             ("Single-Double" in s_pattern_desc and w_v >= 10) or
             ("Double-Single" in s_pattern_desc and w_v >= 10) or
             ("Double-Step" in s_pattern_desc and w_v >= 10) or
-            (has_confirmed_structure and w_v >= 11)
+            (has_confirmed_structure and w_v >= 10)
         )
-        if consecutive_skips >= 1:
-            recovery_ok = True
         is_qualified_bet = recovery_ok
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
@@ -1851,13 +1842,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
         f"ANALYTICAL DECISION DIRECTIVES:\n"
         f"1. Bear the full decision stress: Synthesize sequence roadmaps (Dragon >=3, 1-1 Chop >=4, 1-2 Single-Double, 2-1 Double-Single, 2-2 Double-Step, Triplets) with database ground truth.\n"
-        f"2. Decisive Selection: Pick the winning side between 'BIG' [5-9] and 'SMALL' [0-4] with 94.0%-98.5% confidence.\n"
-        f"3. Strict Skip Policy: NEVER skip at Level 1. Only skip if Stage is Recovery (Level 2+) AND market is authentic 50/50 chaotic deadlock.\n\n"
+        f"2. Decisive Selection: When edge or trend roadmap is distinct, choose 'BET' on the high-probability side ('BIG' [5-9] or 'SMALL' [0-4]).\n"
+        f"3. Strict Win-Streak Defense (Safe Skip): If market is 50/50 noise, ambiguous chop, or uncertain, choose 'SKIP' to preserve winning streak and avoid losses. A timely skip is always superior to a loss.\n\n"
         f"Return JSON ONLY with this schema:\n"
         f'{{\n'
         f'  "action": "BET" or "SKIP",\n'
         f'  "target": "BIG" or "SMALL",\n'
-        f'  "confidence": 96.5,\n'
         f'  "summary": "Crisp 3-6 word strategy summary (e.g. 1-2 Single-Double Wave, Dragon Trend Momentum)"\n'
         f'}}'
     )
@@ -1888,28 +1878,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
                 ai_called_successfully = True
                 if act == "SKIP":
-                    if current_loss_streak == 0:
-                        # Policy: NEVER skip at Level 1!
-                        arbiter_wants_skip = False
-                        is_qualified_bet = True
-                        final_summary = f"Level 1 Base: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
-                        print(f"🧠 [MASTER AI: {model_name}] ⚡ Level 1 Base Play: Proceeding with {target_val}.", flush=True)
-                    elif consecutive_skips >= 1:
-                        # Policy: NEVER skip multiple times in a row!
-                        arbiter_wants_skip = False
-                        is_qualified_bet = True
-                        final_summary = f"Deadlock override: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
-                        print(f"🧠 [MASTER AI: {model_name}] ⚡ Deadlock override after skip. Betting {target_val}.", flush=True)
-                    elif current_loss_streak >= 1 and not (s_streak >= 3 or s_alt >= 4 or "Double" in s_pattern_desc or "Single" in s_pattern_desc):
-                        # ONLY skip during recovery (Level 2/3) when market is pure noise without roadmap
-                        arbiter_wants_skip = True
-                        final_summary = arb_reason or "Capital preservation: Filtered out ambiguous transition round during recovery stage."
-                        print(f"🧠 [MASTER AI: {model_name}] ⏸️ RECOVERY SNIPER SKIP HONORED: {final_summary}", flush=True)
-                    else:
-                        arbiter_wants_skip = False
-                        is_qualified_bet = True
-                        final_summary = f"Structure confirmed: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()}."
-                        print(f"🧠 [MASTER AI: {model_name}] 🎯 Structure confirmed: Proceeding with {target_val}.", flush=True)
+                    arbiter_wants_skip = True
+                    is_qualified_bet = False
+                    final_summary = arb_reason or "Capital preservation: Ambiguous transition filtered to protect win streak."
+                    print(f"🧠 [MASTER AI: {model_name}] ⏸️ SNIPER SKIP HONORED: {final_summary}", flush=True)
                 elif act == "BET":
                     arbiter_wants_skip = False
                     is_qualified_bet = True
@@ -2082,7 +2054,6 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
         f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
         f"📊 <b>Stage</b> : <b>{stage_str}</b>\n"
-        f"📈 <b>Confidence</b> : <b>{conf_str}</b>\n"
         f"🧩 <b>Strategy</b> : <b>{strat_str}</b>"
         f"{v_tip_line}\n"
         f"</blockquote>\n"
