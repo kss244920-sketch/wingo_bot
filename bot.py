@@ -430,13 +430,16 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
     if pred_info:
         p_val = pred_info.get("target_val", "")
         p_type = pred_info.get("target_type", "SIZE")
-        if p_type == "SIZE":
-            is_win = (p_val == size)
+        if p_val == "SKIP" or p_type == "SKIP":
+            pred_line = "\n🎯 <b>Prediction:</b> ⏸️ SKIP | <b>Outcome:</b> ⏸️ SKIPPED"
         else:
-            is_win = (p_val == base_color)
-        status_tag = "✅ WIN" if is_win else "❌ LOSS"
-        p_emoji = "🐘 BIG" if p_val == "BIG" else ("🐜 SMALL" if p_val == "SMALL" else p_val)
-        pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} | <b>Outcome:</b> {status_tag}"
+            if p_type == "SIZE":
+                is_win = (p_val == size)
+            else:
+                is_win = (p_val == base_color)
+            status_tag = "✅ WIN" if is_win else "❌ LOSS"
+            p_emoji = "🐘 BIG" if p_val == "BIG" else ("🐜 SMALL" if p_val == "SMALL" else p_val)
+            pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} | <b>Outcome:</b> {status_tag}"
 
     text = (
         f"📦 <b>[CLOUD DB RECORD]</b>\n"
@@ -2319,9 +2322,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         footer = f"🚀 <i>Place 9X Bet on {bet_label}! Final recovery stage (Hard Stop-Loss protected).</i>"
 
     v_tip_line = ""
-    if jackpot_tip:
-        v_tip_line = f"\n🎯 <b>Sure-Shot Numbers (9X)</b> : <b>{to_bold(jackpot_tip)}</b>"
-    elif violet_alert:
+    if violet_alert:
         v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
 
     # Clean, concise strategy summary (choti si summary: max 5-8 words)
@@ -2563,6 +2564,10 @@ def run_live_bot():
                             p = str(item.get("issueNumber", ""))
                             if p:
                                 save_to_memory(p, int(item.get("number", 0)), str(item.get("color", "")), auto_save=False)
+                        try:
+                            MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
+                        except Exception:
+                            pass
                         save_cache()
                         print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Generating immediate startup prediction...", flush=True)
 
@@ -2576,6 +2581,7 @@ def run_live_bot():
                                 t_conf = decision["target_conf"]
                                 if t_type == "SKIP" or t_val == "SKIP":
                                     CONSECUTIVE_SKIPS += 1
+                                    MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
                                     save_cache()
                                     send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
                                     print(f"⏸️ [STARTUP SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk on startup.", flush=True)
@@ -2685,6 +2691,7 @@ def run_live_bot():
 
                             if t_type == "SKIP" or t_val == "SKIP":
                                 CONSECUTIVE_SKIPS += 1
+                                MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
                                 save_cache()
                                 send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
                                 print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Level {CURRENT_LOSS_STREAK + 1} recovery preserved.", flush=True)

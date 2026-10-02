@@ -3,3 +3,4 @@ __pycache__/
 bot.log
 keep_alive.log
 user_sessions.json
+jrnm_identity.token
