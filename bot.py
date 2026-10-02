@@ -1768,25 +1768,62 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     arbiter_wants_skip = False
 
     # --- Phase 4: Master AI Primary Decision Engine (Groq with Automatic Model Failover) ---
-    recent_history_detailed = ", ".join([f"...{it.get('period','')[-3:]}:{it.get('size')}({it.get('num')})" for it in history_items[-14:]])
+    tot_synced = len(history_items)
+    recent_history_detailed = ", ".join([f"...{it.get('period','')[-3:]}:{it.get('size')}({it.get('num')})" for it in history_items[-30:]])
     cur_stage_str = f"Level {current_loss_streak + 1} ({3**current_loss_streak}X)"
+
+    # Multi-window counts across the synced database
+    b100 = sizes[-100:].count("BIG") if len(sizes) >= 100 else sizes.count("BIG")
+    s100 = sizes[-100:].count("SMALL") if len(sizes) >= 100 else sizes.count("SMALL")
+    b50 = sizes[-50:].count("BIG") if len(sizes) >= 50 else sizes.count("BIG")
+    s50 = sizes[-50:].count("SMALL") if len(sizes) >= 50 else sizes.count("SMALL")
+    b_all = sizes.count("BIG")
+    s_all = sizes.count("SMALL")
+    pct_b_all = (b_all / len(sizes) * 100) if sizes else 50.0
+
+    # Historical transition stats for last_num across the full synced database
+    num_trans_db = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+    for i in range(len(nums) - 1):
+        num_trans_db[nums[i]][sizes[i + 1]] += 1
+    cnt_last_n = num_trans_db[last_num]
+    tot_last_n = cnt_last_n["BIG"] + cnt_last_n["SMALL"]
+    n_trans_str = f"After number {last_num} (occurred {tot_last_n} times in database): P(BIG)={cnt_last_n['BIG']/tot_last_n*100:.1f}%, P(SMALL)={cnt_last_n['SMALL']/tot_last_n*100:.1f}%" if tot_last_n > 0 else f"Number {last_num} baseline transition"
+
+    # Historical transition stats for pair (penultimate_num, last_num)
+    if len(nums) >= 2:
+        last_p = (nums[-2], nums[-1])
+        pair_trans_db = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+        for i in range(len(nums) - 2):
+            pair_trans_db[(nums[i], nums[i + 1])][sizes[i + 2]] += 1
+        cnt_last_p = pair_trans_db[last_p]
+        tot_last_p = cnt_last_p["BIG"] + cnt_last_p["SMALL"]
+        p_trans_str = f"After pair {last_p} (occurred {tot_last_p} times): BIG={cnt_last_p['BIG']}, SMALL={cnt_last_p['SMALL']}" if tot_last_p > 0 else "Pair baseline"
+    else:
+        p_trans_str = "Pair baseline"
+
+    print(f"📊 [DATABASE INTEL] Synced: {tot_synced} rounds | N={last_num} -> {n_trans_str} | 100R=({b100}B/{s100}S)", flush=True)
 
     prompt_arbiter = (
         f"You are the Supreme AI Predictor with PRIMARY DECISION AUTHORITY for WinGo 30S.\n"
         f"Prediction Domain: STRICTLY SIZE (BIG [5-9] vs SMALL [0-4]). Zero violet payout penalty.\n\n"
-        f"RECENT DRAW HISTORY (oldest -> newest):\n"
+        f"FULL HISTORICAL DATABASE INTELLIGENCE ({tot_synced} SYNCED ROUNDS):\n"
+        f"- Total Verified Synced Rounds: {tot_synced} rounds in memory\n"
+        f"- Full Historical Database Bias: {b_all} BIG ({pct_b_all:.1f}%) vs {s_all} SMALL ({100-pct_b_all:.1f}%)\n"
+        f"- Multi-Window Horizon: 100-Round=({b100}B vs {s100}S), 50-Round=({b50}B vs {s50}S), 20-Round=({b20}B vs {s20}S)\n"
+        f"- Full Historical Number Transition: {n_trans_str}\n"
+        f"- Full Historical Pair Transition: {p_trans_str}\n\n"
+        f"RECENT 30-DRAW SEQUENCE (oldest -> newest):\n"
         f"{recent_history_detailed}\n\n"
-        f"MARKET STRUCTURE & MULTI-PROBABILITY ANALYSIS:\n"
-        f"- Dominant Pattern: [{s_pattern_desc}]\n"
+        f"CURRENT REGIME & PROBABILITIES:\n"
+        f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
         f"- Active Size Streak: {last_s} x{s_streak}\n"
         f"- Active Alternation (Chop) Count: {s_alt}\n"
-        f"- 20-Round Macro Count: {b20} BIG vs {s20} SMALL\n"
         f"- Multi-Horizon Probabilities: {top_prob_lines}\n"
         f"- Unified Math Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
         f"- Quant Specialists Consensus: {w_size} ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% margin)\n"
         f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
         f"PRIMARY DECISION DIRECTIVE:\n"
-        f"You have primary decision authority to evaluate all data and make the call.\n"
+        f"Synthesize the {tot_synced} synced rounds of database ground truth with sequence roadmaps.\n"
         f"1. Dragon Trend Law: When an active dragon trend is alive (streak >= 2), NEVER cut the trend unless severe exhaustion (streak >= 6).\n"
         f"2. Structural Baccarat/WinGo Law: Watch for 2-2 double-step repetition (pair completion) when a streak breaks. Only declare 1-1 chop if alternation >= 3.\n"
         f"3. Decisive Edge: Pick the winning target 'BIG' or 'SMALL' with high confidence (94.0%-98.5%).\n"
