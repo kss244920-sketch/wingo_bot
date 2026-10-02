@@ -9,14 +9,29 @@ APP_ID = 66236
 MCP_CONFIG = Path.home() / ".gemini/config/mcp_config.json"
 
 def get_headers():
-    if MCP_CONFIG.exists():
-        with open(MCP_CONFIG) as f:
-            cfg = json.load(f)
-            return {
-                "X-User-Identity": cfg["mcpServers"]["justrunmy.app"]["headers"]["X-User-Identity"],
-                "Content-Type": "application/json"
-            }
-    raise RuntimeError("mcp_config.json not found")
+    token_candidates = [
+        Path(__file__).parent / "jrnm_identity.token",
+        Path.home() / "wingo_bot/jrnm_identity.token",
+        Path.home() / "Downloads/mcp(3).json",
+        Path.home() / "Downloads/mcp(4).json",
+        MCP_CONFIG,
+    ]
+    for p in token_candidates:
+        if p.exists() and p.stat().st_size > 0:
+            try:
+                if p.suffix == ".json":
+                    with open(p) as f:
+                        cfg = json.load(f)
+                        tok = cfg.get("mcpServers", {}).get("justrunmy.app", {}).get("headers", {}).get("X-User-Identity")
+                        if tok:
+                            return {"X-User-Identity": tok, "Content-Type": "application/json"}
+                else:
+                    tok = p.read_text(encoding="utf-8").strip()
+                    if tok:
+                        return {"X-User-Identity": tok, "Content-Type": "application/json"}
+            except Exception:
+                pass
+    raise RuntimeError("No valid JRNM token found for WinGo bot")
 
 def call_mcp(method_name, arguments=None):
     headers = get_headers()

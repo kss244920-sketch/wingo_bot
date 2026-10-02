@@ -22,11 +22,11 @@ STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
-# 12-Quant Engine + Single Master AI Brain (with cascading failover to eliminate rate limits)
+# High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
-    "allam-2-7b",               # 7B ultra-fast engine (Instant ~300ms, zero 429 rate limit delay)
-    "qwen/qwen3.8-27b",         # 27B parameter reasoning engine
-    "openai/gpt-oss-120b",      # 120B parameter deep analysis engine
+    "qwen/qwen3.8-27b",         # 27B parameter deep reasoning engine (Sub-second, deep math rigor)
+    "openai/gpt-oss-120b",      # 120B parameter supreme arbiter (Deep multi-perspective analysis)
+    "openai/gpt-oss-20b",       # 20B fast failover
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
@@ -489,74 +489,70 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
         else:
             break
 
-    # 1. 3-2-1 Staircase (3 A's -> 2 B's -> predicts 1 A)
-    if len(seq) >= 5:
-        a = seq[-5]
-        b = seq[-1]
-        if a != b and seq[-4] == a and seq[-3] == a and seq[-2] == b:
-            return a, 92.5, f"3-2-1 Staircase ({a} Peak)"
+    # 1. Dragon Momentum (Streak >= 2) - Golden Law: NEVER CUT A DRAGON! Follow the trend!
+    if streak_len >= 2:
+        dragon_conf = min(97.5, 84.0 + streak_len * 3.5)
+        return last_val, dragon_conf, f"Dragon Trend ({last_val} x{streak_len})"
 
-    # 2. 1-2-3 Reverse Staircase (1 A -> 2 B's -> 1 A -> predicts A to reach 3)
-    if len(seq) >= 4:
-        a = seq[-4]
-        b = seq[-3]
-        if a != b and seq[-2] == b and seq[-1] == a:
-            return a, 90.0, f"1-2-3 Staircase ({a} Extension)"
+    # 2. 1-1 Alternating Chop (AB AB >= 3) - Only active when true alternation is confirmed
+    if alt_len >= 3:
+        chop_conf = min(96.0, 82.0 + alt_len * 3.0)
+        return opp_val, chop_conf, f"1-1 Chop ({alt_len}x Alternation)"
 
-    # 3. 3-3 Triplet (3 A's -> 3 B's -> predicts A reset)
-    if len(seq) >= 6:
-        a = seq[-6]
-        b = seq[-1]
-        if a != b and seq[-5] == a and seq[-4] == a and seq[-3] == b and seq[-2] == b:
-            return a, 88.5, f"3-3 Triplet ({a} Reset)"
-
-    # 4. 2-2 Double-Step (AABB)
-    if len(seq) >= 3:
-        a = seq[-3]
-        b = seq[-1]
-        if a != b and seq[-2] == a:
-            # AA followed by B -> complete 2nd pair B!
-            return b, 92.0, f"2-2 Double-Step ({b} Pair)"
+    # 3. 2-2 Double-Step: AABB completed -> shift to new pair
     if len(seq) >= 4:
         a = seq[-4]
         b = seq[-1]
         if a != b and seq[-3] == a and seq[-2] == b:
-            # AABB completed -> shift to new pair A!
-            return a, 89.0, f"2-2 Double-Step ({a} Shift)"
+            return a, 91.0, f"2-2 Double-Step ({a} Shift)"
 
-    # 5. ABBA Mirror Pattern (Sandwich Symmetry: A -> BB -> A)
+    # 4. 2-2 Pair Completion: AA followed by single B -> complete second pair B
     if len(seq) >= 3:
         a = seq[-3]
-        b = seq[-2]
-        if a != b and seq[-1] == b:
-            # A followed by BB -> completes sandwich with A!
-            return a, 91.0, f"ABBA Mirror ({a} Symmetry)"
+        b = seq[-1]
+        if a != b and seq[-2] == a:
+            return b, 90.0, f"2-2 Double-Step ({b} Pair)"
 
-    # 6. 1-2 Single-Double (ABB ABB)
+    # 5. 3-2-1 Staircase (3 A's -> 2 B's -> predicts 1 A Peak)
+    if len(seq) >= 5:
+        a = seq[-5]
+        b = seq[-1]
+        if a != b and seq[-4] == a and seq[-3] == a and seq[-2] == b:
+            return a, 93.0, f"3-2-1 Staircase ({a} Peak)"
+
+    # 6. 1-2-3 Reverse Staircase (1 A -> 2 B's -> 1 A -> predicts A Extension)
     if len(seq) >= 4:
         a = seq[-4]
         b = seq[-3]
         if a != b and seq[-2] == b and seq[-1] == a:
-            # ABB followed by A -> starts double B!
-            return b, 88.5, f"1-2 Single-Double ({b} Double)"
+            return a, 91.0, f"1-2-3 Staircase ({a} Extension)"
 
-    # 7. 2-1 Double-Single (AAB AAB)
+    # 7. 3-3 Triplet (3 A's -> 3 B's -> predicts A reset)
+    if len(seq) >= 6:
+        a = seq[-6]
+        b = seq[-1]
+        if a != b and seq[-5] == a and seq[-4] == a and seq[-3] == b and seq[-2] == b:
+            return a, 90.0, f"3-3 Triplet ({a} Reset)"
+
+    # 8. Completed ABBA Mirror Symmetry (A -> BB -> A -> next completes cycle)
     if len(seq) >= 4:
         a = seq[-4]
-        b = seq[-2]
-        if a != b and seq[-3] == a and seq[-1] == a:
-            # AAB followed by A -> completes double A!
-            return a, 88.5, f"2-1 Double-Single ({a} Double)"
+        b = seq[-3]
+        if a != b and seq[-2] == b and seq[-1] == a:
+            return b, 89.0, f"ABBA Reversal ({b} Wave)"
 
-    # 8. Dragon Momentum (Streak >= 2) - Follow the Trend! Never cut a dragon!
-    if streak_len >= 2:
-        return last_val, min(95.0, 79.0 + streak_len * 3.0), f"Dragon Trend ({last_val} x{streak_len})"
+    # 9. Macro Dominance (Default for isolated single transitions)
+    recent_20 = seq[-20:] if len(seq) >= 20 else seq
+    big_c = recent_20.count("BIG" if item_type == "SIZE" else "RED")
+    sml_c = len(recent_20) - big_c
+    if big_c >= (len(recent_20) * 0.60):
+        val = "BIG" if item_type == "SIZE" else "RED"
+        return val, 86.0, f"Macro Wave ({val} Dominant {big_c}/{len(recent_20)})"
+    elif sml_c >= (len(recent_20) * 0.60):
+        val = "SMALL" if item_type == "SIZE" else "GREEN"
+        return val, 86.0, f"Macro Wave ({val} Dominant {sml_c}/{len(recent_20)})"
 
-    # 9. 1-1 Alternating Chop (AB AB >= 2)
-    if alt_len >= 2:
-        return opp_val, min(93.0, 76.0 + alt_len * 3.0), f"1-1 Chop ({alt_len}x Alternation)"
-
-    return opp_val if alt_len >= 2 else last_val, 65.0, "Momentum Flow"
+    return last_val, 82.0, f"Trend Continuation ({last_val})"
 
 # ====================================================
 # 📊 MATHEMATICAL MARKET STRUCTURE & PATTERN ENGINE
@@ -1554,31 +1550,31 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
     # --- Phase 1: 17 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
-    s_dragon = last_s if s_streak >= 3 else (opp_s if s_streak < 2 else last_s)
-    s_chop = opp_s if s_alt >= 4 else (last_s if s_streak >= 3 else opp_s)
-    s_22 = s_pred_val if is_s_2_2 else opp_s
-    s_contrarian = opp_s if s_streak >= 4 else last_s
+    s_dragon = last_s if s_streak >= 2 else s_pred_val
+    s_chop = opp_s if s_alt >= 3 else (last_s if s_streak >= 2 else s_pred_val)
+    s_22 = s_pred_val if is_s_2_2 else s_pred_val
+    s_contrarian = opp_s if (s_streak >= 5 or b20 >= 14 or s20 >= 14) else s_pred_val
 
-    s_q4 = s_quants.get("s_q4", (s_pred_val, 75.0, "Pinterest Size Roadmap"))
-    s_q5 = s_quants.get("s_q5", (opp_s, 60.0, "Size Markov 3-Gram"))
-    s_q6 = s_quants.get("s_q6", (opp_s, 65.0, "Number-to-Size Bayes"))
-    s_q7 = s_quants.get("s_q7", (opp_s, 58.0, "20-Round Size Imbalance"))
-    s_q8 = s_quants.get("s_q8", (opp_s, 68.0, "Size Mean-Reversion"))
-    s_q9 = s_quants.get("s_q9", (opp_s, 56.0, "Size Periodicity"))
-    s_q10 = s_quants.get("s_q10", (opp_s, 60.0, "Size Entropy"))
-    s_q11 = s_quants.get("s_q11", (opp_s, 55.0, "Size Boundary Outlier"))
-    s_q12 = s_quants.get("s_q12", (opp_s, 65.0, "Weibull Size Hazard"))
-    s_q13 = s_quants.get("s_q13", (opp_s, 60.0, "Fourier DFT Size"))
-    s_q14 = s_quants.get("s_q14", (opp_s, 55.0, "Kolmogorov Size Complexity"))
-    s_q15 = s_quants.get("s_q15", (opp_s, 58.0, "Bayesian Decay Size"))
+    s_q4 = s_quants.get("s_q4", (s_pred_val, 80.0, "Pinterest Size Roadmap"))
+    s_q5 = s_quants.get("s_q5", (s_pred_val, 70.0, "Size Markov 3-Gram"))
+    s_q6 = s_quants.get("s_q6", (s_pred_val, 70.0, "Number-to-Size Bayes"))
+    s_q7 = s_quants.get("s_q7", (s_pred_val, 65.0, "20-Round Size Imbalance"))
+    s_q8 = s_quants.get("s_q8", (s_pred_val, 70.0, "Size Mean-Reversion"))
+    s_q9 = s_quants.get("s_q9", (s_pred_val, 65.0, "Size Periodicity"))
+    s_q10 = s_quants.get("s_q10", (s_pred_val, 65.0, "Size Entropy"))
+    s_q11 = s_quants.get("s_q11", (s_pred_val, 65.0, "Size Boundary Outlier"))
+    s_q12 = s_quants.get("s_q12", (s_pred_val, 70.0, "Weibull Size Hazard"))
+    s_q13 = s_quants.get("s_q13", (s_pred_val, 65.0, "Fourier DFT Size"))
+    s_q14 = s_quants.get("s_q14", (s_pred_val, 65.0, "Kolmogorov Size Complexity"))
+    s_q15 = s_quants.get("s_q15", (s_pred_val, 68.0, "Bayesian Decay Size"))
     meta_val = "BIG" if unified_p_big >= 0.50 else "SMALL"
     meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
     all_specialists = [
-        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 80.0 if s_streak >= 3 else 50.0, "arg": f"Size streak len: {s_streak}"},
-        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 80.0 if s_alt >= 4 else 50.0, "arg": f"Size chop len: {s_alt}"},
-        {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 75.0 if is_s_2_2 else 50.0, "arg": "Size 2-2 pair symmetry"},
-        {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 75.0, "arg": "Anti-exhaustion balance"},
+        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 2 else 60.0, "arg": f"Size streak len: {s_streak}"},
+        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 3 else 60.0, "arg": f"Size chop len: {s_alt}"},
+        {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 82.0 if is_s_2_2 else 60.0, "arg": "Size 2-2 pair symmetry"},
+        {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0, "arg": "Anti-exhaustion balance"},
         {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4[0], "conf": s_q4[1], "arg": s_q4[2]},
         {"name": "Agent 5 (Size N-Gram Markov Quant)", "val": s_q5[0], "conf": s_q5[1], "arg": s_q5[2]},
         {"name": "Agent 6 (Number-to-Size Bayes)", "val": s_q6[0], "conf": s_q6[1], "arg": s_q6[2]},
@@ -1599,9 +1595,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    dragon_weight = 6.0 if s_streak >= 3 else 1.2
-    chop_weight = 5.2 if s_alt >= 3 else 1.2
-    sym_weight = 4.2 if is_s_2_2 else 1.5
+    dragon_weight = 8.5 if s_streak >= 2 else 2.0
+    chop_weight = 7.0 if s_alt >= 3 else 1.5
+    sym_weight = 4.5 if is_s_2_2 else 1.8
     mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
     roadmap_weight = 5.0 if s_q4[1] >= 80.0 else 2.5
     markov_weight = 4.0 if s_q5[1] >= 75.0 else 2.8
@@ -1677,13 +1673,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     size_edge = abs(big_weight - small_weight)
     size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-    calc_conf = min(96.0, max(76.0, round(max(meta_conf, 65.0 + (size_ratio * 30.0)), 1)))
+    calc_conf = min(97.5, max(84.0, round(84.0 + (size_margin_pct * 0.22) + (w_v * 0.5), 1)))
 
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
     # ====================================================
-    # Protect established dragons (streak >= 3) against counter-trend bets
-    if s_streak >= 3 and w_size != last_s:
+    # Protect established dragons (streak >= 2) against counter-trend bets
+    if s_streak >= 2 and w_size != last_s:
         w_size = last_s
 
     # ====================================================
@@ -1698,7 +1694,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if w_size == s_pred_val:
         target_pattern = s_pattern_desc
     else:
-        if s_streak >= 3 and w_size == last_s:
+        if s_streak >= 2 and w_size == last_s:
             target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
         elif s_alt >= 3 and w_size == opp_s:
             target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
@@ -1711,9 +1707,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
-    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 4)
-    s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and "Pair" in s_pattern_desc and len(sizes) >= 4)
+    s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 2)
+    s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 3)
+    s_strong_22 = ("2-2 Double-Step" in s_pattern_desc and len(sizes) >= 3)
     s_strong_stair = ("Staircase" in s_pattern_desc or "Mountain" in s_pattern_desc)
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
 
@@ -1721,11 +1717,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # 🎯 3. HIGH-INTENSITY QUALIFICATION & ANTI-SKIP ENGINE
     # ====================================================
     # Comprehensive Multi-Probability Execution:
-    # Bet whenever:
-    # 1. Council majority (w_v >= 9 out of 17)
-    # 2. OR Unified probability statistical edge >= 2.0%
-    # 3. OR Confirmed structure (Dragon >= 2, Chop >= 3, 2-2 Double, Staircase) with w_v >= 8
-    # 4. OR target_margin >= 10.0%
     is_qualified_bet = (
         (w_v >= 9) or
         (unified_edge >= 2.0) or
@@ -1734,14 +1725,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     )
 
     # 🛡️ Anti-Skip Deadlock Breaker:
-    # If the bot skipped previous round (consecutive_skips >= 1),
-    # IMMEDIATELY take the dominant statistical edge without hesitation!
     if consecutive_skips >= 1:
         is_qualified_bet = True
 
-    # 🛡️ Level 2+ Recovery Protection:
+    # 🛡️ Level 2+ Recovery Protection (Anti-Loss Armor):
     if current_loss_streak >= 1:
-        recovery_ok = (w_v >= 9) or (unified_edge >= 3.0) or (has_confirmed_structure and w_v >= 8)
+        recovery_ok = (
+            (w_v >= 12) or
+            (target_margin >= 15.0) or
+            (s_streak >= 2) or
+            (s_alt >= 3) or
+            (has_confirmed_structure and w_v >= 9)
+        )
         if consecutive_skips >= 1:
             recovery_ok = True
         is_qualified_bet = recovery_ok
