@@ -515,75 +515,34 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
         chop_conf = min(96.5, 82.0 + chop_count * 2.5)
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
 
-    # 3. 3-3 Triplet Pattern
+    # 3. Confirmed 3-3 Triplet Pattern
     if len(runs) >= 2:
         r1 = runs[-1]
         r2 = runs[-2]
         if r2[1] == 3 and r1[1] == 3:
-            return opp_val, 92.0, f"3-3 Triplet ({opp_val} Shift)"
+            return opp_val, 88.0, f"3-3 Triplet ({opp_val} Shift)"
         if r2[1] == 3 and r1[1] in (1, 2):
-            return last_val, 90.0, f"3-3 Triplet ({last_val} Step {r1[1]+1})"
+            return last_val, 86.0, f"3-3 Triplet ({last_val} Step {r1[1]+1})"
 
-    # 4. 2-2 Double-Step Pattern (Only when confirmed by preceding pairs)
-    if len(runs) >= 2:
-        r1 = runs[-1]
-        r2 = runs[-2]
-        r3 = runs[-3] if len(runs) >= 3 else None
-        # Both r1 and r2 completed length 2 (AABB)
-        if r2[1] == 2 and r1[1] == 2:
-            return opp_val, 91.5, f"2-2 Double-Step ({opp_val} Shift)"
-        # r1 is length 1 following a pair r2=2 AND r3=2 (AABBA -> complete pair B)
-        if r1[1] == 1 and r2[1] == 2 and r3 and r3[1] == 2:
-            return last_val, 90.5, f"2-2 Double-Step ({last_val} Pair)"
-
-    # 5. 1-2 Single-Double & 2-1 Double-Single Roadmap Recognition
+    # 4. Confirmed 2-2 Double-Step Pattern (Requires multi-pair verification)
     if len(runs) >= 3:
         r1 = runs[-1]
         r2 = runs[-2]
         r3 = runs[-3]
-        r4 = runs[-4] if len(runs) >= 4 else None
+        if r2[1] == 2 and r1[1] == 2 and (r3[1] == 2 or (len(runs) >= 4 and runs[-4][1] == 2)):
+            return opp_val, 88.0, f"Confirmed 2-2 Double-Step ({opp_val} Shift)"
+        if r1[1] == 1 and r2[1] == 2 and r3[1] == 2:
+            return last_val, 86.0, f"Confirmed 2-2 Double-Step ({last_val} Pair)"
 
-        # 1-2 Single-Double: (A, 1), (B, 2), (A, 1) -> A single complete, start double B
-        if r2[1] == 2 and r1[1] == 1 and (r3[1] == 1 or (r4 and r4[1] == 2)):
-            return opp_val, 92.0, f"1-2 Single-Double ({opp_val} Wave)"
-
-        # 1-2 Single-Double: (B, 2), (A, 1), (B, 1) -> B single in progress, complete B double
-        if r2[1] == 1 and r1[1] == 1 and (r3[1] == 2 or (r4 and r4[1] == 1)):
-            return last_val, 91.0, f"1-2 Double Completion ({last_val} Pair)"
-
-        # 1-2 Single-Double: (A, 1), (B, 2) -> B double complete, switch to single A
-        if r2[1] == 1 and r1[1] == 2 and (r3[1] == 2 or (r4 and r4[1] == 1)):
-            return opp_val, 91.5, f"1-2 Single-Double ({opp_val} Shift)"
-
-        # 2-1 Double-Single: (A, 2), (B, 1) -> B single complete, start double A
-        if r2[1] == 2 and r1[1] == 1 and (r3[1] == 2 or (r4 and r4[1] == 1)):
-            return opp_val, 91.5, f"2-1 Double-Single ({opp_val} Wave)"
-
-        # 2-1 Double-Single: (B, 1), (A, 1) -> A single in progress, complete A double
-        if r2[1] == 1 and r1[1] == 1 and r3[1] == 2:
-            return last_val, 91.0, f"2-1 Double Completion ({last_val} Pair)"
-
-    # 6. Isolated Pair Context (cur_len == 2) - Golden Fix: NEVER force Dragon on length 2!
-    if cur_len == 2:
-        prev_len = runs[-2][1] if len(runs) >= 2 else 0
-        if prev_len == 1:
-            return opp_val, 87.0, f"Pair Reversal ({opp_val} Shift)"
-        elif prev_len >= 3:
-            return opp_val, 86.0, f"Post-Dragon Double ({opp_val} Shift)"
-        else:
-            return opp_val, 80.0, f"Pair Reversal ({opp_val})"
-
-    # 7. Macro Dominance & Mean-Reversion
+    # 5. Macro 20-Round Extreme Imbalance (Mean-Reversion)
     recent_20 = norm_seq[-20:] if len(norm_seq) >= 20 else norm_seq
     target_major = "BIG" if item_type == "SIZE" else "RED"
     target_minor = "SMALL" if item_type == "SIZE" else "GREEN"
     c_major = recent_20.count(target_major)
     c_minor = len(recent_20) - c_major
 
-    if c_major >= (len(recent_20) * 0.65):
-        return target_minor, 84.0, f"Macro Mean-Reversion ({target_minor} Overdue {c_major}/20)"
-    elif c_minor >= (len(recent_20) * 0.65):
-        return target_major, 84.0, f"Macro Mean-Reversion ({target_major} Overdue {c_minor}/20)"
+    # 5. Default: Transitional / Ambiguous Noise (Zero Speculation)
+    return last_val, 50.0, "Transitional Noise (No Setup)"
 
 # ====================================================
 # 🎴 BACCARAT DERIVED ROADS ENGINE (Big Eye, Small, Cockroach)
@@ -1812,6 +1771,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     s_streak = p_info.get("s_streak", 1)
     s_alt = p_info.get("s_alt", 1)
     s_pred_val = p_info.get("s_pred_val", opp_s)
+    s_pred_conf = p_info.get("s_quants", {}).get("s_q4", (s_pred_val, 50.0, ""))[1]
     s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
     is_s_2_2 = (len(history_items) >= 4 and history_items[-1].get("size") == history_items[-2].get("size") and history_items[-3].get("size") == history_items[-4].get("size") and history_items[-1].get("size") != history_items[-3].get("size")) or ("2-2 Double-Step" in s_pattern_desc)
     s_quants = p_info.get("s_quants", {})
@@ -1829,96 +1789,148 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
     # --- Phase 1: 28 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
-    s_dragon = last_s if s_streak >= 3 else s_pred_val
-    s_chop = opp_s if s_alt >= 2 else s_pred_val
-    s_22 = s_pred_val
-    s_contrarian = opp_s if (s_streak >= 6 or b20 >= 14 or s20 >= 14) else s_pred_val
+    s_dragon = last_s if s_streak >= 3 else None
+    s_chop = opp_s if s_alt >= 2 else None
+    s_22 = s_pred_val if "2-2" in s_pattern_desc else None
+    s_contrarian = opp_s if (s_streak >= 6 or b20 >= 14 or s20 >= 14) else None
 
-    s_q4 = s_quants.get("s_q4", (s_pred_val, 80.0, "Pinterest Size Roadmap"))
-    s_q5 = s_quants.get("s_q5", (s_pred_val, 70.0, "Size Markov 3-Gram"))
-    s_q6 = s_quants.get("s_q6", (s_pred_val, 70.0, "Number-to-Size Bayes"))
-    s_q7 = s_quants.get("s_q7", (s_pred_val, 65.0, "20-Round Size Imbalance"))
-    s_q8 = s_quants.get("s_q8", (s_pred_val, 70.0, "Size Mean-Reversion"))
-    s_q9 = s_quants.get("s_q9", (s_pred_val, 65.0, "Size Periodicity"))
-    s_q10 = s_quants.get("s_q10", (s_pred_val, 65.0, "Size Entropy"))
-    s_q11 = s_quants.get("s_q11", (s_pred_val, 65.0, "Size Boundary Outlier"))
-    s_q12 = s_quants.get("s_q12", (s_pred_val, 70.0, "Weibull Size Hazard"))
-    s_q13 = s_quants.get("s_q13", (s_pred_val, 65.0, "Fourier DFT Size"))
-    s_q14 = s_quants.get("s_q14", (s_pred_val, 65.0, "Kolmogorov Size Complexity"))
-    s_q15 = s_quants.get("s_q15", (s_pred_val, 68.0, "Bayesian Decay Size"))
-    s_q_rsi = s_quants.get("s_q_rsi", (opp_s, 65.0, "Digit RSI(14)"))
-    s_q_10x10 = s_quants.get("s_q_10x10", (s_pred_val, 75.0, "10x10 Markov Transition"))
-    s_q_dorm = s_quants.get("s_q_dorm", (s_pred_val, 65.0, "Digit Dormancy Pressure"))
-    s_q_derived = s_quants.get("s_q_derived", (s_pred_val, 70.0, "Baccarat Derived Roads"))
-    s_q_delta = s_quants.get("s_q_delta", (opp_s if s_alt >= 2 else s_pred_val, 70.0, "Delta Jump Velocity"))
-    s_q_parity = s_quants.get("s_q_parity", (s_pred_val, 65.0, "Parity-Color Invariant"))
-    s_q_mod = s_quants.get("s_q_mod", (s_pred_val, 60.0, "Period Modulo Micro-Cycle"))
-    s_q_mirror = s_quants.get("s_q_mirror", (s_pred_val, 60.0, "Mirror Number Coupling"))
+    # Each specialist casts a vote ONLY when an objective quantitative edge exists (no echo chamber!)
+    s_q4_res = s_quants.get("s_q4", (None, 50.0, ""))
+    s_q4_val = s_q4_res[0] if s_q4_res[1] >= 75.0 else None
 
-    meta_val = "BIG" if unified_p_big >= 0.50 else "SMALL"
+    s_q5_res = s_quants.get("s_q5", (None, 50.0, ""))
+    s_q5_val = s_q5_res[0] if s_q5_res[1] >= 70.0 else None
+
+    s_q6_res = s_quants.get("s_q6", (None, 50.0, ""))
+    s_q6_val = s_q6_res[0] if s_q6_res[1] >= 65.0 else None
+
+    s_q7_res = s_quants.get("s_q7", (None, 50.0, ""))
+    s_q7_val = s_q7_res[0] if s_q7_res[1] >= 68.0 else None
+
+    s_q8_res = s_quants.get("s_q8", (None, 50.0, ""))
+    s_q8_val = s_q8_res[0] if s_q8_res[1] >= 68.0 else None
+
+    s_q9_res = s_quants.get("s_q9", (None, 50.0, ""))
+    s_q9_val = s_q9_res[0] if s_q9_res[1] >= 62.0 else None
+
+    s_q10_res = s_quants.get("s_q10", (None, 50.0, ""))
+    s_q10_val = s_q10_res[0] if s_q10_res[1] >= 64.0 else None
+
+    s_q11_res = s_quants.get("s_q11", (None, 50.0, ""))
+    s_q11_val = s_q11_res[0] if last_num in (0, 1, 8, 9) else None
+
+    s_q12_res = s_quants.get("s_q12", (None, 50.0, ""))
+    s_q12_val = s_q12_res[0] if (s_streak >= 3 or s_alt >= 2) else None
+
+    s_q13_res = s_quants.get("s_q13", (None, 50.0, ""))
+    s_q13_val = s_q13_res[0] if s_q13_res[1] >= 66.0 else None
+
+    s_q14_res = s_quants.get("s_q14", (None, 50.0, ""))
+    s_q14_val = s_q14_res[0] if s_q14_res[1] >= 62.0 else None
+
+    s_q15_res = s_quants.get("s_q15", (None, 50.0, ""))
+    s_q15_val = s_q15_res[0] if s_q15_res[1] >= 65.0 else None
+
+    s_q_rsi_res = s_quants.get("s_q_rsi", (None, 50.0, ""))
+    s_q_rsi_val = s_q_rsi_res[0] if (p_info.get("rsi_14", 50.0) >= 65.0 or p_info.get("rsi_14", 50.0) <= 35.0) else None
+
+    s_q_10x10_res = s_quants.get("s_q_10x10", (None, 50.0, ""))
+    s_q_10x10_val = s_q_10x10_res[0] if s_q_10x10_res[1] >= 65.0 else None
+
+    s_q_dorm_res = s_quants.get("s_q_dorm", (None, 50.0, ""))
+    s_q_dorm_val = s_q_dorm_res[0] if s_q_dorm_res[1] >= 68.0 else None
+
+    s_q_derived_res = s_quants.get("s_q_derived", (None, 50.0, ""))
+    s_q_derived_val = s_q_derived_res[0] if (p_info.get("is_patterned", False) or p_info.get("is_chaotic", False)) else None
+
+    s_q_delta_res = s_quants.get("s_q_delta", (None, 50.0, ""))
+    s_q_delta_val = s_q_delta_res[0] if (s_alt >= 2 or s_streak >= 3) else None
+
+    s_q_parity_res = s_quants.get("s_q_parity", (None, 50.0, ""))
+    s_q_parity_val = s_q_parity_res[0] if s_q_parity_res[1] >= 70.0 else None
+
+    s_q_mod_res = s_quants.get("s_q_mod", (None, 50.0, ""))
+    s_q_mod_val = s_q_mod_res[0] if s_q_mod_res[1] >= 65.0 else None
+
+    s_q_mirror_res = s_quants.get("s_q_mirror", (None, 50.0, ""))
+    s_q_mirror_val = s_q_mirror_res[0] if s_q_mirror_res[1] >= 65.0 else None
+
+    p_diri = probabilities.get("p_dirichlet_big", 0.5)
+    diri_val = "BIG" if p_diri >= 0.55 else ("SMALL" if p_diri <= 0.45 else None)
+
+    p_mc = probabilities.get("p_monte_carlo", 0.5)
+    mc_val = "BIG" if p_mc >= 0.55 else ("SMALL" if p_mc <= 0.45 else None)
+
+    p_ewma = probabilities.get("p_ewma", 0.5)
+    ewma_val = "BIG" if p_ewma >= 0.55 else ("SMALL" if p_ewma <= 0.45 else None)
+
+    p_kelly = probabilities.get("p_kelly_adv", 0.5)
+    kelly_val = "BIG" if p_kelly >= 0.55 else ("SMALL" if p_kelly <= 0.45 else None)
+
+    meta_val = "BIG" if unified_p_big >= 0.55 else ("SMALL" if unified_p_small >= 0.55 else None)
     meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
     all_specialists = [
-        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else 60.0, "arg": f"Size streak len: {s_streak}"},
-        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 2 else 60.0, "arg": f"Size chop len: {s_alt}"},
-        {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 82.0 if is_s_2_2 else 60.0, "arg": "Size 2-2 pair symmetry"},
-        {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0, "arg": "Anti-exhaustion balance"},
-        {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4[0], "conf": s_q4[1], "arg": s_q4[2]},
-        {"name": "Agent 5 (Size N-Gram Markov Quant)", "val": s_q5[0], "conf": s_q5[1], "arg": s_q5[2]},
-        {"name": "Agent 6 (Number-to-Size Bayes)", "val": s_q6[0], "conf": s_q6[1], "arg": s_q6[2]},
-        {"name": "Agent 7 (20-Round Size Imbalance)", "val": s_q7[0], "conf": s_q7[1], "arg": s_q7[2]},
-        {"name": "Agent 8 (Size Mean-Reversion Imbalance)", "val": s_q8[0], "conf": s_q8[1], "arg": s_q8[2]},
-        {"name": "Agent 9 (Size Micro-Cycle Periodicity)", "val": s_q9[0], "conf": s_q9[1], "arg": s_q9[2]},
-        {"name": "Agent 10 (Size Shannon Entropy Gatekeeper)", "val": s_q10[0], "conf": s_q10[1], "arg": s_q10[2]},
-        {"name": "Agent 11 (Size Boundary Outlier Specialist)", "val": s_q11[0], "conf": s_q11[1], "arg": s_q11[2]},
-        {"name": "Agent 12 (Weibull Size Hazard & Survival)", "val": s_q12[0], "conf": s_q12[1], "arg": s_q12[2]},
-        {"name": "Agent 13 (Fourier Spectral Wave Quant)", "val": s_q13[0], "conf": s_q13[1], "arg": s_q13[2]},
-        {"name": "Agent 14 (Kolmogorov Complexity Quant)", "val": s_q14[0], "conf": s_q14[1], "arg": s_q14[2]},
-        {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15[0], "conf": s_q15[1], "arg": s_q15[2]},
-        {"name": "Agent 16 (Dirichlet-Multinomial Bayesian Digit Quant)", "val": "BIG" if probabilities.get("p_dirichlet_big", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_dirichlet_big", 0.5), 1.0 - probabilities.get("p_dirichlet_big", 0.5)) * 100, 1), "arg": f"Dirichlet Digit P(BIG)={probabilities.get('p_dirichlet_big', 0.5):.2f}"},
-        {"name": "Agent 17 (Monte Carlo 10,000-Path Quant)", "val": "BIG" if probabilities.get("p_monte_carlo", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_monte_carlo", 0.5), 1.0 - probabilities.get("p_monte_carlo", 0.5)) * 100, 1), "arg": f"MC 10k Sim P(BIG)={probabilities.get('p_monte_carlo', 0.5):.2f}"},
-        {"name": "Agent 18 (EWMA Trend Momentum Quant)", "val": "BIG" if probabilities.get("p_ewma", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_ewma", 0.5), 1.0 - probabilities.get("p_ewma", 0.5)) * 100, 1), "arg": f"EWMA Crossover P(BIG)={probabilities.get('p_ewma', 0.5):.2f}"},
-        {"name": "Agent 19 (Kelly Criterion Edge Advantage Quant)", "val": "BIG" if probabilities.get("p_kelly_adv", 0.5) >= 0.5 else "SMALL", "conf": round(max(probabilities.get("p_kelly_adv", 0.5), 1.0 - probabilities.get("p_kelly_adv", 0.5)) * 100, 1), "arg": f"Kelly Advantage P(BIG)={probabilities.get('p_kelly_adv', 0.5):.2f}"},
+        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else 50.0, "arg": f"Size streak len: {s_streak}"},
+        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 2 else 50.0, "arg": f"Size chop len: {s_alt}"},
+        {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 82.0 if is_s_2_2 else 50.0, "arg": "Size 2-2 pair symmetry"},
+        {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0 if s_contrarian else 50.0, "arg": "Anti-exhaustion balance"},
+        {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4_val, "conf": s_q4_res[1], "arg": s_q4_res[2]},
+        {"name": "Agent 5 (Size N-Gram Markov Quant)", "val": s_q5_val, "conf": s_q5_res[1], "arg": s_q5_res[2]},
+        {"name": "Agent 6 (Number-to-Size Bayes)", "val": s_q6_val, "conf": s_q6_res[1], "arg": s_q6_res[2]},
+        {"name": "Agent 7 (20-Round Size Imbalance)", "val": s_q7_val, "conf": s_q7_res[1], "arg": s_q7_res[2]},
+        {"name": "Agent 8 (Size Mean-Reversion Imbalance)", "val": s_q8_val, "conf": s_q8_res[1], "arg": s_q8_res[2]},
+        {"name": "Agent 9 (Size Micro-Cycle Periodicity)", "val": s_q9_val, "conf": s_q9_res[1], "arg": s_q9_res[2]},
+        {"name": "Agent 10 (Size Shannon Entropy Gatekeeper)", "val": s_q10_val, "conf": s_q10_res[1], "arg": s_q10_res[2]},
+        {"name": "Agent 11 (Size Boundary Outlier Specialist)", "val": s_q11_val, "conf": s_q11_res[1], "arg": s_q11_res[2]},
+        {"name": "Agent 12 (Weibull Size Hazard & Survival)", "val": s_q12_val, "conf": s_q12_res[1], "arg": s_q12_res[2]},
+        {"name": "Agent 13 (Fourier Spectral Wave Quant)", "val": s_q13_val, "conf": s_q13_res[1], "arg": s_q13_res[2]},
+        {"name": "Agent 14 (Kolmogorov Complexity Quant)", "val": s_q14_val, "conf": s_q14_res[1], "arg": s_q14_res[2]},
+        {"name": "Agent 15 (Exponential Bayesian Quant)", "val": s_q15_val, "conf": s_q15_res[1], "arg": s_q15_res[2]},
+        {"name": "Agent 16 (Dirichlet-Multinomial Bayesian Digit Quant)", "val": diri_val, "conf": round(max(p_diri, 1.0 - p_diri) * 100, 1), "arg": f"Dirichlet Digit P(BIG)={p_diri:.2f}"},
+        {"name": "Agent 17 (Monte Carlo 10,000-Path Quant)", "val": mc_val, "conf": round(max(p_mc, 1.0 - p_mc) * 100, 1), "arg": f"MC 10k Sim P(BIG)={p_mc:.2f}"},
+        {"name": "Agent 18 (EWMA Trend Momentum Quant)", "val": ewma_val, "conf": round(max(p_ewma, 1.0 - p_ewma) * 100, 1), "arg": f"EWMA Crossover P(BIG)={p_ewma:.2f}"},
+        {"name": "Agent 19 (Kelly Criterion Edge Advantage Quant)", "val": kelly_val, "conf": round(max(p_kelly, 1.0 - p_kelly) * 100, 1), "arg": f"Kelly Advantage P(BIG)={p_kelly:.2f}"},
         {"name": "Agent 20 (Unified 38-Probability Meta-Engine)", "val": meta_val, "conf": meta_conf, "arg": f"Unified Edge {unified_edge:.1f}% (P(BIG)={unified_p_big:.2f}, P(SMALL)={unified_p_small:.2f})"},
-        {"name": "Agent 21 (Digit RSI-14 Momentum Quant)", "val": s_q_rsi[0], "conf": s_q_rsi[1], "arg": s_q_rsi[2]},
-        {"name": "Agent 22 (10x10 Full Digit Markov Quant)", "val": s_q_10x10[0], "conf": s_q_10x10[1], "arg": s_q_10x10[2]},
-        {"name": "Agent 23 (Digit Gap & Dormancy Pressure)", "val": s_q_dorm[0], "conf": s_q_dorm[1], "arg": s_q_dorm[2]},
-        {"name": "Agent 24 (Baccarat Derived Roads Regularity)", "val": s_q_derived[0], "conf": s_q_derived[1], "arg": s_q_derived[2]},
-        {"name": "Agent 25 (Delta Jump Velocity & Early Chop)", "val": s_q_delta[0], "conf": s_q_delta[1], "arg": s_q_delta[2]},
-        {"name": "Agent 26 (Parity-Color Cluster Invariant)", "val": s_q_parity[0], "conf": s_q_parity[1], "arg": s_q_parity[2]},
-        {"name": "Agent 27 (Period Modulo Micro-Cycle Quant)", "val": s_q_mod[0], "conf": s_q_mod[1], "arg": s_q_mod[2]},
-        {"name": "Agent 28 (Mirror Number Coupling Quant)", "val": s_q_mirror[0], "conf": s_q_mirror[1], "arg": s_q_mirror[2]}
+        {"name": "Agent 21 (Digit RSI-14 Momentum Quant)", "val": s_q_rsi_val, "conf": s_q_rsi_res[1], "arg": s_q_rsi_res[2]},
+        {"name": "Agent 22 (10x10 Full Digit Markov Quant)", "val": s_q_10x10_val, "conf": s_q_10x10_res[1], "arg": s_q_10x10_res[2]},
+        {"name": "Agent 23 (Digit Gap & Dormancy Pressure)", "val": s_q_dorm_val, "conf": s_q_dorm_res[1], "arg": s_q_dorm_res[2]},
+        {"name": "Agent 24 (Baccarat Derived Roads Regularity)", "val": s_q_derived_val, "conf": s_q_derived_res[1], "arg": s_q_derived_res[2]},
+        {"name": "Agent 25 (Delta Jump Velocity & Early Chop)", "val": s_q_delta_val, "conf": s_q_delta_res[1], "arg": s_q_delta_res[2]},
+        {"name": "Agent 26 (Parity-Color Cluster Invariant)", "val": s_q_parity_val, "conf": s_q_parity_res[1], "arg": s_q_parity_res[2]},
+        {"name": "Agent 27 (Period Modulo Micro-Cycle Quant)", "val": s_q_mod_val, "conf": s_q_mod_res[1], "arg": s_q_mod_res[2]},
+        {"name": "Agent 28 (Mirror Number Coupling Quant)", "val": s_q_mirror_val, "conf": s_q_mirror_res[1], "arg": s_q_mirror_res[2]}
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
     dragon_weight = 8.5 if s_streak >= 3 else 2.0
     chop_weight = 7.5 if s_alt >= 2 else 1.5
-    sym_weight = 5.0 if ("Double" in s_pattern_desc or "Single" in s_pattern_desc) else 2.0
-    mr_weight = 0.5 if s_streak >= 3 else (2.8 if (b20 >= 13 or s20 >= 13) else 1.2)
-    roadmap_weight = 6.0 if s_q4[1] >= 85.0 else 3.5
-    markov_weight = 4.0 if s_q5[1] >= 75.0 else 2.8
-    bayes_num_weight = 3.5 if s_q6[1] >= 70.0 else 2.2
-    imbalance_weight = 3.0 if s_q7[1] >= 70.0 else 1.8
-    rhythm_weight = 2.2 if s_q9[1] >= 65.0 else 1.4
-    entropy_weight = 1.8
-    outlier_weight = 2.2 if last_num in (0, 1, 8, 9) else 1.2
-    hazard_weight = 4.2 if s_streak >= 3 else (3.5 if s_alt >= 2 else 1.8)
-    fourier_weight = 2.5 if s_q13[1] >= 68.0 else 1.5
-    kolmo_weight = 1.8
-    bayes_decay_weight = 2.5 if s_q15[1] >= 65.0 else 1.8
-    dirichlet_weight = 3.8
-    mc_weight = 3.6
-    ewma_weight = 3.4
-    kelly_weight = 3.2
-    meta_weight = 6.0 if unified_edge >= 3.0 else 4.0
-    rsi_weight = 4.8 if s_q_rsi[1] >= 70.0 else 2.5
-    markov10_weight = 5.5 if s_q_10x10[1] >= 70.0 else 3.0
-    dorm_weight = 3.5
-    derived_weight = 4.5 if s_q_derived[1] >= 70.0 else 2.0
-    delta_weight = 6.0 if (s_alt >= 2 or s_streak >= 3) else 2.5
-    parity_weight = 3.0
-    mod_weight = 2.0
-    mirror_weight = 2.5
+    sym_weight = 5.0 if ("Confirmed 2-2" in s_pattern_desc) else 2.0
+    mr_weight = 3.5 if (b20 >= 13 or s20 >= 13) else 1.0
+    roadmap_weight = 6.0 if (s_q4_val is not None) else 1.0
+    markov_weight = 4.0 if (s_q5_val is not None) else 1.0
+    bayes_num_weight = 3.5 if (s_q6_val is not None) else 1.0
+    imbalance_weight = 3.5 if (s_q7_val is not None) else 1.0
+    rhythm_weight = 2.2 if (s_q9_val is not None) else 1.0
+    entropy_weight = 1.8 if (s_q10_val is not None) else 1.0
+    outlier_weight = 2.5 if (s_q11_val is not None) else 1.0
+    hazard_weight = 4.2 if (s_streak >= 3 or s_alt >= 2) else 1.0
+    fourier_weight = 2.5 if (s_q13_val is not None) else 1.0
+    kolmo_weight = 1.8 if (s_q14_val is not None) else 1.0
+    bayes_decay_weight = 2.5 if (s_q15_val is not None) else 1.0
+    dirichlet_weight = 3.8 if (diri_val is not None) else 1.0
+    mc_weight = 3.6 if (mc_val is not None) else 1.0
+    ewma_weight = 3.4 if (ewma_val is not None) else 1.0
+    kelly_weight = 3.2 if (kelly_val is not None) else 1.0
+    meta_weight = 5.0 if (meta_val is not None) else 1.0
+    rsi_weight = 5.0 if (s_q_rsi_val is not None) else 1.0
+    markov10_weight = 5.5 if (s_q_10x10_val is not None) else 1.0
+    dorm_weight = 3.5 if (s_q_dorm_val is not None) else 1.0
+    derived_weight = 4.5 if (s_q_derived_val is not None) else 1.0
+    delta_weight = 6.0 if (s_alt >= 2 or s_streak >= 3) else 1.0
+    parity_weight = 3.0 if (s_q_parity_val is not None) else 1.0
+    mod_weight = 2.0 if (s_q_mod_val is not None) else 1.0
+    mirror_weight = 2.5 if (s_q_mirror_val is not None) else 1.0
 
     weights = [
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -1956,13 +1968,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     small_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "SMALL")
     big_votes = sum(1 for s in all_specialists if s["val"] == "BIG")
     small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
-
-    # High-Intensity Multi-Model Confluence Boost (+25% weight if core pillars align)
-    core_pillar_votes = [s_q4[0], s_q5[0], s_q12[0], s_q_10x10[0], meta_val]
-    if core_pillar_votes.count("BIG") >= 4:
-        big_weight *= 1.25
-    elif core_pillar_votes.count("SMALL") >= 4:
-        small_weight *= 1.25
+    active_votes = big_votes + small_votes
 
     total_active_weight = big_weight + small_weight
 
@@ -1977,7 +1983,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         w_weight = small_weight
     else:
         # Fallback to Unified Probability Engine
-        w_size = meta_val
+        w_size = "BIG" if unified_p_big >= 0.50 else "SMALL"
         w_v = big_votes if w_size == "BIG" else small_votes
         l_v = small_votes if w_size == "BIG" else big_votes
         w_weight = big_weight if w_size == "BIG" else small_weight
@@ -1985,12 +1991,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     size_edge = abs(big_weight - small_weight)
     size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-    calc_conf = min(97.5, max(84.0, round(84.0 + (size_margin_pct * 0.22) + (w_v * 0.35), 1)))
+    calc_conf = min(97.5, max(80.0, round(78.0 + (size_margin_pct * 0.25) + (w_v * 0.4), 1)))
 
     # ====================================================
     # 🎯 1. NEVER CUT A DRAGON RULE (Fundamental Trend Law)
     # ====================================================
-    # Protect established dragons (streak >= 3, up to 5) against counter-trend bets
     if s_streak >= 3 and s_streak < 6 and w_size != last_s:
         w_size = last_s
 
@@ -2001,19 +2006,19 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_val = w_size
     target_conf = calc_conf
     target_margin = size_margin_pct
-    
+
     # Ensure pattern name matches target_val direction
-    if w_size == s_pred_val:
+    if w_size == s_pred_val and s_pred_conf >= 75.0:
         target_pattern = s_pattern_desc
     else:
         if s_streak >= 3 and w_size == last_s:
             target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
         elif s_alt >= 2 and w_size == opp_s:
             target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
-        elif b20 >= 12 or s20 >= 12:
+        elif b20 >= 13 or s20 >= 13:
             target_pattern = f"Mean-Reversion Imbalance ({w_size})"
-        elif is_s_2_2 or "Double" in s_pattern_desc:
-            target_pattern = f"Roadmap Pattern ({w_size})"
+        elif "Confirmed 2-2" in s_pattern_desc:
+            target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
         else:
             target_pattern = f"Quant Consensus Edge ({w_size})"
 
@@ -2021,51 +2026,45 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     s_strong_dragon = ("Dragon Trend" in s_pattern_desc and s_streak >= 3)
     s_strong_chop = ("1-1 Chop" in s_pattern_desc and s_alt >= 2)
-    s_strong_22 = ("Double" in s_pattern_desc or "Single" in s_pattern_desc)
-    s_strong_stair = ("Staircase" in s_pattern_desc or "Mountain" in s_pattern_desc or "Triplet" in s_pattern_desc)
-    has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22 or s_strong_stair)
+    s_strong_22 = ("Confirmed 2-2" in s_pattern_desc)
+    has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22)
 
     # ====================================================
-    # 🎯 3. HIGH-INTENSITY CONVICTION QUALIFICATION ENGINE (28 Agents)
+    # 🎯 3. HIGH-INTENSITY CONVICTION QUALIFICATION ENGINE
     # ====================================================
-    is_supermajority = (w_v >= 16 and target_margin >= 10.0) # 16/28 = 57%+ majority
-    is_strong_consensus = (w_v >= 18)
-    is_qualified_bet = (
-        is_strong_consensus or
-        (is_supermajority and unified_edge >= 2.0) or
-        (has_confirmed_structure and w_v >= 14 and target_margin >= 8.0)
-    )
+    if has_confirmed_structure:
+        is_qualified_bet = (w_v >= 4 and size_margin_pct >= 20.0 and active_votes >= 5)
+    else:
+        # In transitional noise without confirmed structure:
+        # Strictly require solid active independent consensus!
+        is_qualified_bet = (w_v >= 7 and size_margin_pct >= 35.0 and active_votes >= 9)
 
     # 🛡️ Early Chop Armor & Volatility Gate (Anti-Streak-Trap):
-    # If market is in high-volatility jump (|Δ| >= 4.75) and alternating (s_alt in 2, 3):
-    # Bet ONLY if following chop or if unanimity is massive; otherwise force SAFE SKIP!
     if p_info.get("is_high_volatility", False) and s_alt in (2, 3):
-        if w_size != opp_s and not is_strong_consensus:
+        if w_size != opp_s and not s_strong_dragon:
             is_qualified_bet = False
             print(f"🛡️ [CHOP ARMOR] Filtered counter-chop streak bet during volatile swing (Δ={p_info.get('avg_delta')})", flush=True)
 
     # 🛡️ Level 2+ Recovery Protection (Anti-Loss Armor):
+    # During recovery (Level 2 = 3X, Level 3 = 9X), risk tolerance is ZERO.
+    # NEVER bet into ambiguous noise!
     if current_loss_streak >= 1:
-        recovery_ok = (
-            (w_v >= 18 and target_margin >= 12.0) or
-            (s_streak >= 3 and w_size == last_s) or
-            (s_alt >= 2 and w_size == opp_s and w_v >= 15) or
-            ("Double" in s_pattern_desc and w_v >= 15) or
-            (has_confirmed_structure and w_v >= 16)
-        )
-        is_qualified_bet = recovery_ok
+        if not has_confirmed_structure:
+            is_qualified_bet = False
+            print(f"🛡️ [RECOVERY ARMOR] Level {current_loss_streak + 1} bet blocked: Market lacks confirmed structure (Dragon/Chop/2-2). Forcing SAFE SKIP.", flush=True)
+        elif w_v < 5 or size_margin_pct < 25.0:
+            is_qualified_bet = False
+            print(f"🛡️ [RECOVERY ARMOR] Level {current_loss_streak + 1} bet blocked: Insufficient consensus ({size_margin_pct:.1f}% margin). Forcing SAFE SKIP.", flush=True)
 
     cur_lvl = CURRENT_LOSS_STREAK + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
-    if w_v >= 19:
-        consensus_tag = f"💎 Council Golden Unanimity ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 16:
-        consensus_tag = f"🔥 Council Super-Majority ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 14:
-        consensus_tag = f"⚡ Council Majority Edge ({w_v}-{l_v} | {target_edge_desc})"
+    if w_v >= 10:
+        consensus_tag = f"💎 Council Strong Consensus ({w_v}-{l_v} | {target_edge_desc})"
+    elif w_v >= 6:
+        consensus_tag = f"🔥 Council Majority Edge ({w_v}-{l_v} | {target_edge_desc})"
     else:
-        consensus_tag = f"🎯 Council Solid Edge ({target_edge_desc})"
+        consensus_tag = f"⚡ Council Lead ({w_v}-{l_v} | {target_edge_desc})"
 
     # --- Phase 4: Master AI Arbiter Consultation (Groq with Automatic Model Failover) ---
     top_prob_lines = ", ".join([f"{k}={probabilities[k]}" for k in list(probabilities.keys())[:6]])
@@ -2150,12 +2149,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt_arbiter}],
-                "response_format": {"type": "json_object"},
                 "max_tokens": 120,
                 "temperature": 0.15
             }, timeout=3.5)
             if r_arb.status_code == 200:
-                res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
+                raw_content = r_arb.json()["choices"][0]["message"]["content"]
+                m_json = re.search(r'\{.*\}', raw_content, re.DOTALL)
+                if not m_json:
+                    continue
+                res_arb = json.loads(m_json.group(0))
                 act = str(res_arb.get("action", "")).upper()
                 arb_target = str(res_arb.get("target", "")).upper()
                 arb_conf = res_arb.get("confidence")
@@ -2175,17 +2177,23 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     final_summary = arb_reason or "Capital preservation: Ambiguous transition filtered to protect win streak."
                     print(f"🧠 [MASTER AI: {model_name}] ⏸️ SNIPER SKIP HONORED: {final_summary}", flush=True)
                 elif act == "BET":
-                    arbiter_wants_skip = False
-                    is_qualified_bet = True
-                    if arb_target in ("BIG", "SMALL"):
-                        if s_streak >= 3 and s_streak < 6 and arb_target != last_s:
-                            print(f"🧠 [MASTER AI: {model_name}] 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {arb_target}", flush=True)
-                            target_val = last_s
-                        else:
-                            if arb_target != target_val:
-                                print(f"🧠 [MASTER AI: {model_name}] 🎯 Master AI Strategic Target: {target_val} -> {arb_target}", flush=True)
-                                target_val = arb_target
-                                target_pattern = f"Master Brain Direction ({target_val})"
+                    if not is_qualified_bet:
+                        print(f"🛡️ [DOUBLE-SNIPER] LLM suggested BET, but quantitative noise filter blocked entry. SAFE SKIP HONORED.", flush=True)
+                        arbiter_wants_skip = True
+                    else:
+                        arbiter_wants_skip = False
+                        if arb_target in ("BIG", "SMALL"):
+                            if s_streak >= 3 and s_streak < 6 and arb_target != last_s:
+                                print(f"🧠 [MASTER AI: {model_name}] 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {arb_target}", flush=True)
+                                target_val = last_s
+                            elif s_alt >= 2 and arb_target != opp_s:
+                                print(f"🧠 [MASTER AI: {model_name}] 🛡️ Chop Trend Law: Preserved {opp_s} (Chop x{s_alt}) over counter-chop suggestion {arb_target}", flush=True)
+                                target_val = opp_s
+                            else:
+                                if arb_target != target_val:
+                                    print(f"🧠 [MASTER AI: {model_name}] 🎯 Master AI Strategic Target: {target_val} -> {arb_target}", flush=True)
+                                    target_val = arb_target
+                                    target_pattern = f"Master Brain Direction ({target_val})"
                     
                     if isinstance(arb_conf, (int, float)) and 50 <= arb_conf <= 99.5:
                         target_conf = max(float(target_conf), float(arb_conf))
