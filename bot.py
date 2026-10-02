@@ -235,6 +235,7 @@ TOTAL_CYCLES = 0
 CYCLE_WINS = 0
 CYCLE_LOSSES = 0
 CONSECUTIVE_SKIPS = 0
+POST_STOP_LOSS_COOLDOWN = 0  # Cooldown rounds after Level 3 Stop-Loss hit
 MAX_MARTINGALE_LEVEL = 3  # Standard 3-Level VIP Protection (1X, 3X, 9X)
 
 # Direct VIP Channel Architecture (Zero Polling, Zero 409 Conflicts)
@@ -267,7 +268,7 @@ def get_next_period(current_period):
         return current_period
 
 def load_cache():
-    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS
+    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_COOLDOWN
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -294,10 +295,11 @@ def load_cache():
                 CYCLE_WINS = st.get("cycle_wins", 0)
                 CYCLE_LOSSES = st.get("cycle_losses", 0)
                 CONSECUTIVE_SKIPS = st.get("consecutive_skips", 0)
+                POST_STOP_LOSS_COOLDOWN = st.get("post_stop_loss_cooldown", 0)
                 saved_preds = st.get("memory_predictions", {})
                 if isinstance(saved_preds, dict):
                     MEMORY_PREDICTIONS.update(saved_preds)
-                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Skips: {CONSECUTIVE_SKIPS} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
+                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Skips: {CONSECUTIVE_SKIPS} | Cooldown: {POST_STOP_LOSS_COOLDOWN} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
         except Exception as e:
             print(f"[STATE LOAD ERROR] {e}", flush=True)
 
@@ -321,6 +323,7 @@ def save_cache():
             "cycle_wins": CYCLE_WINS,
             "cycle_losses": CYCLE_LOSSES,
             "consecutive_skips": CONSECUTIVE_SKIPS,
+            "post_stop_loss_cooldown": POST_STOP_LOSS_COOLDOWN,
             "memory_predictions": MEMORY_PREDICTIONS
         }
         with open(tmp_st, "w") as f:
@@ -1588,6 +1591,139 @@ def detect_market_patterns(history_items):
         p_mirror_prob = 0.50
         s_q_mirror = (s_pred_val, 58.0, "Mirror Coupling Neutral")
 
+    # 28. Empirical Streak Survival Matrix (Ground Truth Hazard from Full Database)
+    emp_k = s_streak
+    emp_reaches_k = 0
+    emp_reaches_k_plus_1 = 0
+    cur_run_len = 1
+    for i in range(1, len(sizes)):
+        if sizes[i] == sizes[i - 1]:
+            cur_run_len += 1
+        else:
+            if cur_run_len >= emp_k:
+                emp_reaches_k += 1
+                if cur_run_len >= emp_k + 1:
+                    emp_reaches_k_plus_1 += 1
+            cur_run_len = 1
+    if cur_run_len >= emp_k:
+        emp_reaches_k += 1
+        if cur_run_len >= emp_k + 1:
+            emp_reaches_k_plus_1 += 1
+
+    p_survive = (emp_reaches_k_plus_1 + 1.0) / (emp_reaches_k + 2.0) if emp_reaches_k >= 3 else 0.50
+
+    if emp_k >= 2 and emp_reaches_k >= 3:
+        if p_survive >= 0.52:
+            emp_fav = last_s
+            emp_conf = round(p_survive * 100, 1)
+            p_empirical_survival = p_survive if last_s == "BIG" else (1.0 - p_survive)
+            s_q_emp_surv = (emp_fav, min(92.0, max(65.0, emp_conf)), f"Empirical Survival: Streak x{emp_k} P(Extend)={emp_conf}% ({emp_reaches_k_plus_1}/{emp_reaches_k})")
+        elif p_survive <= 0.40:
+            emp_fav = opp_s
+            emp_conf = round((1.0 - p_survive) * 100, 1)
+            p_empirical_survival = (1.0 - p_survive) if opp_s == "BIG" else p_survive
+            s_q_emp_surv = (emp_fav, min(90.0, max(65.0, emp_conf)), f"Empirical Exhaustion: Streak x{emp_k} collapses {emp_conf}% ({emp_reaches_k - emp_reaches_k_plus_1}/{emp_reaches_k}) -> {emp_fav}")
+        else:
+            p_empirical_survival = 0.50
+            s_q_emp_surv = (s_pred_val, 60.0, f"Empirical Survival Neutral ({p_survive*100:.0f}%)")
+    else:
+        p_empirical_survival = 0.50
+        s_q_emp_surv = (s_pred_val, 55.0, "Empirical Survival Baseline")
+
+    # 29. Digit Bollinger Bands & Z-Score Squeeze (20-Period Rolling Digit Distribution)
+    z_score_d = 0.0
+    is_squeeze = False
+    if len(nums) >= 20:
+        roll_nums = nums[-20:]
+        mu_d = sum(roll_nums) / 20.0
+        var_d = sum((x - mu_d) ** 2 for x in roll_nums) / 20.0
+        sigma_d = math.sqrt(max(0.1, var_d))
+        z_score_d = (last_num - mu_d) / sigma_d
+        upper_band = mu_d + 2.0 * sigma_d
+        lower_band = mu_d - 2.0 * sigma_d
+        bandwidth = (upper_band - lower_band) / max(0.5, mu_d)
+        is_squeeze = bandwidth < 1.0
+
+        if z_score_d >= 1.5 or last_num >= upper_band:
+            if s_streak >= 3 and last_s == "BIG":
+                p_digit_bollinger = 0.68
+                s_q_bollinger = ("BIG", 76.0, f"Bollinger Upper Breakout (Z={z_score_d:.2f}, μ={mu_d:.1f})")
+            else:
+                p_digit_bollinger = 0.35
+                s_q_bollinger = ("SMALL", 74.0, f"Bollinger Upper Band Rejection (Z={z_score_d:.2f}) -> SMALL")
+        elif z_score_d <= -1.5 or last_num <= lower_band:
+            if s_streak >= 3 and last_s == "SMALL":
+                p_digit_bollinger = 0.32
+                s_q_bollinger = ("SMALL", 76.0, f"Bollinger Lower Breakout (Z={z_score_d:.2f}, μ={mu_d:.1f})")
+            else:
+                p_digit_bollinger = 0.65
+                s_q_bollinger = ("BIG", 74.0, f"Bollinger Lower Band Bounce (Z={z_score_d:.2f}) -> BIG")
+        elif is_squeeze:
+            p_digit_bollinger = 0.60 if last_s == "BIG" else 0.40
+            s_q_bollinger = (last_s, 70.0, f"Bollinger Squeeze (BW={bandwidth:.2f}) Trend Expansion")
+        else:
+            p_digit_bollinger = 0.50
+            s_q_bollinger = (s_pred_val, 58.0, f"Bollinger Neutral (Z={z_score_d:.2f})")
+    else:
+        p_digit_bollinger = 0.50
+        s_q_bollinger = (s_pred_val, 55.0, "Bollinger Baseline")
+
+    # 30. Digit Velocity & Acceleration Momentum Derivatives
+    if len(nums) >= 3:
+        n_t = nums[-1]
+        n_t1 = nums[-2]
+        n_t2 = nums[-3]
+        v_t = n_t - n_t1
+        v_t1 = n_t1 - n_t2
+        a_t = v_t - v_t1
+
+        if v_t > 0 and a_t >= 0 and n_t >= 4:
+            p_digit_momentum = 0.68
+            s_q_momentum = ("BIG", 78.0, f"Positive Momentum (v={v_t:+d}, a={a_t:+d}) -> BIG")
+        elif v_t < 0 and a_t <= 0 and n_t <= 5:
+            p_digit_momentum = 0.32
+            s_q_momentum = ("SMALL", 78.0, f"Downward Momentum (v={v_t:+d}, a={a_t:+d}) -> SMALL")
+        elif v_t > 0 and a_t < -2:
+            p_digit_momentum = 0.38
+            s_q_momentum = ("SMALL", 72.0, f"Deceleration Peak (v={v_t:+d}, a={a_t:+d}) Reversal -> SMALL")
+        elif v_t < 0 and a_t > 2:
+            p_digit_momentum = 0.62
+            s_q_momentum = ("BIG", 72.0, f"Deceleration Trough (v={v_t:+d}, a={a_t:+d}) Reversal -> BIG")
+        else:
+            p_digit_momentum = 0.50
+            s_q_momentum = (s_pred_val, 58.0, f"Momentum Neutral (v={v_t:+d}, a={a_t:+d})")
+    else:
+        p_digit_momentum = 0.50
+        s_q_momentum = (s_pred_val, 55.0, "Momentum Baseline")
+
+    # 31. Consecutive Sum Parity & PRNG Residue Engine
+    tot_res = 0
+    if len(nums) >= 2:
+        last_pair_sum = nums[-1] + nums[-2]
+        last_mod2 = last_pair_sum % 2
+        last_mod10 = last_pair_sum % 10
+        residue_counts = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
+        for i in range(len(nums) - 2):
+            s_pair = nums[i] + nums[i + 1]
+            key = (s_pair % 2, s_pair % 10)
+            next_sz = sizes[i + 2]
+            residue_counts[key][next_sz] += 1
+
+        cur_key = (last_mod2, last_mod10)
+        c_res = residue_counts[cur_key]
+        tot_res = c_res["BIG"] + c_res["SMALL"]
+        if tot_res >= 8:
+            p_prng_residue = (c_res["BIG"] + 1.0) / (tot_res + 2.0)
+            res_fav = "BIG" if c_res["BIG"] >= c_res["SMALL"] else "SMALL"
+            res_conf = round(max(c_res["BIG"], c_res["SMALL"]) / tot_res * 100, 1)
+            s_q_residue = (res_fav, min(86.0, res_conf), f"PRNG Residue (Sum={last_pair_sum}, Mod10={last_mod10}) -> {res_fav} ({res_conf}%)")
+        else:
+            p_prng_residue = 0.50
+            s_q_residue = (s_pred_val, 58.0, f"PRNG Residue Baseline (N={tot_res})")
+    else:
+        p_prng_residue = 0.50
+        s_q_residue = (s_pred_val, 55.0, "PRNG Baseline")
+
     probabilities = {
         "p_freq_3": round(p_freq_3, 4),
         "p_freq_5": round(p_freq_5, 4),
@@ -1627,10 +1763,14 @@ def detect_market_patterns(history_items):
         "p_delta_chop": round(p_delta_chop, 4),
         "p_parity_color": round(p_parity_color, 4),
         "p_period_mod": round(p_period_mod, 4),
-        "p_mirror_prob": round(p_mirror_prob, 4)
+        "p_mirror_prob": round(p_mirror_prob, 4),
+        "p_empirical_survival": round(p_empirical_survival, 4),
+        "p_digit_bollinger": round(p_digit_bollinger, 4),
+        "p_digit_momentum": round(p_digit_momentum, 4),
+        "p_prng_residue": round(p_prng_residue, 4)
     }
 
-    # Bayesian Log-Odds Unified Evidence Aggregation (38 Dimensions)
+    # Bayesian Log-Odds Unified Evidence Aggregation (42 Dimensions)
     def _lo(p):
         p_c = max(0.05, min(0.95, p))
         return math.log(p_c / (1.0 - p_c))
@@ -1669,7 +1809,11 @@ def detect_market_patterns(history_items):
         "p_delta_chop": 4.5 if (s_alt >= 2 or s_streak >= 3) else 1.5,
         "p_parity_color": 2.8 if (red_ratio >= 0.65 or red_ratio <= 0.35) else 1.0,
         "p_period_mod": 2.0 if tot_m5 >= 10 else 0.5,
-        "p_mirror_prob": 2.8 if p_mirror_affinity >= 0.28 else 0.8
+        "p_mirror_prob": 2.8 if p_mirror_affinity >= 0.28 else 0.8,
+        "p_empirical_survival": 4.8 if (s_streak >= 2 and emp_reaches_k >= 3) else 1.0,
+        "p_digit_bollinger": 3.6 if (len(nums) >= 20 and (abs(z_score_d) >= 1.5 or is_squeeze)) else 1.2,
+        "p_digit_momentum": 3.8 if len(nums) >= 3 else 1.0,
+        "p_prng_residue": 3.5 if (len(nums) >= 2 and tot_res >= 8) else 1.0
     }
 
     sum_lo = sum(prob_weights[k] * _lo(probabilities[k]) for k in prob_weights)
@@ -1745,7 +1889,11 @@ def detect_market_patterns(history_items):
             "s_q_delta": s_q_delta,
             "s_q_parity": s_q_parity,
             "s_q_mod": s_q_mod,
-            "s_q_mirror": s_q_mirror
+            "s_q_mirror": s_q_mirror,
+            "s_q_emp_surv": s_q_emp_surv,
+            "s_q_bollinger": s_q_bollinger,
+            "s_q_momentum": s_q_momentum,
+            "s_q_residue": s_q_residue
         }
     }
 
@@ -1763,6 +1911,27 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     - Dual-Layer Sniper Filter: Skips chaotic 50/50 noise; executes high-probability Pinterest roadmaps!
     - Delivers direct Level 1 accuracy.
     """
+    global POST_STOP_LOSS_COOLDOWN
+    if POST_STOP_LOSS_COOLDOWN > 0:
+        rounds_left = POST_STOP_LOSS_COOLDOWN
+        POST_STOP_LOSS_COOLDOWN -= 1
+        save_cache()
+        print(f"🛡️ [STOP-LOSS COOLDOWN ACTIVE] Forcing SAFE SKIP to let market stabilize ({rounds_left} rounds remaining).", flush=True)
+        return {
+            "target_type": "SKIP",
+            "target_val": "SKIP",
+            "target_conf": 50.0,
+            "color": "RED",
+            "size": "SKIP",
+            "reason": f"Post Stop-Loss Capital Shield: Market cooling down ({rounds_left} rounds left).",
+            "consensus_tag": "🛡️ Post Stop-Loss Capital Guard",
+            "violet_alert": False,
+            "jackpot_tip": None,
+            "opposite_nums": None,
+            "signal_grade": "SKIP",
+            "pattern_name": "Capital Shield Cooldown"
+        }
+
     p_info = detect_market_patterns(history_items)
     recent_str = p_info["recent_compact"]
     pattern_str = p_info["pattern_desc"]
@@ -1855,6 +2024,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     s_q_mirror_res = s_quants.get("s_q_mirror", (None, 50.0, ""))
     s_q_mirror_val = s_q_mirror_res[0] if s_q_mirror_res[1] >= 65.0 else None
 
+    s_q_emp_res = s_quants.get("s_q_emp_surv", (None, 50.0, ""))
+    s_q_emp_val = s_q_emp_res[0] if (s_streak >= 2 and s_q_emp_res[1] >= 64.0) else None
+
+    s_q_boll_res = s_quants.get("s_q_bollinger", (None, 50.0, ""))
+    s_q_boll_val = s_q_boll_res[0] if s_q_boll_res[1] >= 68.0 else None
+
+    s_q_mom_res = s_quants.get("s_q_momentum", (None, 50.0, ""))
+    s_q_mom_val = s_q_mom_res[0] if s_q_mom_res[1] >= 68.0 else None
+
+    s_q_res_res = s_quants.get("s_q_residue", (None, 50.0, ""))
+    s_q_res_val = s_q_res_res[0] if s_q_res_res[1] >= 65.0 else None
+
     p_diri = probabilities.get("p_dirichlet_big", 0.5)
     diri_val = "BIG" if p_diri >= 0.55 else ("SMALL" if p_diri <= 0.45 else None)
 
@@ -1899,7 +2080,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         {"name": "Agent 25 (Delta Jump Velocity & Early Chop)", "val": s_q_delta_val, "conf": s_q_delta_res[1], "arg": s_q_delta_res[2]},
         {"name": "Agent 26 (Parity-Color Cluster Invariant)", "val": s_q_parity_val, "conf": s_q_parity_res[1], "arg": s_q_parity_res[2]},
         {"name": "Agent 27 (Period Modulo Micro-Cycle Quant)", "val": s_q_mod_val, "conf": s_q_mod_res[1], "arg": s_q_mod_res[2]},
-        {"name": "Agent 28 (Mirror Number Coupling Quant)", "val": s_q_mirror_val, "conf": s_q_mirror_res[1], "arg": s_q_mirror_res[2]}
+        {"name": "Agent 28 (Mirror Number Coupling Quant)", "val": s_q_mirror_val, "conf": s_q_mirror_res[1], "arg": s_q_mirror_res[2]},
+        {"name": "Agent 29 (Empirical Streak Survival Quant)", "val": s_q_emp_val, "conf": s_q_emp_res[1], "arg": s_q_emp_res[2]},
+        {"name": "Agent 30 (Digit Bollinger & Z-Score Squeeze)", "val": s_q_boll_val, "conf": s_q_boll_res[1], "arg": s_q_boll_res[2]},
+        {"name": "Agent 31 (Digit Velocity & Acceleration Derivative)", "val": s_q_mom_val, "conf": s_q_mom_res[1], "arg": s_q_mom_res[2]},
+        {"name": "Agent 32 (Consecutive Sum Parity & PRNG Residue)", "val": s_q_res_val, "conf": s_q_res_res[1], "arg": s_q_res_res[2]}
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
@@ -1931,6 +2116,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     parity_weight = 3.0 if (s_q_parity_val is not None) else 1.0
     mod_weight = 2.0 if (s_q_mod_val is not None) else 1.0
     mirror_weight = 2.5 if (s_q_mirror_val is not None) else 1.0
+    emp_weight = 6.5 if (s_q_emp_val is not None) else 1.0
+    boll_weight = 4.0 if (s_q_boll_val is not None) else 1.0
+    mom_weight = 4.2 if (s_q_mom_val is not None) else 1.0
+    res_weight = 3.8 if (s_q_res_val is not None) else 1.0
 
     weights = [
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -1961,7 +2150,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         delta_weight,         # Agent 25: Delta Jump Velocity & Early Chop
         parity_weight,        # Agent 26: Parity-Color Cluster Invariant
         mod_weight,           # Agent 27: Period Modulo Micro-Cycle
-        mirror_weight         # Agent 28: Mirror Number Coupling
+        mirror_weight,        # Agent 28: Mirror Number Coupling
+        emp_weight,           # Agent 29: Empirical Streak Survival Matrix
+        boll_weight,          # Agent 30: Digit Bollinger Bands & Z-Score
+        mom_weight,           # Agent 31: Digit Velocity & Acceleration Derivatives
+        res_weight            # Agent 32: Consecutive Sum Parity & PRNG Residue
     ]
 
     big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
@@ -2114,102 +2307,192 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     print(f"📊 [DATABASE INTEL] Synced: {tot_synced} rounds | N={last_num} -> {n_trans_str} | 100R=({b100}B/{s100}S)", flush=True)
 
     recent_20_detailed = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-20:]])
-    prompt_arbiter = (
-        f"You are the Supreme Master AI Predictor with PRIMARY DECISION BURDEN for WinGo 30S.\n"
-        f"MANDATE: MAXIMUM THINKING INTENSITY & COGNITIVE RIGOR. ZERO LOSSES.\n\n"
+    prompt_strategist = (
+        f"You are the Lead Market Strategist for WinGo 30S.\n"
+        f"MANDATE: COGNITIVE RIGOR & HIGH CONVICTION. ZERO LOSSES.\n\n"
         f"GROUND TRUTH DATABASE & SEQUENTIAL INTELLIGENCE:\n"
         f"- Total Synced Memory: {tot_synced} rounds\n"
         f"- Macro Multi-Window: 100-Round=({b100}B/{s100}S), 50-Round=({b50}B/{s50}S), 20-Round=({b20}B/{s20}S)\n"
         f"- Database Number Transition Ground Truth: {n_trans_str}\n"
         f"- 10x10 Full Markov Matrix (No.{last_num}): P(BIG)={probabilities.get('p_10x10_markov', 0.5)*100:.1f}%, P(SMALL)={(1.0 - probabilities.get('p_10x10_markov', 0.5))*100:.1f}%\n"
+        f"- Empirical Streak Survival Matrix: P(Streak x{s_streak}->x{s_streak+1})={p_info.get('probabilities',{}).get('p_empirical_survival',0.5)*100:.1f}%\n"
         f"- Digit RSI(14): {p_info.get('rsi_14', 50.0):.1f} ({p_info.get('rsi_status', 'Neutral')})\n"
+        f"- Digit Bollinger & Z-Score: {s_quants.get('s_q_bollinger', ('', 0, ''))[2]}\n"
+        f"- Digit Momentum Derivative: {s_quants.get('s_q_momentum', ('', 0, ''))[2]}\n"
+        f"- PRNG Residue Engine: {s_quants.get('s_q_residue', ('', 0, ''))[2]}\n"
         f"- Baccarat Derived Roads: {p_info.get('derived_road_desc', 'Balanced')}\n"
         f"- Delta Jump Velocity: Avg Δ={p_info.get('avg_delta', 4.5):.1f} (High Volatility Chop: {'YES' if p_info.get('is_high_volatility') else 'NO'})\n"
         f"- Recent 20-Draw Shoe Sequence (oldest->newest): {recent_20_detailed}\n"
         f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
         f"- Active Streak: {last_s} x{s_streak} | Active Alternation (Chop): {s_alt}\n"
         f"- Multi-Probability Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
-        f"- 28 Quant Specialists Votes: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
+        f"- 32 Quant Specialists Votes: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
         f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
         f"ANALYTICAL DECISION DIRECTIVES:\n"
-        f"1. Bear the full decision stress: Synthesize sequence roadmaps (Dragon >=3, 1-1 Chop >=2, 1-2 Single-Double, 2-1 Double-Single, 2-2 Double-Step, Triplets), 10x10 Markov, RSI, and Derived Roads.\n"
+        f"1. Synthesize all sequence roadmaps, 10x10 Markov, RSI, Momentum, and Empirical Survival.\n"
         f"2. Decisive Selection: When edge or trend roadmap is distinct, choose 'BET' on the high-probability side ('BIG' [5-9] or 'SMALL' [0-4]).\n"
-        f"3. Strict Win-Streak Defense (Safe Skip): If market is in high-volatility chop without consensus, 50/50 noise, or ambiguous, choose 'SKIP' to preserve winning streak and avoid losses. A timely skip is always superior to a loss.\n\n"
+        f"3. Strict Win-Streak Defense (Safe Skip): If market is in high-volatility chop without consensus, 50/50 noise, or ambiguous, choose 'SKIP' to preserve winning streak and avoid losses.\n\n"
         f"Return JSON ONLY with this schema:\n"
         f'{{\n'
         f'  "action": "BET" or "SKIP",\n'
         f'  "target": "BIG" or "SMALL",\n'
-        f'  "summary": "Crisp 3-6 word strategy summary (e.g. 1-2 Single-Double Wave, Dragon Trend Momentum)"\n'
+        f'  "summary": "Crisp 3-6 word strategy summary"\n'
         f'}}'
     )
 
-    ai_called_successfully = False
-    for model_name in MASTER_AI_MODELS:
-        try:
-            r_arb = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt_arbiter}],
-                "max_tokens": 120,
-                "temperature": 0.15
-            }, timeout=3.5)
-            if r_arb.status_code == 200:
-                raw_content = r_arb.json()["choices"][0]["message"]["content"]
-                m_json = re.search(r'\{.*\}', raw_content, re.DOTALL)
-                if not m_json:
-                    continue
-                res_arb = json.loads(m_json.group(0))
-                act = str(res_arb.get("action", "")).upper()
-                arb_target = str(res_arb.get("target", "")).upper()
-                arb_conf = res_arb.get("confidence")
-                raw_summary = str(res_arb.get("summary") or res_arb.get("reason") or "").strip()
-                raw_summary = re.sub(r"\(Note:.*?\)", "", raw_summary, flags=re.DOTALL).strip()
-                raw_summary = re.sub(r"[\*\_\`]", "", raw_summary).strip()
-                if "." in raw_summary: raw_summary = raw_summary.split(".")[0].strip()
-                if "\n" in raw_summary: raw_summary = raw_summary.split("\n")[0].strip()
-                if len(raw_summary.split()) > 7:
-                    raw_summary = " ".join(raw_summary.split()[:7])
-                arb_reason = raw_summary
+    prompt_cro = (
+        f"You are the Chief Risk Officer (CRO) and Adversarial Auditor for a zero-loss WinGo 30S trading desk.\n"
+        f"CRITICAL MANDATE: MAXIMUM TENSION & STRESS. ZERO TOLERANCE FOR CASUAL BETS OR GAMBLER'S FALLACIES.\n"
+        f"YOUR PRIMARY BURDEN IS CAPITAL PRESERVATION. YOU HAVE FULL VETO POWER.\n\n"
+        f"MARKET METRICS & STRESS AUDIT:\n"
+        f"- Recent 20 Shoe: {recent_20_detailed}\n"
+        f"- Current Pattern: {s_pattern_desc} | Streak: {last_s} x{s_streak} | Chop: {s_alt}x\n"
+        f"- Empirical Streak Survival Rate: {p_info.get('probabilities',{}).get('p_empirical_survival',0.5)*100:.1f}%\n"
+        f"- Digit Bollinger Z-Score: {s_quants.get('s_q_bollinger', ('', 0, ''))[2]}\n"
+        f"- Digit Momentum Derivative: {s_quants.get('s_q_momentum', ('', 0, ''))[2]}\n"
+        f"- PRNG Residue: {s_quants.get('s_q_residue', ('', 0, ''))[2]}\n"
+        f"- Quant Votes: {w_size} ({w_v} vs {l_v} | Margin: {size_margin_pct:.0f}%)\n"
+        f"- Martingale Stage: {cur_stage_str}\n\n"
+        f"STRICT AUDIT RULES:\n"
+        f"1. If current streak has low survival odds (<50%), or if chop is ambiguous, or if margin is <30%, VETO by outputting 'SKIP'.\n"
+        f"2. In Recovery Level 2 (3X) or Level 3 (9X), DO NOT take speculative bets! Demand 100% structural clarity or VETO ('SKIP').\n"
+        f"3. Only approve 'BET' if market structure is undeniable (confirmed Dragon or confirmed Chop) and quant consensus agrees.\n"
+        f"Remember: A timely SKIP preserves capital and maintains our 100% win-streak. A loss destroys it.\n\n"
+        f"Return JSON ONLY with this schema:\n"
+        f'{{\n'
+        f'  "action": "BET" or "SKIP",\n'
+        f'  "target": "BIG" or "SMALL",\n'
+        f'  "summary": "Crisp 3-6 word risk assessment"\n'
+        f'}}'
+    )
 
-                ai_called_successfully = True
-                if act == "SKIP":
-                    arbiter_wants_skip = True
-                    is_qualified_bet = False
-                    final_summary = arb_reason or "Capital preservation: Ambiguous transition filtered to protect win streak."
-                    print(f"🧠 [MASTER AI: {model_name}] ⏸️ SNIPER SKIP HONORED: {final_summary}", flush=True)
-                elif act == "BET":
-                    if not is_qualified_bet:
-                        print(f"🛡️ [DOUBLE-SNIPER] LLM suggested BET, but quantitative noise filter blocked entry. SAFE SKIP HONORED.", flush=True)
-                        arbiter_wants_skip = True
-                    else:
-                        arbiter_wants_skip = False
-                        if arb_target in ("BIG", "SMALL"):
-                            if s_streak >= 3 and s_streak < 6 and arb_target != last_s:
-                                print(f"🧠 [MASTER AI: {model_name}] 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {arb_target}", flush=True)
-                                target_val = last_s
-                            elif s_alt >= 2 and arb_target != opp_s:
-                                print(f"🧠 [MASTER AI: {model_name}] 🛡️ Chop Trend Law: Preserved {opp_s} (Chop x{s_alt}) over counter-chop suggestion {arb_target}", flush=True)
-                                target_val = opp_s
-                            else:
-                                if arb_target != target_val:
-                                    print(f"🧠 [MASTER AI: {model_name}] 🎯 Master AI Strategic Target: {target_val} -> {arb_target}", flush=True)
-                                    target_val = arb_target
-                                    target_pattern = f"Master Brain Direction ({target_val})"
-                    
-                    if isinstance(arb_conf, (int, float)) and 50 <= arb_conf <= 99.5:
-                        target_conf = max(float(target_conf), float(arb_conf))
-                    if arb_reason:
-                        final_summary = arb_reason
-                    print(f"🧠 [MASTER AI: {model_name}] ✅ BET CONFIRMED: SIZE {target_val} ({target_conf:.1f}%) | {final_summary}", flush=True)
-                break
-            elif r_arb.status_code == 429:
-                print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429), failing over to next model...", flush=True)
-                continue
+    def _query_groq_single(model_name, prompt_text, role_desc):
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt_text}],
+                "max_tokens": 120,
+                "temperature": 0.12
+            }, timeout=3.2)
+            if r.status_code == 200:
+                raw_c = r.json()["choices"][0]["message"]["content"]
+                parsed_act, parsed_tgt, parsed_conf, parsed_summary = None, None, None, ""
+                m = re.search(r'\{.*\}', raw_c, re.DOTALL)
+                if m:
+                    try:
+                        res = json.loads(m.group(0))
+                        parsed_act = str(res.get("action", "")).upper()
+                        parsed_tgt = str(res.get("target", "")).upper()
+                        parsed_conf = res.get("confidence")
+                        parsed_summary = str(res.get("summary") or res.get("reason") or "").strip()
+                    except Exception:
+                        pass
+                if not parsed_act:
+                    m_act = re.search(r"(?:action|decision)\s*[:=]\s*[\"'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
+                    m_tgt = re.search(r"(?:target|prediction|side)\s*[:=]\s*[\"'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
+                    m_sum = re.search(r"(?:summary|reason)\s*[:=]\s*[\"'\`]?([^\n\r]+)", raw_c, re.IGNORECASE)
+                    if m_act:
+                        parsed_act = m_act.group(1).upper()
+                        parsed_tgt = m_tgt.group(1).upper() if m_tgt else ""
+                        parsed_summary = m_sum.group(1).strip() if m_sum else ""
+
+                if parsed_act in ("BET", "SKIP"):
+                    raw_summary = re.sub(r"\(Note:.*?\)", "", parsed_summary, flags=re.DOTALL).strip()
+                    raw_summary = re.sub(r"[\*\_\`]", "", raw_summary).strip()
+                    if "." in raw_summary: raw_summary = raw_summary.split(".")[0].strip()
+                    if "\n" in raw_summary: raw_summary = raw_summary.split("\n")[0].strip()
+                    if len(raw_summary.split()) > 7:
+                        raw_summary = " ".join(raw_summary.split()[:7])
+                    return {
+                        "ok": True,
+                        "model": model_name,
+                        "role": role_desc,
+                        "action": parsed_act,
+                        "target": parsed_tgt,
+                        "confidence": parsed_conf,
+                        "summary": raw_summary
+                    }
+            elif r.status_code == 429:
+                print(f"⚠️ [{role_desc}: {model_name}] Rate limited (429)", flush=True)
             else:
-                print(f"⚠️ [MASTER AI: {model_name}] HTTP {r_arb.status_code}: {r_arb.text[:100]}", flush=True)
-                continue
+                print(f"⚠️ [{role_desc}: {model_name}] HTTP {r.status_code}: {r.text[:80]}", flush=True)
         except Exception as e:
-            print(f"⚠️ [MASTER AI: {model_name}] Error: {e}", flush=True)
-            continue
+            print(f"⚠️ [{role_desc}: {model_name}] API Notice: {e}", flush=True)
+        return {"ok": False, "model": model_name, "role": role_desc}
+
+    def _query_with_failover(primary_model, backup_model, prompt_text, role_desc):
+        res = _query_groq_single(primary_model, prompt_text, role_desc)
+        if res.get("ok"):
+            return res
+        return _query_groq_single(backup_model, prompt_text, role_desc)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_strat = executor.submit(_query_with_failover, "allam-2-7b", "qwen/qwen3.8-27b", prompt_strategist, "Lead Strategist")
+        f_cro = executor.submit(_query_with_failover, "qwen/qwen3.8-27b", "allam-2-7b", prompt_cro, "Chief Risk Officer")
+        res_strat = f_strat.result()
+        res_cro = f_cro.result()
+
+    # Protocol Decision Matrix:
+    # 1. Chief Risk Officer VETO check (Absolute Veto Authority)
+    if res_cro.get("ok") and res_cro.get("action") == "SKIP":
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = f"CRO Veto: {res_cro.get('summary', 'Capital preservation')}"
+        print(f"🧠 [CHIEF RISK OFFICER: {res_cro.get('model')}] 🛡️ VETO ENFORCED: {final_summary}", flush=True)
+
+    # 2. Lead Strategist SKIP check
+    elif res_strat.get("ok") and res_strat.get("action") == "SKIP":
+        arbiter_wants_skip = True
+        is_qualified_bet = False
+        final_summary = res_strat.get("summary") or "Strategist: Ambiguous transition filtered."
+        print(f"🧠 [LEAD STRATEGIST: {res_strat.get('model')}] ⏸️ SNIPER SKIP HONORED: {final_summary}", flush=True)
+
+    # 3. Both models approve BET (or at least one approved and other was offline)
+    elif (res_strat.get("action") == "BET" or res_cro.get("action") == "BET"):
+        # Double-Sniper Guard: Mathematical quant consensus must qualify!
+        if not is_qualified_bet:
+            print(f"🛡️ [DOUBLE-SNIPER] LLM approved BET, but quantitative noise filter blocked entry. SAFE SKIP HONORED.", flush=True)
+            arbiter_wants_skip = True
+        else:
+            arbiter_wants_skip = False
+            chosen_target = None
+            if res_cro.get("action") == "BET" and res_cro.get("target") in ("BIG", "SMALL"):
+                chosen_target = res_cro.get("target")
+            elif res_strat.get("action") == "BET" and res_strat.get("target") in ("BIG", "SMALL"):
+                chosen_target = res_strat.get("target")
+
+            if chosen_target:
+                # Fundamental Trend Laws:
+                if s_streak >= 3 and s_streak < 6 and chosen_target != last_s:
+                    print(f"🧠 🛡️ Dragon Trend Law: Preserved {last_s} (Streak x{s_streak}) over counter-trend suggestion {chosen_target}", flush=True)
+                    target_val = last_s
+                elif s_alt >= 2 and chosen_target != opp_s:
+                    print(f"🧠 🛡️ Chop Trend Law: Preserved {opp_s} (Chop x{s_alt}) over counter-chop suggestion {chosen_target}", flush=True)
+                    target_val = opp_s
+                else:
+                    if chosen_target != target_val:
+                        print(f"🧠 🎯 Master AI Strategic Target: {target_val} -> {chosen_target}", flush=True)
+                        target_val = chosen_target
+                        target_pattern = f"Master Brain Direction ({target_val})"
+
+            strat_conf = res_strat.get("confidence") or res_cro.get("confidence")
+            if isinstance(strat_conf, (int, float)) and 50 <= strat_conf <= 99.5:
+                target_conf = max(float(target_conf), float(strat_conf))
+
+            strat_sum = res_strat.get("summary") or res_cro.get("summary")
+            if strat_sum:
+                final_summary = strat_sum
+            print(f"🧠 [DUAL-COUNCIL VERIFIED] ✅ BET CONFIRMED: SIZE {target_val} ({target_conf:.1f}%) | {final_summary}", flush=True)
+
+    else:
+        # Fallback if both AI calls failed / offline
+        if not is_qualified_bet:
+            arbiter_wants_skip = True
+            final_summary = "Quant filter: Transition noise filtered."
+            print(f"📊 [QUANT BACKUP] Master AI unreachable. Quant noise filter enforced SAFE SKIP.", flush=True)
+        else:
+            arbiter_wants_skip = False
+            print(f"📊 [QUANT BACKUP] Master AI unreachable. Pure Quant Consensus BET: {target_val}", flush=True)
 
     # ====================================================
     # 🎯 4. FINAL SNIPER FILTER (Real Skips on Noise)
@@ -2370,7 +2653,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
 # 🎯 RESULT EVALUATION (PROMINENT BOLD WIN & LOSS CARDS)
 # ====================================================
 def send_user_result(period, actual_number, actual_color, pred):
-    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL
+    global CURRENT_LOSS_STREAK, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL, POST_STOP_LOSS_COOLDOWN
     if not pred or pred.get("target_type") == "SKIP" or pred.get("target_val") == "SKIP":
         return
     short_period = period[-4:] if len(period) >= 4 else period
@@ -2409,6 +2692,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         TOTAL_CYCLES += 1
         TOTAL_WINS += 1
         CURRENT_LOSS_STREAK = 0  # WIN! Reset to Level 1!
+        POST_STOP_LOSS_COOLDOWN = 0
 
         mult = 3 ** (win_level - 1)
         win_stage = to_bold(f"LEVEL {win_level} ({mult}X)")
@@ -2477,6 +2761,7 @@ def send_user_result(period, actual_number, actual_color, pred):
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
             CURRENT_LOSS_STREAK = 0
+            POST_STOP_LOSS_COOLDOWN = 2
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
