@@ -25,8 +25,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # 27B parameter deep reasoning engine
-    "allam-2-7b",               # 7B fast failover
+    "allam-2-7b",               # Fast, high-capacity primary reasoning engine (7000 req/day active quota)
+    "qwen/qwen3.8-27b",         # 27B deep math & quant reasoning failover
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
@@ -1746,15 +1746,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 3. HIGH-INTENSITY QUALIFICATION & ANTI-SKIP ENGINE
     # ====================================================
-    # Comprehensive Multi-Probability Execution:
-    is_qualified_bet = (
-        (w_v >= 9) or
-        (unified_edge >= 2.0) or
-        (has_confirmed_structure and w_v >= 8) or
-        (target_margin >= 10.0)
-    )
+    # At Level 1 (base play), always qualify bet (User directive: "bs skip necesry")
+    if current_loss_streak == 0:
+        is_qualified_bet = True
+    else:
+        is_qualified_bet = (
+            (w_v >= 9) or
+            (unified_edge >= 2.0) or
+            (has_confirmed_structure and w_v >= 8) or
+            (target_margin >= 10.0)
+        )
 
-    # 🛡️ Anti-Skip Deadlock Breaker:
+    # 🛡️ Anti-Skip Deadlock Breaker: Never skip twice
     if consecutive_skips >= 1:
         is_qualified_bet = True
 
@@ -1769,7 +1772,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             ("Double-Step" in s_pattern_desc and w_v >= 10) or
             (has_confirmed_structure and w_v >= 11)
         )
-        if consecutive_skips >= 2:
+        if consecutive_skips >= 1:
             recovery_ok = True
         is_qualified_bet = recovery_ok
 
@@ -1832,17 +1835,31 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     print(f"📊 [DATABASE INTEL] Synced: {tot_synced} rounds | N={last_num} -> {n_trans_str} | 100R=({b100}B/{s100}S)", flush=True)
 
-    recent_15_str = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-15:]])
+    recent_20_detailed = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-20:]])
     prompt_arbiter = (
-        f"WinGo 30S Size Arbiter (BIG: 5-9, SMALL: 0-4).\n"
-        f"Recent 15 Draws: {recent_15_str}\n"
-        f"Detected Roadmap: [{s_pattern_desc}]\n"
-        f"Streak: {last_s} x{s_streak} | Chop: {s_alt} | Last Num: {last_num} ({n_trans_str})\n"
-        f"Math Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% | Council Votes: {w_size} ({w_v} vs {l_v})\n"
-        f"Active Stage: {cur_stage_str} (Skips: {consecutive_skips})\n"
-        f"Directives: Detect chart roadmaps (Dragon>=3, Chop>=4, 1-2, 2-1, 2-2). If clear, bet with 94-98% conf. If noisy transition in recovery, skip.\n"
-        f"Return JSON ONLY:\n"
-        f'{{"action": "BET" or "SKIP", "target": "BIG" or "SMALL", "confidence": 96.0, "summary": "3-5 word strategy"}}'
+        f"You are the Supreme Master AI Predictor with PRIMARY DECISION BURDEN for WinGo 30S.\n"
+        f"MANDATE: MAXIMUM THINKING INTENSITY & COGNITIVE RIGOR. ZERO LOSSES.\n\n"
+        f"GROUND TRUTH DATABASE & SEQUENTIAL INTELLIGENCE:\n"
+        f"- Total Synced Memory: {tot_synced} rounds\n"
+        f"- Macro Multi-Window: 100-Round=({b100}B/{s100}S), 50-Round=({b50}B/{s50}S), 20-Round=({b20}B/{s20}S)\n"
+        f"- Database Number Transition Ground Truth: {n_trans_str}\n"
+        f"- Recent 20-Draw Shoe Sequence (oldest->newest): {recent_20_detailed}\n"
+        f"- Dominant Chart Roadmap: [{s_pattern_desc}]\n"
+        f"- Active Streak: {last_s} x{s_streak} | Active Alternation (Chop): {s_alt}\n"
+        f"- Multi-Probability Edge: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
+        f"- 15 Quant Specialists Votes: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
+        f"- Active Martingale Stage: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
+        f"ANALYTICAL DECISION DIRECTIVES:\n"
+        f"1. Bear the full decision stress: Synthesize sequence roadmaps (Dragon >=3, 1-1 Chop >=4, 1-2 Single-Double, 2-1 Double-Single, 2-2 Double-Step, Triplets) with database ground truth.\n"
+        f"2. Decisive Selection: Pick the winning side between 'BIG' [5-9] and 'SMALL' [0-4] with 94.0%-98.5% confidence.\n"
+        f"3. Strict Skip Policy: NEVER skip at Level 1. Only skip if Stage is Recovery (Level 2+) AND market is authentic 50/50 chaotic deadlock.\n\n"
+        f"Return JSON ONLY with this schema:\n"
+        f'{{\n'
+        f'  "action": "BET" or "SKIP",\n'
+        f'  "target": "BIG" or "SMALL",\n'
+        f'  "confidence": 96.5,\n'
+        f'  "summary": "Crisp 3-6 word strategy summary (e.g. 1-2 Single-Double Wave, Dragon Trend Momentum)"\n'
+        f'}}'
     )
 
     ai_called_successfully = False
@@ -1852,8 +1869,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt_arbiter}],
                 "response_format": {"type": "json_object"},
-                "max_tokens": 60,
-                "temperature": 0.2
+                "max_tokens": 120,
+                "temperature": 0.15
             }, timeout=3.5)
             if r_arb.status_code == 200:
                 res_arb = json.loads(r_arb.json()["choices"][0]["message"]["content"])
@@ -1871,24 +1888,28 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
                 ai_called_successfully = True
                 if act == "SKIP":
-                    if consecutive_skips >= 2:
+                    if current_loss_streak == 0:
+                        # Policy: NEVER skip at Level 1!
+                        arbiter_wants_skip = False
+                        is_qualified_bet = True
+                        final_summary = f"Level 1 Base: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
+                        print(f"🧠 [MASTER AI: {model_name}] ⚡ Level 1 Base Play: Proceeding with {target_val}.", flush=True)
+                    elif consecutive_skips >= 1:
+                        # Policy: NEVER skip multiple times in a row!
                         arbiter_wants_skip = False
                         is_qualified_bet = True
                         final_summary = f"Deadlock override: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()} ({target_edge_desc})."
-                        print(f"🧠 [MASTER AI: {model_name}] ⚡ Deadlock override after {consecutive_skips} skips. Betting {target_val}.", flush=True)
-                    elif current_loss_streak >= 1 and not (s_streak >= 3 or s_alt >= 4):
+                        print(f"🧠 [MASTER AI: {model_name}] ⚡ Deadlock override after skip. Betting {target_val}.", flush=True)
+                    elif current_loss_streak >= 1 and not (s_streak >= 3 or s_alt >= 4 or "Double" in s_pattern_desc or "Single" in s_pattern_desc):
+                        # ONLY skip during recovery (Level 2/3) when market is pure noise without roadmap
                         arbiter_wants_skip = True
                         final_summary = arb_reason or "Capital preservation: Filtered out ambiguous transition round during recovery stage."
                         print(f"🧠 [MASTER AI: {model_name}] ⏸️ RECOVERY SNIPER SKIP HONORED: {final_summary}", flush=True)
-                    elif w_v >= 16 and unified_edge >= 4.5:
+                    else:
                         arbiter_wants_skip = False
                         is_qualified_bet = True
-                        final_summary = f"Quant golden unanimity ({w_v}-{l_v} | Edge {unified_edge:.1f}%) confirms SIZE {target_val}."
-                        print(f"🧠 [MASTER AI: {model_name}] ⚠️ VETO OVERRIDDEN BY QUANT ENGINE: Extreme math edge ({w_v}-{l_v}).", flush=True)
-                    else:
-                        arbiter_wants_skip = True
-                        final_summary = arb_reason or "Filtered out noisy round for sniper precision."
-                        print(f"🧠 [MASTER AI: {model_name}] ⏸️ SNIPER SKIP: {final_summary}", flush=True)
+                        final_summary = f"Structure confirmed: SIZE {target_val} backed by {s_pattern_desc.split('|')[0].strip()}."
+                        print(f"🧠 [MASTER AI: {model_name}] 🎯 Structure confirmed: Proceeding with {target_val}.", flush=True)
                 elif act == "BET":
                     arbiter_wants_skip = False
                     is_qualified_bet = True
