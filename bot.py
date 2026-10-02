@@ -26,8 +26,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
     "qwen/qwen3.8-27b",         # 27B parameter deep reasoning engine
-    "openai/gpt-oss-20b",       # 20B fast failover
-    "openai/gpt-oss-120b",      # 120B supreme arbiter
+    "allam-2-7b",               # 7B fast failover
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
