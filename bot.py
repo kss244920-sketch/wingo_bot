@@ -2281,20 +2281,57 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     if current_loss_streak > 0:
         # 🛡️ DISCIPLINED RECOVERY (LEVEL 2 TO LEVEL 5):
-        # Anti-Whipsaw Directional Stickiness Armor!
-        # Lock onto CURRENT_CYCLE_TARGET. Do NOT switch sides! Do NOT skip!
-        # Mathematically guarantees a win in alternating chops on L2 (100%), 2-2 chops on L3, 3-3 on L4.
-        rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else w_size
-        CURRENT_CYCLE_TARGET = rec_target
-        target_val = rec_target
+        mult = 3 ** current_loss_streak
+
+        # 1. DRAGON / STREAK MOMENTUM RIDE (MANDATORY ANTI-SUICIDE RULE)
+        # NEVER counter-bet an active pair or dragon (s_streak >= 2) on recovery!
+        # If the market has printed last_s 2+ times, we MUST follow the dragon.
+        if s_streak >= 2 and not is_streak_exhausted:
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} Dragon Ride Momentum ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} streak"
+            print(f"🐉 [L{cur_lvl} RECOVERY DRAGON] Active Streak ({last_s} x{s_streak}) detected! Flipping to {last_s} ({mult}X) to ride trend!", flush=True)
+
+        # 2. 1-1 CHOP SWING RECOVERY
+        # If the market is in a confirmed 1-1 alternation (s_alt >= 2), bet the alternating swing!
+        elif is_chop_confirmed and not is_chop_exhausted:
+            target_val = opp_s
+            CURRENT_CYCLE_TARGET = opp_s
+            target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
+            final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
+            print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
+
+        # 3. 2-2 DOUBLE-STEP RECOVERY
+        elif is_2_2:
+            target_val = opp_s if s_streak >= 2 else last_s
+            CURRENT_CYCLE_TARGET = target_val
+            target_pattern = f"Level {cur_lvl} 2-2 Double-Step Recovery"
+            final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
+
+        # 4. ANTI-WHIPSAW DIRECTIONAL LOCK (Isolated Noise Only)
+        # In isolated 1-off noise where no streak or chop is established, stick to directional target
+        else:
+            rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else w_size
+            CURRENT_CYCLE_TARGET = rec_target
+            target_val = rec_target
+            target_pattern = f"Level {cur_lvl} Anti-Whipsaw Recovery ({mult}X)"
+            final_summary = f"L{cur_lvl} Recovery Armor: Locked target {target_val} ({mult}X recovery)"
+            print(f"🛡️ [L{cur_lvl} RECOVERY ARMOR] Anti-Whipsaw Directional Lock: {target_val} ({mult}X)", flush=True)
+
+        # FINAL ABSOLUTE ANTI-COUNTER-STREAK GUARD (Failsafe)
+        if s_streak >= 2 and not is_streak_exhausted and target_val != last_s:
+            print(f"⚠️ [RECOVERY GUARD OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} streak! Force-riding {last_s}!", flush=True)
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} Anti-Counter-Streak Guard ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} streak"
+
         target_type = "SIZE"
         is_qualified_bet = True
         arbiter_wants_skip = False
-        mult = 3 ** current_loss_streak
-        target_pattern = f"Level {cur_lvl} Anti-Whipsaw Recovery ({mult}X)"
-        final_summary = f"L{cur_lvl} Recovery Armor: Locked target {target_val} ({mult}X recovery)"
         target_conf = 88.0 + min(10.0, current_loss_streak * 2.0)
-        print(f"🛡️ [L{cur_lvl} RECOVERY ARMOR] Anti-Whipsaw Directional Lock: {target_val} ({mult}X)", flush=True)
 
     else:
         # 👑 LEVEL 1 (1X BASE BET): Trend & Structural Execution
