@@ -2236,6 +2236,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
     is_chop_confirmed = (s_alt in (3, 4, 5))
     
+    # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
+    prev_dragon_len = 0
+    if len(sizes) >= 2 and sizes[-1] != sizes[-2]:
+        for k in range(2, len(sizes) + 1):
+            if sizes[-k] == sizes[-2]:
+                prev_dragon_len += 1
+            else:
+                break
+    is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 4)
+
     # Statistical Loss Hazards:
     is_streak_exhausted = (s_streak >= 7 or (s_streak >= 5 and streak_surv < 0.35))
     is_chop_exhausted = (s_alt >= 6)
@@ -2265,7 +2275,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         f"Streak: {last_s}x{s_streak}. Chop: {s_alt}x. "
         f"Quants: {w_size} ({w_v}-{l_v}, margin {size_margin_pct:.0f}%). "
         f"Stage: Level {current_loss_streak + 1}. "
-        f'Output JSON only: {{"action":"BET","target":"{w_size}","confidence":85,"summary":"Trend momentum"}}'
+        f'Decide BET (BIG or SMALL) or SKIP. Output JSON: {{"action":"BET"|"SKIP","target":"BIG"|"SMALL","confidence":85,"summary":"3-5 words"}}'
     )
 
     def _query_master_ai(prompt_text):
@@ -2420,6 +2430,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Chop -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Chop: {target_val}", flush=True)
+        elif s_streak >= 2 and w_size != last_s:
+            # Never fight an active pair/streak during 3X recovery!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"L2 Shield: Counter-streak conflict filtered ({w_size} vs {last_s} x{s_streak}). Preserving 3X recovery."
+            print(f"🛡️ [L2 RECOVERY SHIELD] Counter-streak conflict filtered ({w_size} vs {last_s} x{s_streak}). SAFE SKIP enforced.", flush=True)
         elif size_margin_pct >= 15.0 and w_v >= 6:
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
@@ -2450,7 +2466,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # LEVEL 1 (1X BASE BET): Trend & Consensus Execution (Zero Gambler's Fallacy Overrides!)
     else:
         # 1. Hazard Checks
-        if is_streak_exhausted:
+        if is_post_dragon_transition:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"Post-Dragon Transition: Long streak ({sizes[-2]} x{prev_dragon_len}) broke; awaiting new structure confirmation."
+            print(f"🛡️ [POST-DRAGON TRANSITION] Long streak ({sizes[-2]} x{prev_dragon_len}) broke. SAFE SKIP enforced.", flush=True)
+        elif is_streak_exhausted:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Exhaustion Trap: Streak x{s_streak} continuation risk high ({streak_surv*100:.0f}% surv)."
