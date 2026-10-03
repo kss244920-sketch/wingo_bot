@@ -25,9 +25,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # Direct JSON output, ultra-fast primary engine
-    "openai/gpt-oss-20b",       # High-speed fallback engine (separate rate-limit pool)
-    "openai/gpt-oss-120b"       # Deep reasoning supreme arbiter fallback
+    "allam-2-7b",               # Fast direct JSON instruct model (Active, high throughput)
+    "qwen/qwen3.8-27b",         # Secondary fallback (when TPD limit resets)
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
@@ -2354,55 +2353,50 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     arbiter_wants_skip = False
     final_summary = ""
 
-    # LEVEL 3 (9X FINAL RECOVERY): Strict Capital Shield - Zero Counter-Trend Gambles!
+    # LEVEL 3 (9X FINAL RECOVERY): Strict Capital Shield - High-Confluence Sniper Only!
     if current_loss_streak >= 2:
         if is_violent_chaos:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = "L3 Shield: Volatile delta chaos filtered to protect 9X bankroll."
             print(f"🛡️ [L3 CAPITAL SHIELD] Volatile delta chaos filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
-        elif size_margin_pct >= 14.0 and w_v >= 6 and w_size == last_s:
-            # STRICT TREND ALIGNMENT: Supermajority trend edge
-            target_val = w_size
-            target_pattern = f"Supermajority Trend Edge ({target_val})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Supermajority Trend ({w_size} | {size_margin_pct:.0f}%)"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Trend Edge: {target_val}", flush=True)
         elif is_dragon_confirmed and not is_streak_exhausted:
+            # Established Dragon Trend (s_streak >= 3)
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Confirmed Dragon ({last_s} x{s_streak})"
             print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt == last_s:
-            # STRICT TREND ALIGNMENT: Master AI confirms trend continuation!
-            target_val = last_s
-            target_pattern = f"Master AI Trend Armor ({target_val})"
+        elif is_chop_confirmed and w_size == opp_s:
+            # Established 1-1 Chop Swing
+            target_val = opp_s
+            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = ai_sum or f"Master AI Trend Recovery ({target_val})"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI Trend Recovery: {target_val}", flush=True)
-        elif w_size == last_s and size_margin_pct >= 8.0:
-            target_val = last_s
-            target_pattern = f"Quant Trend Armor ({last_s} | {size_margin_pct:.0f}%)"
+            final_summary = f"L3 Armor: Chop Swing -> {opp_s}"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Chop Swing: {target_val}", flush=True)
+        elif size_margin_pct >= 18.0 and w_v >= 7:
+            # Supermajority Quant Consensus
+            target_val = w_size
+            target_pattern = f"Supermajority Quant Armor ({target_val} | {size_margin_pct:.0f}%)"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Quant Trend ({last_s} | {size_margin_pct:.0f}%)"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Quant Trend Recovery: {target_val}", flush=True)
-        elif not is_streak_exhausted:
-            # GOLDEN RULE: ALWAYS RIDE LAST KNOWN WINNER ON 9X RECOVERY - NEVER FIGHT THE TREND!
-            target_val = last_s
-            target_pattern = f"Trend Continuation Guard ({last_s})"
+            final_summary = f"L3 Armor: Supermajority Quant ({w_size} | {size_margin_pct:.0f}%)"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Quant Edge: {target_val}", flush=True)
+        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+            # Master AI Verified Entry
+            target_val = ai_tgt
+            target_pattern = f"Master AI Recovery Approval ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Trend Guard ({last_s})"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Trend Continuation Guard: {target_val}", flush=True)
+            final_summary = ai_sum or f"Master AI Recovery ({target_val})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI Recovery: {target_val}", flush=True)
         else:
+            # Ambiguous or weak edge: SAFE SKIP to preserve 9X bankroll!
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = f"L3 Capital Shield: Ambiguous transition filtered (margin={size_margin_pct:.0f}%)."
+            final_summary = f"L3 Capital Shield: Ambiguous transition filtered (margin={size_margin_pct:.0f}%). Preserving 9X recovery."
             print(f"🛡️ [L3 RECOVERY SHIELD] Ambiguous transition filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
 
     # LEVEL 2 (3X RECOVERY): High-Confidence Confirmation Required
