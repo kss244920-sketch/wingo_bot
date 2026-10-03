@@ -23,13 +23,12 @@ STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
-# High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
+# High-Intensity Deep Reasoning Master AI Brain
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # Direct JSON output, ultra-fast primary engine
-    "allam-2-7b",               # Fast direct JSON failover engine
-    "openai/gpt-oss-20b"        # Deep reasoning backup
+    "qwen/qwen3.8-27b"          # Direct JSON output, ultra-fast primary engine
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
+GROQ_COOLDOWN_UNTIL = 0
 
 HISTORY_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -2190,10 +2189,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     streak_surv = p_info.get("streak_survival_rate", 0.50)
 
     # ====================================================
-    # 🎯 1. DRAGON TREND CONTINUITY (Established Streak Law)
+    # 🎯 1. DRAGON & STREAK TREND LOCK (Established Trend Law)
     # ====================================================
-    # Only lock in dragon if streak >= 5 and empirical survival rate is high
-    if s_streak >= 5 and s_streak < 8 and streak_surv >= 0.55 and w_size != last_s:
+    # Never bet against an active streak (s_streak >= 2) unless exhausted (>= 7)
+    if s_streak >= 2 and s_streak < 7 and w_size != last_s:
+        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active streak ({last_s} x{s_streak})", flush=True)
         w_size = last_s
 
     # ====================================================
@@ -2205,19 +2205,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_margin = size_margin_pct
 
     # Ensure pattern name matches target_val direction
-    if w_size == s_pred_val and s_pred_conf >= 75.0:
-        target_pattern = s_pattern_desc
+    if s_streak >= 3 and w_size == last_s:
+        target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
+    elif s_streak == 2 and w_size == last_s:
+        target_pattern = f"Fresh Pair Momentum ({w_size} x2)"
+    elif s_alt >= 2 and w_size == opp_s:
+        target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
+    elif "Confirmed 2-2" in s_pattern_desc:
+        target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
     else:
-        if s_streak >= 2 and w_size == last_s:
-            target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
-        elif s_alt >= 2 and w_size == opp_s:
-            target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
-        elif b20 >= 13 or s20 >= 13:
-            target_pattern = f"Mean-Reversion Imbalance ({w_size})"
-        elif "Confirmed 2-2" in s_pattern_desc:
-            target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
-        else:
-            target_pattern = f"Quant Consensus Edge ({w_size})"
+        target_pattern = f"Quant Consensus Edge ({w_size})"
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
@@ -2270,6 +2267,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     )
 
     def _query_master_ai(prompt_text):
+        global GROQ_COOLDOWN_UNTIL
+        if time.time() < GROQ_COOLDOWN_UNTIL:
+            return {"ok": False}
+
         for model_name in MASTER_AI_MODELS:
             try:
                 r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
@@ -2278,9 +2279,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                         {"role": "system", "content": "You are a quantitative casino arbiter. Output valid JSON only: {\"action\": \"BET\"|\"SKIP\", \"target\": \"BIG\"|\"SMALL\", \"confidence\": 85, \"summary\": \"3-5 words\"}. No explanation."},
                         {"role": "user", "content": prompt_text}
                     ],
-                    "max_tokens": 65,
+                    "max_tokens": 40,
                     "temperature": 0.10
-                }, timeout=3.5)
+                }, timeout=3.0)
                 if r.status_code == 200:
                     choice = r.json().get("choices", [{}])[0]
                     msg_obj = choice.get("message", {})
@@ -2323,9 +2324,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                             "summary": raw_summary
                         }
                 elif r.status_code == 429:
-                    err_msg = r.text[:80].replace('\n', ' ')
-                    print(f"⚠️ [MASTER AI: {model_name}] 429 rate limit: {err_msg}. Cascading to next engine...", flush=True)
-                    continue
+                    GROQ_COOLDOWN_UNTIL = time.time() + 60.0
+                    print(f"⚠️ [MASTER AI: {model_name}] 429 rate limit reached. 32 Pure-Math Quants running locally in RAM (60s cooldown).", flush=True)
+                    return {"ok": False}
                 else:
                     print(f"⚠️ [MASTER AI: {model_name}] HTTP {r.status_code}: {r.text[:80]}", flush=True)
                     continue
@@ -2407,34 +2408,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = "L2 Shield: Violent delta chaos filtered."
             print(f"🛡️ [L2 RECOVERY SHIELD] Volatile regime filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
-        elif is_dragon_confirmed and not is_streak_exhausted:
+        elif s_streak >= 2 and not is_streak_exhausted:
             target_val = last_s
-            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
+            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})" if s_streak >= 3 else f"Fresh Pair Momentum ({target_val} x2)"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L2 Recovery: Dragon ({last_s} x{s_streak})"
-            print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
-            target_val = ai_tgt
-            target_pattern = f"Master AI Recovery Approval ({target_val})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = ai_sum or f"Master AI Bet ({target_val})"
-            print(f"🛡️ [L2 RECOVERY ARMOR] Master AI Recovery: {target_val}", flush=True)
-        elif size_margin_pct >= 10.0 and w_v >= 5:
-            target_val = w_size
-            target_pattern = f"Quant Consensus Edge ({target_val})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L2 Recovery: Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
-            print(f"🛡️ [L2 RECOVERY ARMOR] Quant Consensus: {target_val}", flush=True)
-        elif s_streak == 2:
-            target_val = last_s
-            target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L2 Recovery: Fresh Pair Momentum ({last_s} x2)"
-            print(f"🛡️ [L2 RECOVERY ARMOR] Fresh Pair Momentum: {target_val}", flush=True)
+            final_summary = f"L2 Recovery: Streak ({last_s} x{s_streak})"
+            print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Streak: {target_val} x{s_streak}", flush=True)
         elif is_chop_confirmed and w_size == opp_s:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
@@ -2442,6 +2422,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Chop -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Chop: {target_val}", flush=True)
+        elif size_margin_pct >= 10.0 and w_v >= 5:
+            target_val = w_size
+            target_pattern = f"Quant Consensus Edge ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L2 Recovery: Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
+            print(f"🛡️ [L2 RECOVERY ARMOR] Quant Consensus: {target_val}", flush=True)
+        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+            target_val = ai_tgt
+            target_pattern = f"Master AI Recovery Approval ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum or f"Master AI Bet ({target_val})"
+            print(f"🛡️ [L2 RECOVERY ARMOR] Master AI Recovery: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2478,20 +2472,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             print(f"🧠 [MASTER AI: {ai_model}] ⏸️ HAZARD AUDIT SKIP: {final_summary}", flush=True)
 
         # 2. Decisive Trend & Consensus Execution
-        elif is_dragon_confirmed and not is_streak_exhausted:
+        elif s_streak >= 2 and not is_streak_exhausted:
             target_val = last_s
-            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
+            target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})" if s_streak >= 3 else f"Fresh Pair Momentum ({target_val} x2)"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
-            print(f"🐉 [DRAGON TREND] Trend Momentum Confirmed: {target_val} x{s_streak}", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
-            target_val = ai_tgt
-            target_pattern = f"Master AI Directed Bet ({target_val})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = ai_sum or f"Master AI ({target_val})"
-            print(f"🧠 [MASTER AI: {ai_model}] Direct Bet Approved: {target_val}", flush=True)
+            final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else (f"Dragon Trend ({last_s} x{s_streak})" if s_streak >= 3 else f"Fresh Pair Momentum ({last_s} x2)")
+            print(f"🐉 [STREAK MOMENTUM] Trend Confirmed: {target_val} x{s_streak}", flush=True)
         elif size_margin_pct >= 10.0 and w_v >= 5:
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
@@ -2499,13 +2486,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
             print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-        elif s_streak == 2:
-            target_val = last_s
-            target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
+        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+            target_val = ai_tgt
+            target_pattern = f"Master AI Directed Bet ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"Fresh Pair Momentum ({last_s} x2)"
-            print(f"🤝 [PAIR MOMENTUM] Fresh Pair Ride: {target_val}", flush=True)
+            final_summary = ai_sum or f"Master AI ({target_val})"
+            print(f"🧠 [MASTER AI: {ai_model}] Direct Bet Approved: {target_val}", flush=True)
         elif is_chop_confirmed and not is_chop_exhausted and w_size == opp_s:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
