@@ -2232,7 +2232,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     p_m10_val = probabilities.get("p_10x10_markov", 0.50)
 
     # Core Market Structures:
-    is_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3])
+    is_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3]) or ("2-2 Double-Step" in s_pattern_desc)
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
     is_chop_confirmed = (s_alt in (3, 4, 5))
     
@@ -2370,6 +2370,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = "L3 Shield: Volatile delta chaos filtered to protect 9X bankroll."
             print(f"🛡️ [L3 CAPITAL SHIELD] Volatile delta chaos filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
+        elif is_post_dragon_transition:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"L3 Shield: Post-dragon transition ({sizes[-2]} x{prev_dragon_len}) filtered to protect 9X bankroll."
+            print(f"🛡️ [L3 CAPITAL SHIELD] Post-dragon transition filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
+        elif s_streak >= 2 and not is_2_2 and ((w_size != last_s) or (ai_ok and ai_tgt != last_s)):
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"L3 Shield: Counter-streak conflict filtered ({last_s} x{s_streak}). Preserving 9X recovery."
+            print(f"🛡️ [L3 CAPITAL SHIELD] Counter-streak conflict filtered ({last_s} x{s_streak}). SAFE SKIP enforced.", flush=True)
         elif is_dragon_confirmed and not is_streak_exhausted:
             # Established Dragon Trend (s_streak >= 3)
             target_val = last_s
@@ -2378,7 +2388,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Confirmed Dragon ({last_s} x{s_streak})"
             print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed and w_size == opp_s:
+        elif is_chop_confirmed and not is_chop_exhausted:
             # Established 1-1 Chop Swing
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
@@ -2386,22 +2396,29 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Chop Swing -> {opp_s}"
             print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Chop Swing: {target_val}", flush=True)
-        elif size_margin_pct >= 18.0 and w_v >= 7:
-            # Supermajority Quant Consensus
+        elif is_2_2:
+            target_val = opp_s if s_streak >= 2 else last_s
+            target_pattern = f"Confirmed 2-2 Double-Step ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L3 Armor: 2-2 Double-Step -> {target_val}"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed 2-2 Double-Step: {target_val}", flush=True)
+        elif size_margin_pct >= 22.0 and w_v >= 8 and (s_streak < 2 or w_size == last_s):
+            # Supermajority Quant Consensus with no counter-trend conflict
             target_val = w_size
             target_pattern = f"Supermajority Quant Armor ({target_val} | {size_margin_pct:.0f}%)"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Supermajority Quant ({w_size} | {size_margin_pct:.0f}%)"
             print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Quant Edge: {target_val}", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
-            # Master AI Verified Entry
+        elif ai_ok and ai_act == "BET" and ai_tgt == w_size and size_margin_pct >= 15.0 and (s_streak < 2 or ai_tgt == last_s):
+            # Master AI Verified with Quant Confluence (AI cannot bet alone on 9X!)
             target_val = ai_tgt
-            target_pattern = f"Master AI Recovery Approval ({target_val})"
+            target_pattern = f"Master AI Confluence Recovery ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = ai_sum or f"Master AI Recovery ({target_val})"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI Recovery: {target_val}", flush=True)
+            final_summary = ai_sum or f"Master AI + Quant Confluence ({target_val})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI + Quant Confluence: {target_val}", flush=True)
         else:
             # Ambiguous or weak edge: SAFE SKIP to preserve 9X bankroll!
             arbiter_wants_skip = True
@@ -2416,6 +2433,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = "L2 Shield: Violent delta chaos filtered."
             print(f"🛡️ [L2 RECOVERY SHIELD] Volatile regime filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
+        elif is_post_dragon_transition:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"L2 Shield: Post-dragon transition ({sizes[-2]} x{prev_dragon_len}) filtered to protect 3X recovery."
+            print(f"🛡️ [L2 RECOVERY SHIELD] Post-dragon transition filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
+        elif s_streak >= 2 and not is_2_2 and ((w_size != last_s) or (ai_ok and ai_tgt != last_s)):
+            # Never fight an active pair/streak during 3X recovery!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"L2 Shield: Counter-streak conflict filtered ({last_s} x{s_streak}). Preserving 3X recovery."
+            print(f"🛡️ [L2 RECOVERY SHIELD] Counter-streak conflict filtered ({last_s} x{s_streak}). SAFE SKIP enforced.", flush=True)
         elif is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
@@ -2423,47 +2451,41 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Dragon ({last_s} x{s_streak})"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed and w_size == opp_s:
+        elif is_chop_confirmed and not is_chop_exhausted:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Chop -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Chop: {target_val}", flush=True)
-        elif s_streak >= 2 and w_size != last_s:
-            # Never fight an active pair/streak during 3X recovery!
-            arbiter_wants_skip = True
-            is_qualified_bet = False
-            final_summary = f"L2 Shield: Counter-streak conflict filtered ({w_size} vs {last_s} x{s_streak}). Preserving 3X recovery."
-            print(f"🛡️ [L2 RECOVERY SHIELD] Counter-streak conflict filtered ({w_size} vs {last_s} x{s_streak}). SAFE SKIP enforced.", flush=True)
-        elif size_margin_pct >= 15.0 and w_v >= 6:
+        elif is_2_2:
+            target_val = opp_s if s_streak >= 2 else last_s
+            target_pattern = f"Confirmed 2-2 Double-Step ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L2 Recovery: 2-2 Double-Step -> {target_val}"
+            print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed 2-2 Double-Step: {target_val}", flush=True)
+        elif size_margin_pct >= 18.0 and w_v >= 7 and (s_streak < 2 or w_size == last_s):
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Decisive Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
             print(f"🛡️ [L2 RECOVERY ARMOR] Decisive Quant Consensus: {target_val}", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+        elif ai_ok and ai_act == "BET" and ai_tgt == w_size and size_margin_pct >= 12.0 and (s_streak < 2 or ai_tgt == last_s):
             target_val = ai_tgt
             target_pattern = f"Master AI Recovery Approval ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = ai_sum or f"Master AI Bet ({target_val})"
             print(f"🛡️ [L2 RECOVERY ARMOR] Master AI Recovery: {target_val}", flush=True)
-        elif s_streak == 2 and not is_2_2 and w_size == last_s and size_margin_pct >= 12.0:
-            target_val = last_s
-            target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L2 Recovery: Pair Momentum with Quant Agreement ({last_s} x2)"
-            print(f"🛡️ [L2 RECOVERY ARMOR] Pair with Quant Agreement: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"L2 Shield: Low edge transition filtered (margin={size_margin_pct:.0f}%). Preserving 3X recovery."
             print(f"🛡️ [L2 RECOVERY SHIELD] Low edge transition filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
 
-    # LEVEL 1 (1X BASE BET): Trend & Consensus Execution (Zero Gambler's Fallacy Overrides!)
+    # LEVEL 1 (1X BASE BET): Trend & Structural Execution
     else:
         # 1. Hazard Checks
         if is_post_dragon_transition:
@@ -2491,13 +2513,19 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = f"Dead 50/50 Noise: Neutral Markov ({p_m10_val*100:.0f}%) and zero margin."
             print(f"🛡️ [50/50 NOISE] Neutral Markov and no quant margin. SAFE SKIP enforced.", flush=True)
+        elif s_streak >= 2 and not is_2_2 and ((w_size != last_s) or (ai_ok and ai_tgt != last_s)):
+            # Never fight an active pair or dragon!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"Counter-Streak Conflict: Quants/AI proposed opposite to active streak {last_s} x{s_streak}."
+            print(f"🛡️ [COUNTER-STREAK FILTER] Filtered counter-trend conflict against {last_s} x{s_streak}. SAFE SKIP.", flush=True)
         elif ai_ok and ai_act == "SKIP":
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = ai_sum or "AI Risk Diagnosis: Unfavorable risk-to-reward ratio filtered."
             print(f"🧠 [MASTER AI: {ai_model}] ⏸️ HAZARD AUDIT SKIP: {final_summary}", flush=True)
 
-        # 2. Decisive Trend & Consensus Execution
+        # 2. Structural Patterns (Highest Priority)
         elif is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
@@ -2505,34 +2533,44 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
             print(f"🐉 [STREAK MOMENTUM] Trend Confirmed: {target_val} x{s_streak}", flush=True)
-        elif size_margin_pct >= 10.0 and w_v >= 5:
+        elif is_chop_confirmed and not is_chop_exhausted:
+            target_val = opp_s
+            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"1-1 Chop Swing -> {opp_s}"
+            print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
+        elif is_2_2:
+            target_val = opp_s if s_streak >= 2 else last_s
+            target_pattern = f"Confirmed 2-2 Double-Step ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"2-2 Double-Step: {last_s}x2 complete -> Flip to {opp_s}" if s_streak >= 2 else f"2-2 Double-Step Pair -> {last_s}"
+            print(f"🧩 [2-2 DOUBLE STEP] Symmetrical Setup Confirmed -> {target_val}", flush=True)
+
+        # 3. High-Conviction Quant & AI Confluence Execution
+        elif size_margin_pct >= 15.0 and w_v >= 6 and (s_streak < 2 or w_size == last_s):
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
             print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+        elif ai_ok and ai_act == "BET" and ai_tgt == w_size and size_margin_pct >= 10.0 and (s_streak < 2 or ai_tgt == last_s):
             target_val = ai_tgt
-            target_pattern = f"Master AI Directed Bet ({target_val})"
+            target_pattern = f"Master AI Confluence Bet ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = ai_sum or f"Master AI ({target_val})"
-            print(f"🧠 [MASTER AI: {ai_model}] Direct Bet Approved: {target_val}", flush=True)
-        elif is_chop_confirmed and not is_chop_exhausted and w_size == opp_s:
-            target_val = opp_s
-            target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"1-1 Chop Swing -> {opp_s}"
-            print(f"⚡ [1-1 CHOP] Chop Swing Confirmed with Quant Agreement -> {target_val}", flush=True)
-        elif s_streak == 2 and not is_2_2 and w_size == last_s:
+            final_summary = ai_sum or f"Master AI Confluence ({target_val})"
+            print(f"🧠 [MASTER AI: {ai_model}] Confluence Bet Approved: {target_val}", flush=True)
+        elif s_streak == 2 and not is_2_2 and w_size == last_s and size_margin_pct >= 18.0 and w_v >= 7:
+            # Fresh pair continuation ONLY with supermajority quant backing!
             target_val = last_s
             target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"Fresh Pair Momentum ({last_s} x2)"
-            print(f"🤝 [PAIR MOMENTUM] Pair Continuation with Quant Backing: {target_val}", flush=True)
+            final_summary = f"Fresh Pair Momentum with Supermajority ({last_s} x2)"
+            print(f"🤝 [PAIR MOMENTUM] Pair Continuation with Supermajority Backing: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
