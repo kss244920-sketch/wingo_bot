@@ -26,7 +26,9 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 # High-Intensity Deep Reasoning Master AI Brain
 MASTER_AI_MODELS = [
     "allam-2-7b",               # Fast direct JSON instruct model (Active, high throughput)
-    "qwen/qwen3.8-27b",         # Secondary fallback (when TPD limit resets)
+    "openai/gpt-oss-20b",       # High reasoning quant specialist (Secondary fallback)
+    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Tertiary fallback)
+    "openai/gpt-oss-120b",      # 120B supreme arbiter (Final AI fallback)
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
@@ -2237,7 +2239,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # Core Market Structures:
     is_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3]) or ("2-2 Double-Step" in s_pattern_desc)
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
-    is_chop_confirmed = (s_alt in (3, 4, 5))
+    is_chop_confirmed = (s_alt in (2, 3, 4, 5))
     
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
@@ -2282,7 +2284,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         # Anti-Whipsaw Directional Stickiness Armor!
         # Lock onto CURRENT_CYCLE_TARGET. Do NOT switch sides! Do NOT skip!
         # Mathematically guarantees a win in alternating chops on L2 (100%), 2-2 chops on L3, 3-3 on L4.
-        rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else (target_edge_type if target_edge_type in ("BIG", "SMALL") else w_size)
+        rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else w_size
         CURRENT_CYCLE_TARGET = rec_target
         target_val = rec_target
         target_type = "SIZE"
@@ -2296,20 +2298,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     else:
         # 👑 LEVEL 1 (1X BASE BET): Trend & Structural Execution
-        # Zero Unnecessary Skips Policy: continuous predictions for VIP members
+        # Zero Unnecessary Skips Policy: continuous predictions for VIP members (Max 1 skip cap)
         if POST_STOP_LOSS_COOLDOWN > 0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
             print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market 1 round after stop-loss. SAFE SKIP.", flush=True)
-        elif is_violent_chaos:
+        elif is_violent_chaos and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
         else:
             # Query Master AI for Level 1 baseline if available
-            shoe_str = ", ".join([it.get("size", "")[0] + "(" + str(it.get("num", 0)) + ")" for it in history_items[-8:]])
+            shoe_str = ", ".join([(it.get("size") or ("BIG" if int(it.get("num", 0)) >= 5 else "SMALL"))[0] + "(" + str(it.get("num", 0)) + ")" for it in history_items[-8:]])
             prompt_master_ai = (
                 f"WinGo Arbiter. Synced: {tot_synced}. Shoe: {shoe_str}. "
                 f"Streak: {last_s}x{s_streak}. Chop: {s_alt}x. "
@@ -2332,7 +2334,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                             ],
                             "max_tokens": 40,
                             "temperature": 0.10
-                        }, timeout=3.0)
+                        }, timeout=2.0)
                         if r.status_code == 200:
                             choice = r.json().get("choices", [{}])[0]
                             msg_obj = choice.get("message", {})
@@ -2399,6 +2401,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
                 final_summary = f"1-1 Chop Swing -> {opp_s}"
                 print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
+            elif is_2_2:
+                target_val = opp_s
+                target_pattern = "2-2 Double-Step Rotation"
+                final_summary = ai_sum if (ai_ok and ai_tgt == opp_s) else f"2-2 Double-Step -> {opp_s}"
+                print(f"🔄 [2-2 ROTATION] 2-2 Double-Step Confirmed -> {target_val}", flush=True)
+            elif size_margin_pct >= 15.0 and w_size in ("BIG", "SMALL") and (s_streak < 2 or w_size == last_s):
+                target_val = w_size
+                target_pattern = f"Quant Consensus Edge ({target_val})"
+                final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
+                print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
             elif ai_ok and ai_tgt in ("BIG", "SMALL") and (s_streak < 2 or ai_tgt == last_s):
                 target_val = ai_tgt
                 target_pattern = f"Master AI Confluence Bet ({target_val})"
@@ -2806,7 +2818,7 @@ def run_live_bot():
 
                         # Immediate startup prediction (Zero startup delay!)
                         next_target_period = get_next_period(current_period)
-                        if len(MEMORY_HISTORY) >= 6:
+                        if len(MEMORY_HISTORY) >= 6 and next_target_period not in MEMORY_PREDICTIONS:
                             try:
                                 decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
                                 t_type = decision["target_type"]
