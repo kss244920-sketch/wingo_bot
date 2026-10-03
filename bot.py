@@ -2371,27 +2371,29 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Confirmed Dragon ({last_s} x{s_streak})"
             print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
-            target_val = ai_tgt
-            target_pattern = f"Master AI L3 Protection ({target_val})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = ai_sum or f"Master AI Recovery ({target_val})"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI Recovery: {target_val}", flush=True)
-        elif size_margin_pct >= 10.0 and w_v >= 5:
-            target_val = w_size
-            target_pattern = f"Quant Edge ({target_val})"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Quant Edge ({w_size} | {size_margin_pct:.0f}%)"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Quant Edge Recovery: {target_val}", flush=True)
-        elif s_streak == 2:
+        elif ai_ok and ai_act == "BET" and ai_tgt == last_s:
+            # STRICT TREND ALIGNMENT: Master AI confirms trend continuation!
             target_val = last_s
-            target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
+            target_pattern = f"Master AI Trend Armor ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Pair Momentum ({last_s} x2)"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Pair Momentum Recovery: {target_val}", flush=True)
+            final_summary = ai_sum or f"Master AI Trend Recovery ({target_val})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI Trend Recovery: {target_val}", flush=True)
+        elif w_size == last_s and size_margin_pct >= 8.0:
+            target_val = last_s
+            target_pattern = f"Quant Trend Armor ({last_s} | {size_margin_pct:.0f}%)"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L3 Armor: Quant Trend ({last_s} | {size_margin_pct:.0f}%)"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Quant Trend Recovery: {target_val}", flush=True)
+        elif not is_streak_exhausted:
+            # GOLDEN RULE: ALWAYS RIDE LAST KNOWN WINNER ON 9X RECOVERY - NEVER FIGHT THE TREND!
+            target_val = last_s
+            target_pattern = f"Trend Continuation Guard ({last_s})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = f"L3 Armor: Trend Guard ({last_s})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Trend Continuation Guard: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2785,7 +2787,7 @@ def send_user_result(period, actual_number, actual_color, pred):
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
             CURRENT_LOSS_STREAK = 0
-            POST_STOP_LOSS_COOLDOWN = 4
+            POST_STOP_LOSS_COOLDOWN = 1
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
