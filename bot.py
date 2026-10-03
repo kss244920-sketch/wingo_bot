@@ -25,8 +25,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
-    "openai/gpt-oss-20b",       # High reliability reasoning engine (available quota)
-    "qwen/qwen3.8-27b",         # High token quota & fast reasoning engine
+    "qwen/qwen3.8-27b",         # Direct JSON output, ultra-fast, zero 429 rate limit
+    "openai/gpt-oss-20b",       # High reliability reasoning failover
     "allam-2-7b",               # Fast secondary reasoning engine
     "openai/gpt-oss-120b"       # 120B parameter powerhouse
 ]
@@ -2261,18 +2261,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 4. MASTER AI COGNITIVE RIGOR & REASONING ENGINE
     # ====================================================
+    shoe_str = ", ".join([it.get("size", "")[0] + "(" + str(it.get("num", 0)) + ")" for it in history_items[-8:]])
     prompt_master_ai = (
-        f"You are the Senior Quantitative Arbiter for WinGo 30S.\n"
-        f"DATA:\n"
-        f"- Recent sequence: {recent_20_detailed}\n"
-        f"- Dominant Chart: [{s_pattern_desc}] (2-2 Double: {'YES' if is_2_2 else 'NO'})\n"
-        f"- Active Streak: {last_s} x{s_streak} (Surv: {streak_surv*100:.0f}%) | Chop: {s_alt}x\n"
-        f"- Markov 10x10 after No.{last_num}: P(BIG)={p_m10_val*100:.1f}%, P(SMALL)={(1.0 - p_m10_val)*100:.1f}%\n"
-        f"- 32 Quants Consensus: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
-        f"- Stage: {cur_stage_str} (Skips: {consecutive_skips})\n\n"
-        f"DIRECTIVE: Return JSON ONLY with schema:\n"
-        f'{{"action": "BET", "target": "{w_size}", "confidence": 85, "summary": "Strong quant consensus"}}\n'
-        f"Rules: action is 'BET' or 'SKIP', target is 'BIG' or 'SMALL', confidence is 70-98, summary is crisp 3-6 words."
+        f"WinGo Arbiter. Synced: {tot_synced}. Shoe: {shoe_str}. "
+        f"Pattern: {s_pattern_desc}. Streak: {last_s}x{s_streak}. Chop: {s_alt}x. "
+        f"Quants: {w_size} ({w_v}-{l_v}, margin {size_margin_pct:.0f}%). "
+        f"Stage: Level {current_loss_streak + 1}. "
+        f'JSON only: {{"action":"BET","target":"{w_size}","confidence":85,"summary":"Trend momentum"}}'
     )
 
     def _query_master_ai(prompt_text):
@@ -2281,9 +2276,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                     "model": model_name,
                     "messages": [{"role": "user", "content": prompt_text}],
-                    "max_tokens": 160,
+                    "max_tokens": 65,
                     "temperature": 0.12
-                }, timeout=4.5)
+                }, timeout=4.0)
                 if r.status_code == 200:
                     choice = r.json().get("choices", [{}])[0]
                     msg_obj = choice.get("message", {})
@@ -2356,13 +2351,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = "L3 Shield: Volatile delta chaos filtered to protect 9X bankroll."
             print(f"🛡️ [L3 CAPITAL SHIELD] Volatile delta chaos filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
-        elif size_margin_pct >= 16.0 and w_v >= 6:
+        elif size_margin_pct >= 20.0 and w_v >= 7 and w_size == last_s:
+            # STRICT TREND ALIGNMENT: Never bet counter-trend on 9X recovery!
             target_val = w_size
-            target_pattern = f"Supermajority Quant Edge ({target_val})"
+            target_pattern = f"Supermajority Trend Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Supermajority Quant ({w_size} | {size_margin_pct:.0f}%)"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Quant Edge: {target_val}", flush=True)
+            final_summary = f"L3 Armor: Supermajority Trend ({w_size} | {size_margin_pct:.0f}%)"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Trend Edge: {target_val}", flush=True)
         elif is_2_2:
             target_val = opp_s
             target_pattern = f"Confirmed 2-2 Double-Step Shift ({opp_s})"
@@ -2475,7 +2471,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             print(f"🧠 [MASTER AI: {ai_model}] ⏸️ HAZARD AUDIT SKIP: {final_summary}", flush=True)
 
         # 2. Pattern Priority Execution
-        elif is_2_2:
+        elif is_2_2 and not (w_size == last_s and size_margin_pct >= 20.0):
             target_val = opp_s
             target_pattern = f"2-2 Double-Step Shift ({opp_s})"
             is_qualified_bet = True
