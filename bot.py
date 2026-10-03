@@ -25,10 +25,10 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (with cascading failover)
 MASTER_AI_MODELS = [
+    "openai/gpt-oss-20b",       # High reliability reasoning engine (available quota)
     "qwen/qwen3.8-27b",         # High token quota & fast reasoning engine
-    "allam-2-7b",               # Fast primary reasoning engine (7000 req/day active quota)
-    "openai/gpt-oss-20b",       # 20B frontier reasoning failover
-    "openai/gpt-oss-120b"       # 120B parameter ultimate powerhouse
+    "allam-2-7b",               # Fast secondary reasoning engine
+    "openai/gpt-oss-120b"       # 120B parameter powerhouse
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 
@@ -2236,13 +2236,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # Core Market Structures:
     is_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3])
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
-    is_chop_confirmed = (s_alt in (3, 4))
+    is_chop_confirmed = (s_alt in (3, 4, 5))
     
     # Statistical Loss Hazards:
-    is_streak_exhausted = (s_streak >= 4)
-    is_chop_exhausted = (s_alt >= 5)
-    is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.2 and p_info.get("is_high_volatility", False))
-    is_dead_5050_noise = (size_margin_pct < 12.0 and 0.46 <= p_m10_val <= 0.54 and s_streak < 2 and s_alt < 3)
+    is_streak_exhausted = (s_streak >= 7 or (s_streak >= 5 and streak_surv < 0.35))
+    is_chop_exhausted = (s_alt >= 6)
+    is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
+    is_dead_5050_noise = (size_margin_pct < 10.0 and 0.47 <= p_m10_val <= 0.53 and s_streak < 2 and s_alt < 2)
 
     cur_lvl = current_loss_streak + 1
     signal_grade = f"LEVEL_{cur_lvl}"
@@ -2262,28 +2262,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # 🎯 4. MASTER AI COGNITIVE RIGOR & REASONING ENGINE
     # ====================================================
     prompt_master_ai = (
-        f"You are the Senior Quantitative Arbiter and Master AI Brain for WinGo 30S.\n"
-        f"MANDATE: HIGH COGNITIVE INTENSITY & DEEP MATHEMATICAL CALCULATION.\n"
-        f"STRESS & TENSION DIRECTIVE: Channel 100% of your cognitive tension into rigorous probabilistic analysis. Do NOT lazily default to skipping out of fear.\n\n"
-        f"SEQUENTIAL INTELLIGENCE & INDICATORS:\n"
-        f"- Total Synced Memory: {tot_synced} rounds\n"
-        f"- Recent 20-Draw Shoe Sequence (oldest->newest): {recent_20_detailed}\n"
-        f"- Dominant Chart Roadmap: [{s_pattern_desc}] (2-2 Double Step: {'YES' if is_2_2 else 'NO'})\n"
-        f"- Active Streak: {last_s} x{s_streak} (Survival Rate: {streak_surv*100:.1f}%) | Active Alternation (Chop): {s_alt}x\n"
-        f"- 10x10 Full Markov Transition (after No.{last_num}): P(BIG)={p_m10_val*100:.1f}%, P(SMALL)={(1.0 - p_m10_val)*100:.1f}%\n"
-        f"- 32 Quant Specialists Consensus: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
-        f"- Active Martingale Level: {cur_stage_str} (Consecutive Skips: {consecutive_skips})\n\n"
-        f"DECISION DIRECTIVES:\n"
-        f"1. DEEP THINKING: Analyze whether current market state is in a Confirmed Pattern (2-2 Double, Dragon >=3, Chop 3-4) or Transitional Noise.\n"
-        f"2. CONFIDENT BETTING: When confirmed pattern or quant margin >= 18% exists, approve 'BET' decisively on the dominant side ('BIG' [5-9] or 'SMALL' [0-4]).\n"
-        f"3. GENUINE LOSS HAZARD ONLY: Only output 'SKIP' when you detect an explicit loss hazard (streak exhaustion trap >=4, late chop breakdown >=5, or dead 50/50 noise where playing has high probability of a loss).\n\n"
-        f"Return JSON ONLY with this schema:\n"
-        f'{{\n'
-        f'  "action": "BET" or "SKIP",\n'
-        f'  "target": "BIG" or "SMALL",\n'
-        f'  "confidence": 70-98,\n'
-        f'  "summary": "Crisp 3-6 word strategic diagnosis"\n'
-        f'}}'
+        f"You are the Senior Quantitative Arbiter for WinGo 30S.\n"
+        f"DATA:\n"
+        f"- Recent sequence: {recent_20_detailed}\n"
+        f"- Dominant Chart: [{s_pattern_desc}] (2-2 Double: {'YES' if is_2_2 else 'NO'})\n"
+        f"- Active Streak: {last_s} x{s_streak} (Surv: {streak_surv*100:.0f}%) | Chop: {s_alt}x\n"
+        f"- Markov 10x10 after No.{last_num}: P(BIG)={p_m10_val*100:.1f}%, P(SMALL)={(1.0 - p_m10_val)*100:.1f}%\n"
+        f"- 32 Quants Consensus: {w_size} ({w_v} vs {l_v} votes | Margin: {size_margin_pct:.0f}%)\n"
+        f"- Stage: {cur_stage_str} (Skips: {consecutive_skips})\n\n"
+        f"DIRECTIVE: Return JSON ONLY with schema:\n"
+        f'{{"action": "BET", "target": "{w_size}", "confidence": 85, "summary": "Strong quant consensus"}}\n'
+        f"Rules: action is 'BET' or 'SKIP', target is 'BIG' or 'SMALL', confidence is 70-98, summary is crisp 3-6 words."
     )
 
     def _query_master_ai(prompt_text):
@@ -2292,11 +2281,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                     "model": model_name,
                     "messages": [{"role": "user", "content": prompt_text}],
-                    "max_tokens": 350,
+                    "max_tokens": 160,
                     "temperature": 0.12
-                }, timeout=3.5)
+                }, timeout=4.5)
                 if r.status_code == 200:
-                    raw_c = r.json()["choices"][0]["message"]["content"]
+                    choice = r.json().get("choices", [{}])[0]
+                    msg_obj = choice.get("message", {})
+                    raw_c = msg_obj.get("content") or ""
+                    if not raw_c.strip():
+                        raw_c = msg_obj.get("reasoning") or ""
                     parsed_act, parsed_tgt, parsed_conf, parsed_summary = None, None, None, ""
                     m = re.search(r'\{.*\}', raw_c, re.DOTALL)
                     if m:
@@ -2333,7 +2326,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                             "summary": raw_summary
                         }
                 elif r.status_code == 429:
-                    print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429), failing over...", flush=True)
+                    print(f"⚠️ [MASTER AI: {model_name}] Rate limited (429). Fast fallback to Quant Council.", flush=True)
+                    break
                 else:
                     print(f"⚠️ [MASTER AI: {model_name}] HTTP {r.status_code}: {r.text[:80]}", flush=True)
             except Exception as e:
@@ -2357,39 +2351,46 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # LEVEL 3 (9X FINAL RECOVERY): Strict Capital Shield - Zero Ambiguity!
     if current_loss_streak >= 2:
-        if is_violent_chaos or p_info.get("is_derived_chaotic", False):
+        if is_violent_chaos:
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = "L3 Shield: Volatile delta chaos / Derived Roads Blue filtered to protect 9X bankroll."
-            print(f"🛡️ [L3 CAPITAL SHIELD] Volatile / Chaotic regime filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
-        elif size_margin_pct >= 20.0 and w_v >= 8:
+            final_summary = "L3 Shield: Volatile delta chaos filtered to protect 9X bankroll."
+            print(f"🛡️ [L3 CAPITAL SHIELD] Volatile delta chaos filtered during 9X recovery. SAFE SKIP enforced.", flush=True)
+        elif size_margin_pct >= 16.0 and w_v >= 6:
             target_val = w_size
             target_pattern = f"Supermajority Quant Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L3 Armor: Supermajority Quant ({w_size} | {size_margin_pct:.0f}%)"
             print(f"🛡️ [L3 CAPITAL ARMOR] Supermajority Quant Edge: {target_val}", flush=True)
-        elif is_2_2 and w_size == opp_s and size_margin_pct >= 12.0:
+        elif is_2_2:
             target_val = opp_s
             target_pattern = f"Confirmed 2-2 Double-Step Shift ({opp_s})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Confluent 2-2 Double -> {opp_s}"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Confluent 2-2 Double-Step: {target_val}", flush=True)
-        elif is_dragon_confirmed and w_size == last_s and s_streak >= 4 and streak_surv >= 0.50:
+            final_summary = f"L3 Armor: Confirmed 2-2 Double -> {opp_s}"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed 2-2 Double-Step: {target_val}", flush=True)
+        elif is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Confluent Dragon ({last_s} x{s_streak})"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Confluent Dragon: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed and w_size == opp_s and size_margin_pct >= 12.0:
+            final_summary = f"L3 Armor: Confirmed Dragon ({last_s} x{s_streak})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
+        elif is_chop_confirmed:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            final_summary = f"L3 Armor: Confluent Chop -> {opp_s}"
-            print(f"🛡️ [L3 CAPITAL ARMOR] Confluent Chop: {target_val}", flush=True)
+            final_summary = f"L3 Armor: Confirmed Chop -> {opp_s}"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Confirmed Chop: {target_val}", flush=True)
+        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+            target_val = ai_tgt
+            target_pattern = f"Master AI L3 Protection ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum or f"Master AI Recovery ({target_val})"
+            print(f"🛡️ [L3 CAPITAL ARMOR] Master AI Recovery: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2398,39 +2399,46 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # LEVEL 2 (3X RECOVERY): High-Confidence Confirmation Required
     elif current_loss_streak == 1:
-        if is_violent_chaos or p_info.get("is_derived_chaotic", False):
+        if is_violent_chaos:
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = "L2 Shield: Violent delta chaos / Derived Roads Blue filtered."
-            print(f"🛡️ [L2 RECOVERY SHIELD] Volatile / Chaotic regime filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
-        elif is_2_2 and (w_size == opp_s or size_margin_pct >= 16.0):
+            final_summary = "L2 Shield: Violent delta chaos filtered."
+            print(f"🛡️ [L2 RECOVERY SHIELD] Volatile regime filtered during 3X recovery. SAFE SKIP enforced.", flush=True)
+        elif is_2_2:
             target_val = opp_s
             target_pattern = f"Confirmed 2-2 Double-Step Shift ({opp_s})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Confirmed 2-2 Double -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed 2-2 Double-Step: {target_val}", flush=True)
-        elif is_dragon_confirmed and w_size == last_s and not is_streak_exhausted:
+        elif is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Dragon ({last_s} x{s_streak})"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Dragon: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed and w_size == opp_s:
+        elif is_chop_confirmed:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Chop -> {opp_s}"
             print(f"🛡️ [L2 RECOVERY ARMOR] Confirmed Chop: {target_val}", flush=True)
-        elif size_margin_pct >= 18.0 and w_v >= 7:
+        elif size_margin_pct >= 14.0 and w_v >= 5:
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"L2 Recovery: Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
             print(f"🛡️ [L2 RECOVERY ARMOR] Quant Consensus: {target_val}", flush=True)
+        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+            target_val = ai_tgt
+            target_pattern = f"Master AI Recovery Approval ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum or f"Master AI Bet ({target_val})"
+            print(f"🛡️ [L2 RECOVERY ARMOR] Master AI Recovery: {target_val}", flush=True)
         else:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2450,10 +2458,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = f"Late Chop Breakdown: 1-1 Alternation x{s_alt} breakdown hazard."
             print(f"🛡️ [CHOP BREAKDOWN] Alternation x{s_alt} breakdown hazard. SAFE SKIP enforced.", flush=True)
-        elif is_violent_chaos or p_info.get("is_derived_chaotic", False):
+        elif is_violent_chaos:
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = f"Violent Delta Chaos: Erratic swings (Δ={p_info.get('avg_delta', 4.5):.1f}) / Derived Blue."
+            final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP enforced.", flush=True)
         elif is_dead_5050_noise:
             arbiter_wants_skip = True
@@ -2466,36 +2474,43 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = ai_sum or "AI Risk Diagnosis: Unfavorable risk-to-reward ratio filtered."
             print(f"🧠 [MASTER AI: {ai_model}] ⏸️ HAZARD AUDIT SKIP: {final_summary}", flush=True)
 
-        # 2. Pattern Priority Execution (Confluence Required!)
-        elif is_2_2 and w_size == opp_s:
+        # 2. Pattern Priority Execution
+        elif is_2_2:
             target_val = opp_s
             target_pattern = f"2-2 Double-Step Shift ({opp_s})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = f"2-2 Double-Step Shift -> {opp_s}"
             print(f"🔄 [2-2 PATTERN] Double-Step Shift Confirmed -> {target_val}", flush=True)
-        elif is_dragon_confirmed and w_size == last_s:
+        elif is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
             print(f"🐉 [DRAGON TREND] Trend Momentum Confirmed: {target_val} x{s_streak}", flush=True)
-        elif is_chop_confirmed and w_size == opp_s:
+        elif is_chop_confirmed and not is_chop_exhausted:
             target_val = opp_s
             target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = ai_sum if (ai_ok and ai_tgt == opp_s) else f"1-1 Chop Swing -> {opp_s}"
             print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
-        elif size_margin_pct >= 15.0 and w_v >= 6:
+        elif size_margin_pct >= 12.0 and w_v >= 5:
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             is_qualified_bet = True
             arbiter_wants_skip = False
             final_summary = ai_sum if (ai_ok and ai_tgt == w_size) else f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
             print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-        elif s_streak == 2 and not is_2_2 and w_size == last_s and size_margin_pct >= 10.0:
+        elif ai_ok and ai_act == "BET" and ai_tgt in ("BIG", "SMALL"):
+            target_val = ai_tgt
+            target_pattern = f"Master AI Directed Bet ({target_val})"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            final_summary = ai_sum or f"Master AI ({target_val})"
+            print(f"🧠 [MASTER AI: {ai_model}] Direct Bet Approved: {target_val}", flush=True)
+        elif s_streak == 2 and not is_2_2:
             target_val = last_s
             target_pattern = f"Fresh Pair Momentum ({last_s} x2)"
             is_qualified_bet = True
