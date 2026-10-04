@@ -2278,10 +2278,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_2_2 = is_s_2_2
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
     is_chop_confirmed = (s_alt >= 4 and s_alt <= 8)
-    
-    # 2-2 Switch and Pair recognition
-    is_22_switch = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3])
-    is_22_pair = (len(sizes) >= 3 and sizes[-1] != sizes[-2] and sizes[-2] == sizes[-3] and (len(sizes) < 4 or sizes[-3] != sizes[-4]))
 
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
@@ -2297,7 +2293,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_streak_exhausted = (s_streak >= 10)
     is_chop_exhausted = (s_alt >= 9)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
-    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_22_switch and not is_22_pair)
+    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2)
 
     global CURRENT_CYCLE_TARGET
     cur_lvl = current_loss_streak + 1
@@ -2338,19 +2334,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Dragon ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
         # 2. CONFIRMED 2-2 DOUBLE-STEP RECOVERY:
-        elif is_22_switch:
+        elif is_2_2:
             target_val = opp_s
-            CURRENT_CYCLE_TARGET = target_val
-            target_pattern = f"Level {cur_lvl} Verified 2-2 Switch ({opp_s})"
-            final_summary = f"L{cur_lvl} 2-2 Switch -> {target_val}"
-            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Switch -> {target_val} ({mult}X)", flush=True)
-
-        elif is_22_pair:
-            target_val = last_s
-            CURRENT_CYCLE_TARGET = target_val
-            target_pattern = f"Level {cur_lvl} Verified 2-2 Pair ({last_s})"
-            final_summary = f"L{cur_lvl} 2-2 Pair -> {target_val}"
-            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Complete Pair -> {target_val} ({mult}X)", flush=True)
+            CURRENT_CYCLE_TARGET = opp_s
+            target_pattern = f"Level {cur_lvl} Verified 2-2 Rotation ({opp_s})"
+            final_summary = f"L{cur_lvl} 2-2 Recovery -> {opp_s}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
 
         # 3. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 4):
         elif is_chop_confirmed and not is_chop_exhausted:
@@ -2509,22 +2498,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
                 final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
                 print(f"🐉 [STREAK MOMENTUM] Trend Confirmed: {target_val} x{s_streak}", flush=True)
-            elif is_22_switch:
-                target_val = opp_s
-                target_pattern = f"Confirmed 2-2 Double-Step ({opp_s})"
-                final_summary = f"2-2 Double-Step -> {opp_s}"
-                print(f"🔄 [2-2 ROTATION] 2-2 Switch Confirmed -> {target_val}", flush=True)
-            elif is_22_pair:
-                target_val = last_s
-                target_pattern = f"Confirmed 2-2 Pair ({last_s})"
-                final_summary = f"2-2 Complete Pair -> {last_s}"
-                print(f"🔄 [2-2 ROTATION] 2-2 Pair Confirmed -> {target_val}", flush=True)
             elif is_chop_confirmed and not is_chop_exhausted:
                 target_val = opp_s
                 target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
                 final_summary = f"1-1 Chop Swing -> {opp_s}"
                 print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
-            elif size_margin_pct >= 16.0 and w_size in ("BIG", "SMALL"):
+            elif is_2_2:
+                target_val = opp_s
+                target_pattern = f"Verified 2-2 Double-Step ({opp_s})"
+                final_summary = f"2-2 Double-Step -> {opp_s}"
+                print(f"🔄 [2-2 ROTATION] Verified 2-2 Double-Step -> {target_val}", flush=True)
+            elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
@@ -2534,12 +2518,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_pattern = f"Master AI Confluence Bet ({target_val})"
                 final_summary = ai_sum or f"Master AI Direction ({target_val})"
                 print(f"🧠 [MASTER AI] AI Prediction: {target_val}", flush=True)
-            elif size_margin_pct >= 12.0 and w_size in ("BIG", "SMALL"):
-                target_val = w_size
-                target_pattern = f"Quant Consensus Edge ({target_val})"
-                final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
-                print(f"📊 [QUANT CONSENSUS] Consensus Direction: {target_val}", flush=True)
-            elif is_dead_5050_noise and consecutive_skips < 1:
+            elif is_dead_5050_noise and consecutive_skips < 2:
                 arbiter_wants_skip = True
                 is_qualified_bet = False
                 final_summary = "Ambiguous 50/50 Noise: Capital preserved until clear entry."
