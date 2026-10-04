@@ -2215,8 +2215,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if s_streak >= 2 and s_streak < 12 and not is_s_2_2 and w_size != last_s:
         print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active streak ({last_s} x{s_streak})", flush=True)
         w_size = last_s
-    # Rule B: In active 1-1 alternating chop (s_alt >= 2), swing with the alternation!
-    elif s_alt >= 2 and s_alt <= 7 and not is_s_2_2 and w_size != opp_s:
+    # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 3), swing with the alternation!
+    elif s_alt >= 3 and s_alt <= 7 and not is_s_2_2 and w_size != opp_s:
         print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
         w_size = opp_s
 
@@ -2233,7 +2233,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
     elif s_streak == 2 and w_size == last_s:
         target_pattern = f"Fresh Pair Momentum ({w_size} x2)"
-    elif s_alt >= 2 and w_size == opp_s:
+    elif s_alt >= 3 and w_size == opp_s:
         target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
     elif is_s_2_2:
         target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
@@ -2243,7 +2243,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
     s_strong_dragon = (s_streak >= 2)
-    s_strong_chop = (s_alt == 2)
+    s_strong_chop = (s_alt >= 3)
     s_strong_22 = is_s_2_2
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22)
 
@@ -2257,7 +2257,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # A true 2-2 pattern requires genuine 3-pair alternation
     is_2_2 = is_s_2_2
     is_dragon_confirmed = (s_streak >= 2 and not is_2_2)
-    is_chop_confirmed = (s_alt >= 2 and s_alt <= 7)
+    is_chop_confirmed = (s_alt >= 3 and s_alt <= 7)
     
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
@@ -2300,9 +2300,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if current_loss_streak > 0:
         # 🛡️ DISCIPLINED TREND-RIDING RECOVERY (LEVEL 2 TO LEVEL 5)
         # Rule 1: NEVER counter-bet an active pair or dragon (s_streak >= 2) - ALWAYS ride the active trend!
-        # Rule 2: In confirmed 1-1 chop (s_alt >= 2), swing with the alternation!
+        # Rule 2: In genuine confirmed 1-1 chop (s_alt >= 3), swing with the alternation!
         # Rule 3: In confirmed 2-2 pattern, rotate with the 2-step rhythm!
-        # Rule 4: Zero suicidal recovery skips - take high-conviction sniper wins on reversals!
+        # Rule 4: Trust 32-Quant mathematical consensus on single-flip transitions!
         mult = 3 ** current_loss_streak
 
         # 1. DRAGON / ACTIVE TREND RIDING (MANDATORY ANTI-SUICIDE & WINNING RULE):
@@ -2314,7 +2314,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
             print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Trend ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
-        # 2. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 2):
+        # 2. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 3):
         elif is_chop_confirmed and not is_chop_exhausted:
             target_val = opp_s
             CURRENT_CYCLE_TARGET = opp_s
@@ -2330,15 +2330,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
             print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Verified Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
 
-        # 4. STRONG 32-QUANT COUNCIL CONSENSUS (Margin >= 15% and 6+ quants agree):
-        elif size_margin_pct >= 15.0 and w_v >= 6 and w_size in ("BIG", "SMALL"):
+        # 4. 32-QUANT COUNCIL MATHEMATICAL CONSENSUS:
+        # In a single-flip transition state, trust the 32 mathematical models!
+        elif w_size in ("BIG", "SMALL"):
             target_val = w_size
             CURRENT_CYCLE_TARGET = w_size
             target_pattern = f"Level {cur_lvl} Quant Consensus Recovery ({w_size} | {size_margin_pct:.0f}% margin)"
             final_summary = f"L{cur_lvl} Quant Recovery: {w_size} ({size_margin_pct:.0f}% edge)"
             print(f"📊 [L{cur_lvl} QUANT RECOVERY] Decisive 32-Quant Edge: {target_val} ({size_margin_pct:.0f}% margin, {mult}X)", flush=True)
 
-        # 5. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Anti-Whipsaw in neutral state):
+        # 5. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Fallback):
         else:
             rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
             CURRENT_CYCLE_TARGET = rec_target
