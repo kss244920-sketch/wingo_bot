@@ -2280,10 +2280,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if s_streak >= 3 and s_streak < 10 and not is_s_2_2 and w_size != last_s:
         print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active dragon ({last_s} x{s_streak})", flush=True)
         w_size = last_s
-    # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 4), swing with the alternation!
+    # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 4), swing with the alternation unless 32-Quant council detects a decisive chop break!
     elif s_alt >= 4 and s_alt <= 8 and not is_s_2_2 and w_size != opp_s:
-        print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
-        w_size = opp_s
+        if size_margin_pct < 20.0:
+            print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
+            w_size = opp_s
+        else:
+            print(f"⚡ [CHOP BREAK DETECTED] Decisive quant margin ({size_margin_pct:.1f}%) signals chop break -> Following {w_size}!", flush=True)
 
     # ====================================================
     # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
@@ -2385,11 +2388,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
         # 3. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 4):
         elif is_chop_confirmed and not is_chop_exhausted:
-            target_val = opp_s
-            CURRENT_CYCLE_TARGET = opp_s
-            target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
-            final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
-            print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
+            if size_margin_pct >= 20.0 and w_size in ("BIG", "SMALL") and w_size != opp_s:
+                target_val = w_size
+                CURRENT_CYCLE_TARGET = w_size
+                target_pattern = f"Level {cur_lvl} Chop Break Quant Recovery ({w_size})"
+                final_summary = f"L{cur_lvl} Chop Break: Decisive Quant Edge -> {w_size}"
+                print(f"⚡ [L{cur_lvl} RECOVERY CHOP BREAK] Decisive Quant Edge ({size_margin_pct:.0f}%) signals chop break -> Following {w_size} ({mult}X)", flush=True)
+            else:
+                target_val = opp_s
+                CURRENT_CYCLE_TARGET = opp_s
+                target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
+                final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
+                print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
         # 4. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
         elif (is_post_dragon_transition or is_violent_chaos) and current_loss_streak >= 2:
