@@ -508,47 +508,73 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
 
     # 1. Dragon Trend (REAL streak >= 3)
     if cur_len >= 3:
-        if cur_len >= 6:
+        if cur_len >= 10:
             return opp_val, 86.0, f"Dragon Exhaustion ({last_val} x{cur_len} -> Reversal)"
-        dragon_conf = min(97.5, 86.0 + cur_len * 2.5)
+        dragon_conf = min(97.5, 86.0 + cur_len * 2.0)
         return last_val, dragon_conf, f"Dragon Trend ({last_val} x{cur_len})"
 
-    # 2. 1-1 Alternating Chop (Trailing runs of length 1)
+    # 2. 1-1 Alternating Chop (Requires at least 4 trailing runs of length 1)
     chop_count = 0
     for r in reversed(runs):
         if r[1] == 1:
             chop_count += 1
         else:
             break
-    if chop_count >= 2:
+    if chop_count >= 4:
+        if chop_count >= 9:
+            return last_val, 82.0, f"Chop Exhaustion ({chop_count}x -> Reversal)"
         chop_conf = min(96.5, 82.0 + chop_count * 2.5)
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
 
-    # 3. Confirmed 3-3 Triplet Pattern (Only when BOTH runs already completed length 3)
+    # 3. 2-2 Double-Step Pattern (AA BB AA BB)
+    if len(runs) >= 2:
+        r1 = runs[-1]
+        r2 = runs[-2]
+        if r1[1] == 2 and r2[1] == 2:
+            return opp_val, 86.0, f"2-2 Double-Step ({opp_val} Shift)"
+        if r1[1] == 1 and r2[1] == 2 and len(runs) >= 3 and runs[-3][1] == 2:
+            return last_val, 86.0, f"2-2 Double-Step ({last_val} Pair)"
+
+    # 4. 1-2 Single-Double Pattern (A BB A BB)
+    if len(runs) >= 2:
+        r1 = runs[-1]
+        r2 = runs[-2]
+        if r1[1] == 2 and r2[1] == 1 and len(runs) >= 4 and runs[-3][1] == 2 and runs[-4][1] == 1:
+            return opp_val, 84.0, f"1-2 Single-Double ({opp_val} Shift)"
+        if r1[1] == 1 and r2[1] == 2 and len(runs) >= 3 and runs[-3][1] == 1:
+            return last_val, 84.0, f"1-2 Single-Double ({last_val} Pair)"
+
+    # 5. 2-1 Double-Single Pattern (AA B AA B)
+    if len(runs) >= 3:
+        r1 = runs[-1]
+        r2 = runs[-2]
+        r3 = runs[-3]
+        if r1[1] == 1 and r2[1] == 1 and r3[1] == 2:
+            return last_val, 82.0, f"2-1 Double-Single ({last_val} Pair)"
+        if r1[1] == 2 and r2[1] == 1 and r3[1] == 2:
+            return opp_val, 82.0, f"2-1 Double-Single ({opp_val} Shift)"
+
+    # 6. Confirmed 3-3 Triplet Pattern
     if len(runs) >= 2:
         r1 = runs[-1]
         r2 = runs[-2]
         if r2[1] == 3 and r1[1] == 3:
             return opp_val, 88.0, f"3-3 Triplet ({opp_val} Shift)"
+        if r2[1] == 3 and r1[1] in (1, 2):
+            return last_val, 84.0, f"3-3 Triplet ({last_val} Continuation)"
 
-    # 4. Confirmed 2-2 Double-Step Pattern (Requires genuine 3-pair alternation)
-    if len(runs) >= 3:
-        r1 = runs[-1]
-        r2 = runs[-2]
-        r3 = runs[-3]
-        if r1[1] == 2 and r2[1] == 2 and r3[1] == 2:
-            return opp_val, 88.0, f"Confirmed 2-2 Double-Step ({opp_val} Shift)"
-        if r1[1] == 1 and r2[1] == 2 and r3[1] == 2 and len(runs) >= 4 and runs[-4][1] == 2:
-            return last_val, 86.0, f"Confirmed 2-2 Double-Step ({last_val} Pair)"
-
-    # 5. Macro 20-Round Extreme Imbalance (Mean-Reversion)
+    # 7. Macro 20-Round Extreme Imbalance (Mean-Reversion)
     recent_20 = norm_seq[-20:] if len(norm_seq) >= 20 else norm_seq
     target_major = "BIG" if item_type == "SIZE" else "RED"
     target_minor = "SMALL" if item_type == "SIZE" else "GREEN"
     c_major = recent_20.count(target_major)
     c_minor = len(recent_20) - c_major
+    if c_major >= 14:
+        return target_minor, 76.0, f"Macro 20-Round Imbalance ({target_minor} Reversion)"
+    elif c_minor >= 14:
+        return target_major, 76.0, f"Macro 20-Round Imbalance ({target_major} Reversion)"
 
-    # 5. Default: Transitional / Ambiguous Noise (Zero Speculation)
+    # 8. Default: Transitional / Ambiguous Noise (Zero Speculation)
     return last_val, 50.0, "Transitional Noise (No Setup)"
 
 # ====================================================
@@ -926,15 +952,14 @@ def detect_market_patterns(history_items):
     if s_streak >= 3:
         if last_s == "BIG": s_score_big += 4.5 + min(3.0, s_streak * 0.5)
         else: s_score_small += 4.5 + min(3.0, s_streak * 0.5)
-    # 2. Size Alternation Chop (Continuation >= 2)
-    elif s_alt >= 2:
+    # 2. Size Alternation Chop (Continuation >= 4)
+    elif s_alt >= 4:
         if opp_s == "BIG": s_score_big += 4.2 + min(2.0, s_alt * 0.4)
         else: s_score_small += 4.2 + min(2.0, s_alt * 0.4)
     # 3. Roadmap Structure Guidance (1-2, 2-1, 2-2, Staircase, etc.)
-    elif s_pred_val == "BIG":
-        s_score_big += 4.0
-    else:
-        s_score_small += 4.0
+    elif s_pred_conf >= 75.0:
+        if s_pred_val == "BIG": s_score_big += 4.0
+        else: s_score_small += 4.0
 
     # 5. Rolling 20-Round Micro Imbalance for Size
     b20 = sizes[-20:].count("BIG") if len(sizes) >= 20 else sizes.count("BIG")
@@ -1904,17 +1929,15 @@ def detect_market_patterns(history_items):
     }
 
 def is_true_2_2(sizes_seq):
-    """Requires strictly 3 consecutive alternating pairs (A A B B A A) with no extended streaks."""
-    if len(sizes_seq) < 6:
+    """Requires at least 2 consecutive alternating pairs (AA BB) with no extended streaks."""
+    if len(sizes_seq) < 4:
         return False
     s = sizes_seq
     p1 = (s[-1] == s[-2])
     p2 = (s[-3] == s[-4])
-    p3 = (s[-5] == s[-6])
     alt1 = (s[-1] != s[-3])
-    alt2 = (s[-3] != s[-5])
-    not_p3_extended = (len(s) < 7 or s[-6] != s[-7])
-    return p1 and p2 and p3 and alt1 and alt2 and not_p3_extended
+    not_p2_extended = (len(s) < 5 or s[-4] != s[-5])
+    return p1 and p2 and alt1 and not_p2_extended
 
 # ====================================================
 # 🧠 16-AGENT AI & QUANT HYBRID COUNCIL
@@ -1978,10 +2001,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
     # --- Phase 1: 28 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
-    s_dragon = last_s if (s_streak >= 3 or (s_streak == 2 and not is_s_2_2)) else None
-    s_chop = opp_s if s_alt in (3, 4) else None
+    s_dragon = last_s if s_streak >= 3 else None
+    s_chop = opp_s if s_alt >= 4 else None
     s_22 = opp_s if is_s_2_2 else (s_pred_val if "2-2" in s_pattern_desc else None)
-    s_contrarian = opp_s if (s_streak >= 6 or b20 >= 14 or s20 >= 14) else None
+    s_contrarian = opp_s if (s_streak >= 9 or b20 >= 14 or s20 >= 14) else None
 
     # Each specialist casts a vote ONLY when an objective quantitative edge exists (no echo chamber!)
     s_q4_res = s_quants.get("s_q4", (None, 50.0, ""))
@@ -2108,8 +2131,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    dragon_weight = 4.5 if (s_streak >= 3 or (s_streak == 2 and not is_s_2_2)) else 2.0
-    chop_weight = 4.0 if s_alt in (3, 4) else 1.5
+    dragon_weight = 4.5 if s_streak >= 3 else 1.5
+    chop_weight = 4.0 if s_alt >= 4 else 1.5
     sym_weight = 4.5 if is_s_2_2 else (3.5 if "Confirmed 2-2" in s_pattern_desc else 2.0)
     mr_weight = 4.5 if (b20 >= 13 or s20 >= 13) else 1.5
     roadmap_weight = 4.5 if (s_q4_val is not None) else 1.0
@@ -2211,12 +2234,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 1. DRAGON & STREAK TREND LOCK (Anti-Loss Streak Law)
     # ====================================================
-    # Rule A: Never bet against an active streak (s_streak >= 2) unless exhausted (>= 12)
-    if s_streak >= 2 and s_streak < 12 and not is_s_2_2 and w_size != last_s:
-        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active streak ({last_s} x{s_streak})", flush=True)
+    # Rule A: Never bet against an active established dragon trend (s_streak >= 3)
+    if s_streak >= 3 and s_streak < 10 and not is_s_2_2 and w_size != last_s:
+        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active dragon ({last_s} x{s_streak})", flush=True)
         w_size = last_s
-    # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 3), swing with the alternation!
-    elif s_alt >= 3 and s_alt <= 7 and not is_s_2_2 and w_size != opp_s:
+    # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 4), swing with the alternation!
+    elif s_alt >= 4 and s_alt <= 8 and not is_s_2_2 and w_size != opp_s:
         print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
         w_size = opp_s
 
@@ -2231,19 +2254,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # Ensure pattern name matches target_val direction
     if s_streak >= 3 and w_size == last_s:
         target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
-    elif s_streak == 2 and w_size == last_s:
-        target_pattern = f"Fresh Pair Momentum ({w_size} x2)"
-    elif s_alt >= 3 and w_size == opp_s:
-        target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
     elif is_s_2_2:
         target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
+    elif s_alt >= 4 and w_size == opp_s:
+        target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
     else:
         target_pattern = f"Quant Consensus Edge ({w_size})"
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    s_strong_dragon = (s_streak >= 2)
-    s_strong_chop = (s_alt >= 3)
+    s_strong_dragon = (s_streak >= 3)
+    s_strong_chop = (s_alt >= 4)
     s_strong_22 = is_s_2_2
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22)
 
@@ -2254,11 +2275,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     p_m10_val = probabilities.get("p_10x10_markov", 0.50)
 
     # Core Market Structures:
-    # A true 2-2 pattern requires genuine 3-pair alternation
     is_2_2 = is_s_2_2
-    is_dragon_confirmed = (s_streak >= 2 and not is_2_2)
-    is_chop_confirmed = (s_alt >= 3 and s_alt <= 7)
+    is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
+    is_chop_confirmed = (s_alt >= 4 and s_alt <= 8)
     
+    # 2-2 Switch and Pair recognition
+    is_22_switch = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3])
+    is_22_pair = (len(sizes) >= 3 and sizes[-1] != sizes[-2] and sizes[-2] == sizes[-3] and (len(sizes) < 4 or sizes[-3] != sizes[-4]))
+
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
     if len(sizes) >= 2 and sizes[-1] != sizes[-2]:
@@ -2270,10 +2294,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 4)
 
     # Statistical Loss Hazards:
-    is_streak_exhausted = (s_streak >= 12)
-    is_chop_exhausted = (s_alt >= 8)
+    is_streak_exhausted = (s_streak >= 10)
+    is_chop_exhausted = (s_alt >= 9)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
-    is_dead_5050_noise = (size_margin_pct < 10.0 and 0.47 <= p_m10_val <= 0.53 and s_streak < 2 and s_alt < 2)
+    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_22_switch and not is_22_pair)
 
     global CURRENT_CYCLE_TARGET
     cur_lvl = current_loss_streak + 1
@@ -2299,22 +2323,36 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     if current_loss_streak > 0:
         # 🛡️ DISCIPLINED TREND-RIDING RECOVERY (LEVEL 2 TO LEVEL 5)
-        # Rule 1: NEVER counter-bet an active pair or dragon (s_streak >= 2) - ALWAYS ride the active trend!
-        # Rule 2: In genuine confirmed 1-1 chop (s_alt >= 3), swing with the alternation!
+        # Rule 1: NEVER counter-bet an active dragon (s_streak >= 3) - ALWAYS ride the active trend!
+        # Rule 2: In genuine confirmed 1-1 chop (s_alt >= 4), swing with the alternation!
         # Rule 3: In confirmed 2-2 pattern, rotate with the 2-step rhythm!
         # Rule 4: Trust 32-Quant mathematical consensus on single-flip transitions!
         mult = 3 ** current_loss_streak
 
-        # 1. DRAGON / ACTIVE TREND RIDING (MANDATORY ANTI-SUICIDE & WINNING RULE):
-        # If market prints s_streak >= 2, NEVER fight it! Align recovery with the winning side!
-        if s_streak >= 2 and not is_streak_exhausted and not is_2_2:
+        # 1. DRAGON / ACTIVE TREND RIDING (Streak >= 3):
+        if is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
             target_pattern = f"Level {cur_lvl} Dragon Ride Momentum ({last_s} x{s_streak})"
             final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
-            print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Trend ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
+            print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Dragon ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
-        # 2. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 3):
+        # 2. CONFIRMED 2-2 DOUBLE-STEP RECOVERY:
+        elif is_22_switch:
+            target_val = opp_s
+            CURRENT_CYCLE_TARGET = target_val
+            target_pattern = f"Level {cur_lvl} Verified 2-2 Switch ({opp_s})"
+            final_summary = f"L{cur_lvl} 2-2 Switch -> {target_val}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Switch -> {target_val} ({mult}X)", flush=True)
+
+        elif is_22_pair:
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = target_val
+            target_pattern = f"Level {cur_lvl} Verified 2-2 Pair ({last_s})"
+            final_summary = f"L{cur_lvl} 2-2 Pair -> {target_val}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Complete Pair -> {target_val} ({mult}X)", flush=True)
+
+        # 3. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 4):
         elif is_chop_confirmed and not is_chop_exhausted:
             target_val = opp_s
             CURRENT_CYCLE_TARGET = opp_s
@@ -2322,24 +2360,29 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
             print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
-        # 3. VERIFIED 2-2 DOUBLE-STEP RECOVERY:
-        elif is_2_2:
-            target_val = opp_s if s_streak >= 2 else last_s
-            CURRENT_CYCLE_TARGET = target_val
-            target_pattern = f"Level {cur_lvl} Verified 2-2 Recovery"
-            final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
-            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Verified Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
+        # 4. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
+        elif (is_post_dragon_transition or is_violent_chaos) and current_loss_streak >= 2:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = "Recovery Shield: High Volatility Noise Filtered (Preserving Recovery Level)"
+            print(f"🛡️ [RECOVERY SHIELD] High Volatility / Post-Dragon Noise filtered at Level {cur_lvl}. SAFE SKIP.", flush=True)
 
-        # 4. 32-QUANT COUNCIL MATHEMATICAL CONSENSUS:
-        # In a single-flip transition state, trust the 32 mathematical models!
-        elif w_size in ("BIG", "SMALL"):
+        # 5. 32-QUANT COUNCIL MATHEMATICAL CONSENSUS:
+        elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
             target_val = w_size
             CURRENT_CYCLE_TARGET = w_size
             target_pattern = f"Level {cur_lvl} Quant Consensus Recovery ({w_size} | {size_margin_pct:.0f}% margin)"
             final_summary = f"L{cur_lvl} Quant Recovery: {w_size} ({size_margin_pct:.0f}% edge)"
             print(f"📊 [L{cur_lvl} QUANT RECOVERY] Decisive 32-Quant Edge: {target_val} ({size_margin_pct:.0f}% margin, {mult}X)", flush=True)
 
-        # 5. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Fallback):
+        # 6. FLAT EDGE SHIELD AT L3+ (9X, 27X, 81X):
+        elif current_loss_streak >= 2 and size_margin_pct < 10.0:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = "Recovery Shield: Ambiguous 50/50 Noise Filtered (Preserving Recovery Level)"
+            print(f"🛡️ [RECOVERY SHIELD] Flat edge noise (<10%) filtered at Level {cur_lvl}. SAFE SKIP.", flush=True)
+
+        # 7. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Anti-Whipsaw Fallback):
         else:
             rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
             CURRENT_CYCLE_TARGET = rec_target
@@ -2348,18 +2391,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Recovery: Locked target {target_val} ({mult}X recovery)"
             print(f"🛡️ [L{cur_lvl} RECOVERY FOLLOW-THROUGH] Locked target: {target_val} ({mult}X)", flush=True)
 
-        # FINAL ANTI-SUICIDE SAFEGUARD (Double insurance: NEVER counter-bet streak >= 2)
-        if s_streak >= 2 and not is_streak_exhausted and not is_2_2 and target_val != last_s:
+        # FINAL ANTI-SUICIDE SAFEGUARD (Never counter-bet streak >= 3)
+        if s_streak >= 3 and not is_streak_exhausted and not is_2_2 and target_val != last_s:
             print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} trend! Force-riding {last_s}!", flush=True)
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
             target_pattern = f"Level {cur_lvl} Trend Ride Guard ({last_s} x{s_streak})"
             final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} trend"
 
-        target_type = "SIZE"
-        is_qualified_bet = True
-        arbiter_wants_skip = False
-        target_conf = 88.0 + min(10.0, current_loss_streak * 2.0)
+        if not arbiter_wants_skip:
+            target_type = "SIZE"
+            is_qualified_bet = True
+            target_conf = 88.0 + min(10.0, current_loss_streak * 2.0)
 
     else:
         # 👑 LEVEL 1 (1X BASE BET): Trend & Structural Execution
@@ -2456,51 +2499,61 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             ai_sum = ai_res.get("summary") if ai_ok else ""
 
             # Level 1 Selection Hierarchy:
-            if is_dragon_confirmed and not is_streak_exhausted:
+            if is_post_dragon_transition:
+                arbiter_wants_skip = True
+                is_qualified_bet = False
+                final_summary = "Post-Dragon Break Transition: Filtering 50/50 toss until new trend emerges."
+                print(f"🛡️ [POST-DRAGON SHIELD] Post-dragon 50/50 break filtered. SAFE SKIP.", flush=True)
+            elif is_dragon_confirmed and not is_streak_exhausted:
                 target_val = last_s
                 target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
                 final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
                 print(f"🐉 [STREAK MOMENTUM] Trend Confirmed: {target_val} x{s_streak}", flush=True)
+            elif is_22_switch:
+                target_val = opp_s
+                target_pattern = f"Confirmed 2-2 Double-Step ({opp_s})"
+                final_summary = f"2-2 Double-Step -> {opp_s}"
+                print(f"🔄 [2-2 ROTATION] 2-2 Switch Confirmed -> {target_val}", flush=True)
+            elif is_22_pair:
+                target_val = last_s
+                target_pattern = f"Confirmed 2-2 Pair ({last_s})"
+                final_summary = f"2-2 Complete Pair -> {last_s}"
+                print(f"🔄 [2-2 ROTATION] 2-2 Pair Confirmed -> {target_val}", flush=True)
             elif is_chop_confirmed and not is_chop_exhausted:
                 target_val = opp_s
                 target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
                 final_summary = f"1-1 Chop Swing -> {opp_s}"
                 print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
-            elif size_margin_pct >= 18.0 and w_size in ("BIG", "SMALL") and (s_streak < 2 or w_size == last_s):
+            elif size_margin_pct >= 16.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
                 print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-            elif is_2_2:
-                target_val = opp_s if s_streak >= 2 else last_s
-                target_pattern = "2-2 Double-Step Rotation"
-                final_summary = ai_sum if (ai_ok and ai_tgt == target_val) else f"2-2 Double-Step -> {target_val}"
-                print(f"🔄 [2-2 ROTATION] 2-2 Double-Step Confirmed -> {target_val}", flush=True)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and (s_streak < 2 or ai_tgt == last_s):
+            elif ai_ok and ai_tgt in ("BIG", "SMALL"):
                 target_val = ai_tgt
                 target_pattern = f"Master AI Confluence Bet ({target_val})"
                 final_summary = ai_sum or f"Master AI Direction ({target_val})"
                 print(f"🧠 [MASTER AI] AI Prediction: {target_val}", flush=True)
-            elif w_size in ("BIG", "SMALL") and (s_streak < 2 or w_size == last_s):
+            elif size_margin_pct >= 12.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
                 print(f"📊 [QUANT CONSENSUS] Consensus Direction: {target_val}", flush=True)
-            elif s_streak >= 2:
-                target_val = last_s
-                target_pattern = f"Streak Momentum ({last_s} x{s_streak})"
-                final_summary = f"Streak Momentum ({last_s} x{s_streak})"
-                print(f"🐉 [STREAK MOMENTUM] Ride Streak: {target_val}", flush=True)
+            elif is_dead_5050_noise and consecutive_skips < 1:
+                arbiter_wants_skip = True
+                is_qualified_bet = False
+                final_summary = "Ambiguous 50/50 Noise: Capital preserved until clear entry."
+                print(f"🛡️ [50/50 NOISE SHIELD] Filtered ambiguous noise. SAFE SKIP.", flush=True)
             else:
-                target_val = last_s
-                target_pattern = f"Market Momentum ({last_s})"
-                final_summary = f"Market Momentum ({last_s})"
-                print(f"🌊 [MARKET MOMENTUM] Primary Direction: {target_val}", flush=True)
+                target_val = w_size if w_size in ("BIG", "SMALL") else last_s
+                target_pattern = f"Market Structure ({target_val})"
+                final_summary = f"Market Structure ({target_val})"
+                print(f"🌊 [MARKET STRUCTURE] Direction: {target_val}", flush=True)
 
-            CURRENT_CYCLE_TARGET = target_val
-            target_type = "SIZE"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
+            if not arbiter_wants_skip:
+                CURRENT_CYCLE_TARGET = target_val
+                target_type = "SIZE"
+                is_qualified_bet = True
 
     # ====================================================
     # 🎯 6. FINAL SNIPER FILTER (Real Skips on Noise)
