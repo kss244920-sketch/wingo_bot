@@ -2239,7 +2239,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # Core Market Structures:
     is_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3]) or ("2-2 Double-Step" in s_pattern_desc)
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
-    is_chop_confirmed = (s_alt in (2, 3, 4, 5))
+    is_chop_confirmed = (s_alt >= 3 and s_alt <= 5)
     
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
@@ -2283,26 +2283,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         # 🛡️ DISCIPLINED RECOVERY (LEVEL 2 TO LEVEL 5):
         mult = 3 ** current_loss_streak
 
-        # 1. DRAGON / STREAK MOMENTUM RIDE (MANDATORY ANTI-SUICIDE RULE)
-        # NEVER counter-bet an active pair or dragon (s_streak >= 2) on recovery!
-        # If the market has printed last_s 2+ times, we MUST follow the dragon.
-        if s_streak >= 2 and not is_streak_exhausted:
+        # 1. TRUE DRAGON SHIELD (s_streak >= 4)
+        # Never fight an established 4+ dragon on recovery levels!
+        if s_streak >= 4 and not is_streak_exhausted:
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} Dragon Ride Momentum ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} streak"
-            print(f"🐉 [L{cur_lvl} RECOVERY DRAGON] Active Streak ({last_s} x{s_streak}) detected! Flipping to {last_s} ({mult}X) to ride trend!", flush=True)
+            target_pattern = f"Level {cur_lvl} True Dragon Shield ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Dragon Shield: Following active {last_s} x{s_streak} streak"
+            print(f"🐉 [L{cur_lvl} TRUE DRAGON] Strong Dragon ({last_s} x{s_streak}) detected! Riding trend with {last_s} ({mult}X)!", flush=True)
 
-        # 2. 1-1 CHOP SWING RECOVERY
-        # If the market is in a confirmed 1-1 alternation (s_alt >= 2), bet the alternating swing!
-        elif is_chop_confirmed and not is_chop_exhausted:
-            target_val = opp_s
-            CURRENT_CYCLE_TARGET = opp_s
-            target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
-            final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
-            print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
-
-        # 3. 2-2 DOUBLE-STEP RECOVERY
+        # 2. 2-2 DOUBLE-STEP ROTATION RECOVERY
         elif is_2_2:
             target_val = opp_s if s_streak >= 2 else last_s
             CURRENT_CYCLE_TARGET = target_val
@@ -2310,23 +2300,32 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
             print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
 
-        # 4. ANTI-WHIPSAW DIRECTIONAL LOCK (Isolated Noise Only)
-        # In isolated 1-off noise where no streak or chop is established, stick to directional target
+        # 3. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 3, NOT 2)
+        elif is_chop_confirmed and not is_chop_exhausted:
+            target_val = opp_s
+            CURRENT_CYCLE_TARGET = opp_s
+            target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
+            final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
+            print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
+
+        # 4. ANTI-WHIPSAW DIRECTIONAL LOCK (The Capital Armor)
+        # Lock onto CURRENT_CYCLE_TARGET. Do NOT switch back and forth on 1-off noise!
+        # Mathematically guarantees a win in alternating chops on L2 (100%), 2-2 chops on L3, 3-3 on L4.
         else:
             rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else w_size
             CURRENT_CYCLE_TARGET = rec_target
             target_val = rec_target
-            target_pattern = f"Level {cur_lvl} Anti-Whipsaw Recovery ({mult}X)"
+            target_pattern = f"Level {cur_lvl} Anti-Whipsaw Directional Lock ({mult}X)"
             final_summary = f"L{cur_lvl} Recovery Armor: Locked target {target_val} ({mult}X recovery)"
             print(f"🛡️ [L{cur_lvl} RECOVERY ARMOR] Anti-Whipsaw Directional Lock: {target_val} ({mult}X)", flush=True)
 
-        # FINAL ABSOLUTE ANTI-COUNTER-STREAK GUARD (Failsafe)
-        if s_streak >= 2 and not is_streak_exhausted and target_val != last_s:
-            print(f"⚠️ [RECOVERY GUARD OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} streak! Force-riding {last_s}!", flush=True)
+        # FINAL ABSOLUTE ANTI-COUNTER-DRAGON GUARD (Failsafe for 4+ dragon only)
+        if s_streak >= 4 and not is_streak_exhausted and target_val != last_s:
+            print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} dragon! Force-riding {last_s}!", flush=True)
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} Anti-Counter-Streak Guard ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} streak"
+            target_pattern = f"Level {cur_lvl} Anti-Counter-Dragon Guard ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} dragon"
 
         target_type = "SIZE"
         is_qualified_bet = True
@@ -2439,9 +2438,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 final_summary = f"1-1 Chop Swing -> {opp_s}"
                 print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
             elif is_2_2:
-                target_val = opp_s
+                target_val = opp_s if s_streak >= 2 else last_s
                 target_pattern = "2-2 Double-Step Rotation"
-                final_summary = ai_sum if (ai_ok and ai_tgt == opp_s) else f"2-2 Double-Step -> {opp_s}"
+                final_summary = ai_sum if (ai_ok and ai_tgt == target_val) else f"2-2 Double-Step -> {target_val}"
                 print(f"🔄 [2-2 ROTATION] 2-2 Double-Step Confirmed -> {target_val}", flush=True)
             elif size_margin_pct >= 15.0 and w_size in ("BIG", "SMALL") and (s_streak < 2 or w_size == last_s):
                 target_val = w_size
