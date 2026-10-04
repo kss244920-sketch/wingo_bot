@@ -2252,8 +2252,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # Core Market Structures:
     # A true 2-2 pattern requires genuine 3-pair alternation
     is_2_2 = is_s_2_2
-    is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
-    is_chop_confirmed = (s_alt >= 3 and s_alt <= 5)
+    is_dragon_confirmed = (s_streak >= 2 and not is_2_2)
+    is_chop_confirmed = (s_alt >= 2 and s_alt <= 5)
     
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
@@ -2294,64 +2294,62 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     final_summary = ""
 
     if current_loss_streak > 0:
-        # 🏰 FORTRESS FROZEN ANCHOR RECOVERY ARCHITECTURE (LEVEL 2 TO LEVEL 5)
-        # Mathematical Rule 1: NEVER flip anchor target mid-cycle (100% Whipsaw Elimination)
-        # Mathematical Rule 2: NEVER bet against an active opposing dragon (streak >= 3)
-        # Mathematical Rule 3: Strategic Skip Shield freezes recovery level & protects 100% capital
+        # 🛡️ DISCIPLINED TREND-RIDING RECOVERY (LEVEL 2 TO LEVEL 5)
+        # Rule 1: NEVER counter-bet an active pair or dragon (s_streak >= 2) - ALWAYS ride the active trend!
+        # Rule 2: In confirmed 1-1 chop (s_alt >= 2), swing with the alternation!
+        # Rule 3: In confirmed 2-2 pattern, rotate with the 2-step rhythm!
+        # Rule 4: Zero suicidal recovery skips - take high-conviction sniper wins on reversals!
         mult = 3 ** current_loss_streak
 
-        # Retrieve the frozen anchor established at Level 1
-        anchor = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
-        CURRENT_CYCLE_TARGET = anchor
-        opp_side = "SMALL" if anchor == "BIG" else "BIG"
+        # 1. DRAGON / ACTIVE TREND RIDING (MANDATORY ANTI-SUICIDE & WINNING RULE):
+        # If market prints s_streak >= 2, NEVER fight it! Align recovery with the winning side!
+        if s_streak >= 2 and not is_streak_exhausted and not is_2_2:
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} Dragon Ride Momentum ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
+            print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Trend ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
-        # 1. DRAGON SHIELD CAPITAL ARMOR:
-        # If opposing side is running an active dragon (streak >= 3), NEVER fight it and NEVER flip!
-        # Strategic SKIP preserves the recovery level with ZERO capital risk until dragon terminates.
-        if last_s == opp_side and s_streak >= 3:
-            final_summary = f"L{cur_lvl} Dragon Shield: Paused recovery ({mult}X safe) - waiting for {opp_side} x{s_streak} streak to break."
-            print(f"🛡️ [L{cur_lvl} DRAGON SHIELD] Opposing dragon ({opp_side} x{s_streak}) detected! Strategic SKIP to preserve Level {cur_lvl} capital ({mult}X safe).", flush=True)
-            return {
-                "target_type": "SKIP",
-                "target_val": "SKIP",
-                "target_conf": 50.0,
-                "color": "RED",
-                "size": "SKIP",
-                "reason": final_summary,
-                "consensus_tag": "🛡️ Dragon Shield Pause",
-                "violet_alert": False,
-                "jackpot_tip": None,
-                "pattern_name": "Dragon Shield Pause",
-                "signal_grade": signal_grade
-            }
+        # 2. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 2):
+        elif is_chop_confirmed and not is_chop_exhausted:
+            target_val = opp_s
+            CURRENT_CYCLE_TARGET = opp_s
+            target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
+            final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
+            print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
-        # 2. HIGH-HAZARD CAPITAL SHIELD (LEVEL 3+):
-        # In extreme market chaos or post-dragon transition, pause high multipliers (9X, 27X, 81X)
-        if current_loss_streak >= 2 and (is_post_dragon_transition or is_violent_chaos):
-            hazard_name = "Post-Dragon Hazard" if is_post_dragon_transition else "Violent Delta Chaos"
-            final_summary = f"L{cur_lvl} Safety Armor: Filtered {hazard_name} (Level {cur_lvl} Preserved)"
-            print(f"🛡️ [L{cur_lvl} SAFETY SHIELD] {hazard_name} detected! Strategic SKIP ({mult}X safe).", flush=True)
-            return {
-                "target_type": "SKIP",
-                "target_val": "SKIP",
-                "target_conf": 50.0,
-                "color": "RED",
-                "size": "SKIP",
-                "reason": final_summary,
-                "consensus_tag": "🛡️ Capital Armor Guard",
-                "violet_alert": False,
-                "jackpot_tip": None,
-                "pattern_name": "Strategic Recovery Skip",
-                "signal_grade": signal_grade
-            }
+        # 3. VERIFIED 2-2 DOUBLE-STEP RECOVERY:
+        elif is_2_2:
+            target_val = opp_s if s_streak >= 2 else last_s
+            CURRENT_CYCLE_TARGET = target_val
+            target_pattern = f"Level {cur_lvl} Verified 2-2 Recovery"
+            final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Verified Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
 
-        # 3. DISCIPLINED FROZEN ANCHOR BET:
-        # Opposing streak is <= 2 (normal chop or pair). Anchor target is due to strike!
-        # NO FLIPPING. 100% disciplined execution.
-        target_val = anchor
-        target_pattern = f"Level {cur_lvl} Fortress Anchor ({anchor})"
-        final_summary = f"L{cur_lvl} Anchor Recovery: Locked on {anchor} ({mult}X recovery)"
-        print(f"🏰 [L{cur_lvl} FORTRESS ANCHOR] Locked recovery target: {target_val} ({mult}X)", flush=True)
+        # 4. STRONG 32-QUANT COUNCIL CONSENSUS (Margin >= 15% and 6+ quants agree):
+        elif size_margin_pct >= 15.0 and w_v >= 6 and w_size in ("BIG", "SMALL"):
+            target_val = w_size
+            CURRENT_CYCLE_TARGET = w_size
+            target_pattern = f"Level {cur_lvl} Quant Consensus Recovery ({w_size} | {size_margin_pct:.0f}% margin)"
+            final_summary = f"L{cur_lvl} Quant Recovery: {w_size} ({size_margin_pct:.0f}% edge)"
+            print(f"📊 [L{cur_lvl} QUANT RECOVERY] Decisive 32-Quant Edge: {target_val} ({size_margin_pct:.0f}% margin, {mult}X)", flush=True)
+
+        # 5. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Anti-Whipsaw in neutral state):
+        else:
+            rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
+            CURRENT_CYCLE_TARGET = rec_target
+            target_val = rec_target
+            target_pattern = f"Level {cur_lvl} Disciplined Follow-Through ({mult}X)"
+            final_summary = f"L{cur_lvl} Recovery: Locked target {target_val} ({mult}X recovery)"
+            print(f"🛡️ [L{cur_lvl} RECOVERY FOLLOW-THROUGH] Locked target: {target_val} ({mult}X)", flush=True)
+
+        # FINAL ANTI-SUICIDE SAFEGUARD (Double insurance: NEVER counter-bet streak >= 2)
+        if s_streak >= 2 and not is_streak_exhausted and not is_2_2 and target_val != last_s:
+            print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} trend! Force-riding {last_s}!", flush=True)
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} Trend Ride Guard ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} trend"
 
         target_type = "SIZE"
         is_qualified_bet = True
