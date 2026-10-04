@@ -2274,19 +2274,81 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     streak_surv = p_info.get("streak_survival_rate", 0.50)
 
     # ====================================================
-    # 🎯 1. DRAGON & STREAK TREND LOCK (Anti-Loss Streak Law)
+    # 🎴 SUPREME BACCARAT & WINGO ROADMAP PATTERN ENGINE
     # ====================================================
-    # Rule A: Never bet against an active established dragon trend (s_streak >= 3)
-    if s_streak >= 3 and s_streak < 10 and not is_s_2_2 and w_size != last_s:
-        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active dragon ({last_s} x{s_streak})", flush=True)
-        w_size = last_s
-    # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 4), swing with the alternation unless 32-Quant council detects a decisive chop break!
-    elif s_alt >= 4 and s_alt <= 8 and not is_s_2_2 and w_size != opp_s:
-        if size_margin_pct < 20.0:
-            print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
-            w_size = opp_s
+    # Decompose sizes into consecutive run-lengths [(val, len), ...]
+    seq_runs = []
+    if sizes:
+        _cv, _cl = sizes[0], 1
+        for _x in sizes[1:]:
+            if _x == _cv:
+                _cl += 1
+            else:
+                seq_runs.append((_cv, _cl))
+                _cv, _cl = _x, 1
+        seq_runs.append((_cv, _cl))
+
+    cur_len = seq_runs[-1][1] if seq_runs else 1
+
+    _chop_count = 0
+    for _r in reversed(seq_runs):
+        if _r[1] == 1:
+            _chop_count += 1
         else:
-            print(f"⚡ [CHOP BREAK DETECTED] Decisive quant margin ({size_margin_pct:.1f}%) signals chop break -> Following {w_size}!", flush=True)
+            break
+
+    # 1. Post-Dragon Transition Hazard (immediately after streak >= 4 breaks)
+    prev_dragon_len = seq_runs[-2][1] if (len(seq_runs) >= 2 and seq_runs[-1][1] == 1) else 0
+    is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 4)
+
+    # 2. Dragon Trend (Streak >= 3)
+    is_dragon_confirmed = (s_streak >= 3)
+
+    # 3. 2-2 Double-Step Pair Completion: AA BB A (or AA A after confirmed 2-2) -> complete pair with last_s
+    is_2_2_completion = False
+    if len(seq_runs) >= 2 and seq_runs[-1][1] == 1 and seq_runs[-2][1] == 2:
+        if len(seq_runs) >= 3 and (seq_runs[-3][1] == 2 or (len(seq_runs) >= 4 and seq_runs[-4][1] == 2)):
+            is_2_2_completion = True
+
+    # 4. 2-2 Double-Step Pair Rotation: AA BB complete -> rotate to opp_s
+    is_2_2_rotation = (len(seq_runs) >= 2 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2)
+    is_2_2 = is_2_2_rotation or is_2_2_completion
+
+    # 5. 1-1 Chop Alternation Swing: >= 2 alternations
+    is_chop_confirmed = (_chop_count >= 2 and _chop_count <= 8)
+
+    # 6. Single-Big / Single-Small Asymmetry (Zombie Single Pattern)
+    is_zombie_single = False
+    if cur_len == 1 and len(seq_runs) >= 5:
+        recent_target_runs = [r[1] for r in seq_runs[-8:] if r[0] == last_s]
+        if len(recent_target_runs) >= 3 and max(recent_target_runs) == 1:
+            is_zombie_single = True
+
+    roadmap_pattern_name = None
+    roadmap_target_val = None
+
+    if is_dragon_confirmed and s_streak < 10:
+        roadmap_target_val = last_s
+        roadmap_pattern_name = f"Dragon Trend Momentum ({last_s} x{s_streak})"
+    elif is_2_2_completion:
+        roadmap_target_val = last_s
+        roadmap_pattern_name = f"2-2 Double-Step Pair Completion ({last_s})"
+    elif is_2_2_rotation:
+        roadmap_target_val = opp_s
+        roadmap_pattern_name = f"2-2 Double-Step Rotation ({opp_s})"
+    elif is_zombie_single:
+        roadmap_target_val = opp_s
+        roadmap_pattern_name = f"Single-{last_s} Asymmetry Snapback ({opp_s})"
+    elif is_chop_confirmed:
+        roadmap_target_val = opp_s
+        roadmap_pattern_name = f"1-1 Chop Swing ({_chop_count}x Alternation)"
+
+    # If roadmap pattern exists, IT OVERRULES 32-QUANT COUNCIL!
+    if roadmap_target_val in ("BIG", "SMALL"):
+        w_size = roadmap_target_val
+        target_pattern = roadmap_pattern_name
+        calc_conf = max(88.0, calc_conf)
+        print(f"🎴 [ROADMAP SUPREMACY] Pattern Active: {roadmap_pattern_name} -> Lock {w_size}!", flush=True)
 
     # ====================================================
     # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
@@ -2296,43 +2358,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_conf = calc_conf
     target_margin = size_margin_pct
 
-    # Ensure pattern name matches target_val direction
-    if s_streak >= 3 and w_size == last_s:
-        target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
-    elif is_s_2_2:
-        target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
-    elif s_alt >= 4 and w_size == opp_s:
-        target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
-    else:
+    if not roadmap_pattern_name:
         target_pattern = f"Quant Consensus Edge ({w_size})"
+    else:
+        target_pattern = roadmap_pattern_name
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    s_strong_dragon = (s_streak >= 3)
-    s_strong_chop = (s_alt >= 4)
-    s_strong_22 = is_s_2_2
+    s_strong_dragon = is_dragon_confirmed
+    s_strong_chop = is_chop_confirmed
+    s_strong_22 = is_2_2
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22)
-
-    # ====================================================
-    # 🎯 3. STRUCTURE IDENTIFICATION & HAZARD DETECTION
-    # ====================================================
-    streak_surv = p_info.get("streak_survival_rate", 0.50)
-    p_m10_val = probabilities.get("p_10x10_markov", 0.50)
-
-    # Core Market Structures:
-    is_2_2 = is_s_2_2
-    is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
-    is_chop_confirmed = (s_alt >= 4 and s_alt <= 8)
-
-    # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 3 breaks)
-    prev_dragon_len = 0
-    if len(sizes) >= 2 and sizes[-1] != sizes[-2]:
-        for k in range(2, len(sizes) + 1):
-            if sizes[-k] == sizes[-2]:
-                prev_dragon_len += 1
-            else:
-                break
-    is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 3)
 
     # Statistical Loss Hazards:
     is_streak_exhausted = (s_streak >= 10)
@@ -2378,28 +2414,29 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
             print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Dragon ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
-        # 2. CONFIRMED 2-2 DOUBLE-STEP RECOVERY:
-        elif is_2_2:
+        # 2. 2-2 DOUBLE-STEP PAIR COMPLETION:
+        elif is_2_2_completion:
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} 2-2 Pair Completion ({last_s})"
+            final_summary = f"L{cur_lvl} 2-2 Completion -> {last_s}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Pair Completion -> {target_val} ({mult}X)", flush=True)
+
+        # 3. 2-2 DOUBLE-STEP PAIR ROTATION:
+        elif is_2_2_rotation:
             target_val = opp_s
             CURRENT_CYCLE_TARGET = opp_s
             target_pattern = f"Level {cur_lvl} Verified 2-2 Rotation ({opp_s})"
             final_summary = f"L{cur_lvl} 2-2 Recovery -> {opp_s}"
             print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
 
-        # 3. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 4):
+        # 4. CONFIRMED 1-1 CHOP SWING RECOVERY (_chop_count >= 2):
         elif is_chop_confirmed and not is_chop_exhausted:
-            if size_margin_pct >= 20.0 and w_size in ("BIG", "SMALL") and w_size != opp_s:
-                target_val = w_size
-                CURRENT_CYCLE_TARGET = w_size
-                target_pattern = f"Level {cur_lvl} Chop Break Quant Recovery ({w_size})"
-                final_summary = f"L{cur_lvl} Chop Break: Decisive Quant Edge -> {w_size}"
-                print(f"⚡ [L{cur_lvl} RECOVERY CHOP BREAK] Decisive Quant Edge ({size_margin_pct:.0f}%) signals chop break -> Following {w_size} ({mult}X)", flush=True)
-            else:
-                target_val = opp_s
-                CURRENT_CYCLE_TARGET = opp_s
-                target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
-                final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
-                print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
+            target_val = opp_s
+            CURRENT_CYCLE_TARGET = opp_s
+            target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({_chop_count}x)"
+            final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
+            print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({_chop_count}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
         # 4. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
         elif (is_post_dragon_transition or is_violent_chaos) and current_loss_streak >= 2:
@@ -2453,7 +2490,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
             print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market 1 round after stop-loss. SAFE SKIP.", flush=True)
-        elif is_violent_chaos and consecutive_skips < 1:
+        elif is_violent_chaos and not roadmap_target_val and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
@@ -2545,21 +2582,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 is_qualified_bet = False
                 final_summary = "Post-Dragon Break Transition: Filtering 50/50 toss until new trend emerges."
                 print(f"🛡️ [POST-DRAGON SHIELD] Post-dragon 50/50 break filtered. SAFE SKIP.", flush=True)
-            elif is_dragon_confirmed and not is_streak_exhausted:
-                target_val = last_s
-                target_pattern = f"Dragon Trend Momentum ({target_val} x{s_streak})"
-                final_summary = ai_sum if (ai_ok and ai_tgt == last_s) else f"Dragon Trend ({last_s} x{s_streak})"
-                print(f"🐉 [STREAK MOMENTUM] Trend Confirmed: {target_val} x{s_streak}", flush=True)
-            elif is_chop_confirmed and not is_chop_exhausted:
-                target_val = opp_s
-                target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
-                final_summary = f"1-1 Chop Swing -> {opp_s}"
-                print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
-            elif is_2_2:
-                target_val = opp_s
-                target_pattern = f"Verified 2-2 Double-Step ({opp_s})"
-                final_summary = f"2-2 Double-Step -> {opp_s}"
-                print(f"🔄 [2-2 ROTATION] Verified 2-2 Double-Step -> {target_val}", flush=True)
+            elif roadmap_target_val in ("BIG", "SMALL"):
+                target_val = roadmap_target_val
+                target_pattern = roadmap_pattern_name
+                final_summary = roadmap_pattern_name
+                print(f"🎴 [LEVEL 1 ROADMAP PATTERN] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
             elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
