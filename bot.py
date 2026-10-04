@@ -1113,32 +1113,28 @@ def detect_market_patterns(history_items):
     # Quant 7 (Size): Multi-Window Imbalance (10-Round Micro + 20-Round Swing)
     b10 = sizes[-10:].count("BIG") if len(sizes) >= 10 else sizes.count("BIG")
     s10 = sizes[-10:].count("SMALL") if len(sizes) >= 10 else sizes.count("SMALL")
-    if b10 >= 8:
-        q7_s = ("SMALL", 78.0, f"10-Round Severe BIG Imbalance ({b10}B/10); mean-reversion favors SMALL")
-    elif s10 >= 8:
-        q7_s = ("BIG", 78.0, f"10-Round Severe SMALL Imbalance ({s10}S/10); mean-reversion favors BIG")
-    elif b20 >= 14:
-        q7_s = ("SMALL", 72.0, f"20-Round Overbought BIG ({b20}B vs {s20}S); mean-reversion favors SMALL")
-    elif s20 >= 14:
-        q7_s = ("BIG", 72.0, f"20-Round Overbought SMALL ({s20}S vs {b20}B); mean-reversion favors BIG")
+    if b10 >= 7:
+        q7_s = ("BIG", 84.0, f"10-Round DB Dominance ({b10}B/10); trend momentum favors BIG")
+    elif s10 >= 7:
+        q7_s = ("SMALL", 84.0, f"10-Round DB Dominance ({s10}S/10); trend momentum favors SMALL")
+    elif b20 >= 13:
+        q7_s = ("BIG", 80.0, f"20-Round Macro Momentum ({b20}B vs {s20}S); trend favors BIG")
+    elif s20 >= 13:
+        q7_s = ("SMALL", 80.0, f"20-Round Macro Momentum ({s20}S vs {b20}B); trend favors SMALL")
     else:
-        q7_s = ("SMALL" if b20 > s20 else "BIG", 64.0, f"20-Round Size Imbalance ({b20}B vs {s20}S)")
+        q7_s = ("BIG" if b20 >= s20 else "SMALL", 62.0, f"20-Round DB Momentum ({b20}B vs {s20}S)")
 
-    # Quant 8 (Size): True Mean-Reversion & Distribution Imbalance
-    if b20 >= 14:
-        s_q8_mr = ("SMALL", 78.0, f"BIG short-term overbought ({b20}B vs {s20}S); mean-reversion favors SMALL")
-    elif s20 >= 14:
-        s_q8_mr = ("BIG", 78.0, f"SMALL short-term overbought ({s20}S vs {b20}B); mean-reversion favors BIG")
-    elif s_streak >= 4:
-        s_q8_mr = (opp_s, 72.0, f"Streak exhaustion hazard ({last_s} x{s_streak}); mean-reversion favors {opp_s}")
-    elif s_alt >= 5:
-        s_q8_mr = (last_s, 72.0, f"Chop exhaustion hazard ({s_alt} rounds); mean-reversion favors {last_s}")
-    elif b20 >= 12:
-        s_q8_mr = ("SMALL", 65.0, f"Mild BIG skew ({b20}B vs {s20}S); favors SMALL")
-    elif s20 >= 12:
-        s_q8_mr = ("BIG", 65.0, f"Mild SMALL skew ({s20}S vs {b20}B); favors BIG")
+    # Quant 8 (Size): Trend & Distribution Momentum Quant
+    if b20 >= 13:
+        s_q8_mr = ("BIG", 82.0, f"Macro DB Momentum ({b20}B vs {s20}S); trend favors BIG")
+    elif s20 >= 13:
+        s_q8_mr = ("SMALL", 82.0, f"Macro DB Momentum ({s20}S vs {b20}B); trend favors SMALL")
+    elif s_streak >= 3:
+        s_q8_mr = (last_s, 80.0, f"Trend momentum continuation favors {last_s} x{s_streak}")
+    elif s_alt >= 4:
+        s_q8_mr = (opp_s, 78.0, f"Alternation momentum continuation favors {opp_s} ({s_alt}x)")
     else:
-        s_q8_mr = (s_pred_val, 55.0, f"Structure baseline favors {s_pred_val}")
+        s_q8_mr = (s_pred_val, 60.0, f"Roadmap baseline favors {s_pred_val}")
 
     # Quant 9 (Size): Micro-Cycle Autocorrelation Rhythm (Lag-2 & Lag-3)
     if len(sizes) >= 6:
@@ -1489,18 +1485,18 @@ def detect_market_patterns(history_items):
     else:
         rsi_14 = 50.0
 
-    if rsi_14 >= 65.0:
-        p_rsi_prob = max(0.18, 1.0 - (rsi_14 / 100.0))
-        rsi_status = f"Overbought (RSI {rsi_14:.1f})"
-        s_q_rsi = ("SMALL", 78.0, f"Digit RSI Overbought ({rsi_14:.1f}) -> Favors SMALL")
-    elif rsi_14 <= 35.0:
-        p_rsi_prob = min(0.82, 1.0 - (rsi_14 / 100.0))
-        rsi_status = f"Oversold (RSI {rsi_14:.1f})"
-        s_q_rsi = ("BIG", 78.0, f"Digit RSI Oversold ({rsi_14:.1f}) -> Favors BIG")
+    if rsi_14 >= 62.0:
+        p_rsi_prob = min(0.85, rsi_14 / 100.0)
+        rsi_status = f"Strong Bullish Momentum (RSI {rsi_14:.1f})"
+        s_q_rsi = ("BIG", 80.0, f"Digit RSI Bullish Momentum ({rsi_14:.1f}) -> Trend Favors BIG")
+    elif rsi_14 <= 38.0:
+        p_rsi_prob = max(0.15, rsi_14 / 100.0)
+        rsi_status = f"Strong Bearish Momentum (RSI {rsi_14:.1f})"
+        s_q_rsi = ("SMALL", 80.0, f"Digit RSI Bearish Momentum ({rsi_14:.1f}) -> Trend Favors SMALL")
     else:
         p_rsi_prob = 0.50
         rsi_status = f"Neutral (RSI {rsi_14:.1f})"
-        s_q_rsi = (s_pred_val, 60.0, f"Digit RSI Neutral ({rsi_14:.1f})")
+        s_q_rsi = (s_pred_val, 55.0, f"Digit RSI Neutral ({rsi_14:.1f})")
 
     # 21. Full 10x10 Digit Markov Transition Matrix
     digit_matrix_10 = [[0] * 10 for _ in range(10)]
@@ -1672,26 +1668,18 @@ def detect_market_patterns(history_items):
         bandwidth = (upper_band - lower_band) / max(0.5, mu_d)
         is_squeeze = bandwidth < 1.0
 
-        if z_score_d >= 1.5 or last_num >= upper_band:
-            if s_streak >= 3 and last_s == "BIG":
-                p_digit_bollinger = 0.68
-                s_q_bollinger = ("BIG", 76.0, f"Bollinger Upper Breakout (Z={z_score_d:.2f}, μ={mu_d:.1f})")
-            else:
-                p_digit_bollinger = 0.35
-                s_q_bollinger = ("SMALL", 74.0, f"Bollinger Upper Band Rejection (Z={z_score_d:.2f}) -> SMALL")
-        elif z_score_d <= -1.5 or last_num <= lower_band:
-            if s_streak >= 3 and last_s == "SMALL":
-                p_digit_bollinger = 0.32
-                s_q_bollinger = ("SMALL", 76.0, f"Bollinger Lower Breakout (Z={z_score_d:.2f}, μ={mu_d:.1f})")
-            else:
-                p_digit_bollinger = 0.65
-                s_q_bollinger = ("BIG", 74.0, f"Bollinger Lower Band Bounce (Z={z_score_d:.2f}) -> BIG")
+        if z_score_d >= 1.2 or last_num >= upper_band:
+            p_digit_bollinger = 0.72
+            s_q_bollinger = ("BIG", 78.0, f"Bollinger Upper Expansion (Z={z_score_d:.2f}) -> Trend Favors BIG")
+        elif z_score_d <= -1.2 or last_num <= lower_band:
+            p_digit_bollinger = 0.28
+            s_q_bollinger = ("SMALL", 78.0, f"Bollinger Lower Expansion (Z={z_score_d:.2f}) -> Trend Favors SMALL")
         elif is_squeeze:
             p_digit_bollinger = 0.60 if last_s == "BIG" else 0.40
             s_q_bollinger = (last_s, 70.0, f"Bollinger Squeeze (BW={bandwidth:.2f}) Trend Expansion")
         else:
             p_digit_bollinger = 0.50
-            s_q_bollinger = (s_pred_val, 58.0, f"Bollinger Neutral (Z={z_score_d:.2f})")
+            s_q_bollinger = (s_pred_val, 55.0, f"Bollinger Neutral (Z={z_score_d:.2f})")
     else:
         p_digit_bollinger = 0.50
         s_q_bollinger = (s_pred_val, 55.0, "Bollinger Baseline")
@@ -2000,11 +1988,31 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
-    # --- Phase 1: 28 Deterministic Pure-Math Size Quants & Multi-Probability Engine ---
+    # --- Phase 1: Live DB Session Regime Learner & 28 Deterministic Quants ---
+    db_window = sizes[-15:] if len(sizes) >= 15 else sizes
+    db_b_count = db_window.count("BIG")
+    db_s_count = db_window.count("SMALL")
+    db_b_ratio = db_b_count / len(db_window) if db_window else 0.5
+    db_s_ratio = db_s_count / len(db_window) if db_window else 0.5
+
+    db_alt_count = sum(1 for i in range(1, len(db_window)) if db_window[i] != db_window[i - 1])
+    db_alt_ratio = db_alt_count / (len(db_window) - 1) if len(db_window) > 1 else 0.5
+
+    db_regime = "BALANCED"
+    if db_b_ratio >= 0.60:
+        db_regime = "DOMINANT_BIG"
+        print(f"🔥 [LIVE DB REGIME] Heavy BIG Session Dominance ({db_b_ratio*100:.0f}% in last {len(db_window)} rounds)", flush=True)
+    elif db_s_ratio >= 0.60:
+        db_regime = "DOMINANT_SMALL"
+        print(f"🔥 [LIVE DB REGIME] Heavy SMALL Session Dominance ({db_s_ratio*100:.0f}% in last {len(db_window)} rounds)", flush=True)
+    elif db_alt_ratio >= 0.60:
+        db_regime = "DOMINANT_CHOP"
+        print(f"⚡ [LIVE DB REGIME] Rapid Alternation Session ({db_alt_ratio*100:.0f}% flips in last {len(db_window)} rounds)", flush=True)
+
     s_dragon = last_s if s_streak >= 3 else None
     s_chop = opp_s if s_alt >= 4 else None
     s_22 = opp_s if is_s_2_2 else (s_pred_val if "2-2" in s_pattern_desc else None)
-    s_contrarian = opp_s if (s_streak >= 9 or b20 >= 14 or s20 >= 14) else None
+    s_contrarian = opp_s if s_streak >= 11 else None
 
     # Each specialist casts a vote ONLY when an objective quantitative edge exists (no echo chamber!)
     s_q4_res = s_quants.get("s_q4", (None, 50.0, ""))
@@ -2204,8 +2212,23 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     small_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "SMALL")
     big_votes = sum(1 for s in all_specialists if s["val"] == "BIG")
     small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
-    active_votes = big_votes + small_votes
 
+    # Live DB Session Dominance Bias Injection
+    if db_regime == "DOMINANT_BIG":
+        big_weight += 8.0
+        big_votes += 1
+    elif db_regime == "DOMINANT_SMALL":
+        small_weight += 8.0
+        small_votes += 1
+    elif db_regime == "DOMINANT_CHOP" and s_alt >= 3:
+        if opp_s == "BIG":
+            big_weight += 6.0
+            big_votes += 1
+        elif opp_s == "SMALL":
+            small_weight += 6.0
+            small_votes += 1
+
+    active_votes = big_votes + small_votes
     total_active_weight = big_weight + small_weight
 
     # Decisive Winning Size Selection
@@ -2242,6 +2265,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     elif s_alt >= 4 and s_alt <= 8 and not is_s_2_2 and w_size != opp_s:
         print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
         w_size = opp_s
+    # Rule C: Never bet against an active Live DB Dominant Session!
+    elif db_regime == "DOMINANT_BIG" and s_streak < 3 and not is_s_2_2 and s_alt < 4 and w_size != "BIG":
+        print(f"🔥 [DB REGIME TREND LOCK] Overriding counter-bet ({w_size}) to follow Live DB Dominant BIG session ({db_b_ratio*100:.0f}%)", flush=True)
+        w_size = "BIG"
+    elif db_regime == "DOMINANT_SMALL" and s_streak < 3 and not is_s_2_2 and s_alt < 4 and w_size != "SMALL":
+        print(f"🔥 [DB REGIME TREND LOCK] Overriding counter-bet ({w_size}) to follow Live DB Dominant SMALL session ({db_s_ratio*100:.0f}%)", flush=True)
+        w_size = "SMALL"
 
     # ====================================================
     # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
@@ -2258,6 +2288,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
     elif s_alt >= 4 and w_size == opp_s:
         target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
+    elif db_regime == "DOMINANT_BIG" and w_size == "BIG":
+        target_pattern = f"Live DB Dominant BIG Trend ({db_b_ratio*100:.0f}%)"
+    elif db_regime == "DOMINANT_SMALL" and w_size == "SMALL":
+        target_pattern = f"Live DB Dominant SMALL Trend ({db_s_ratio*100:.0f}%)"
     else:
         target_pattern = f"Quant Consensus Edge ({w_size})"
 
@@ -2293,7 +2327,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_streak_exhausted = (s_streak >= 10)
     is_chop_exhausted = (s_alt >= 9)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
-    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2)
+    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2 and db_regime == "BALANCED")
 
     global CURRENT_CYCLE_TARGET
     cur_lvl = current_loss_streak + 1
@@ -2348,6 +2382,21 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             target_pattern = f"Level {cur_lvl} Chop Swing Recovery ({s_alt}x)"
             final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
             print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
+
+        # 3B. LIVE DB DOMINANT SESSION RECOVERY (Never counter-bet the live DB regime!):
+        elif db_regime == "DOMINANT_BIG" and s_streak < 3:
+            target_val = "BIG"
+            CURRENT_CYCLE_TARGET = "BIG"
+            target_pattern = f"Level {cur_lvl} Live DB BIG Recovery ({db_b_ratio*100:.0f}%)"
+            final_summary = f"L{cur_lvl} DB Regime Recovery: BIG ({db_b_ratio*100:.0f}%)"
+            print(f"🔥 [L{cur_lvl} DB REGIME RECOVERY] Riding Live DB BIG Dominance ({db_b_ratio*100:.0f}%) -> {target_val} ({mult}X)", flush=True)
+
+        elif db_regime == "DOMINANT_SMALL" and s_streak < 3:
+            target_val = "SMALL"
+            CURRENT_CYCLE_TARGET = "SMALL"
+            target_pattern = f"Level {cur_lvl} Live DB SMALL Recovery ({db_s_ratio*100:.0f}%)"
+            final_summary = f"L{cur_lvl} DB Regime Recovery: SMALL ({db_s_ratio*100:.0f}%)"
+            print(f"🔥 [L{cur_lvl} DB REGIME RECOVERY] Riding Live DB SMALL Dominance ({db_s_ratio*100:.0f}%) -> {target_val} ({mult}X)", flush=True)
 
         # 4. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
         elif (is_post_dragon_transition or is_violent_chaos) and current_loss_streak >= 2:
@@ -2508,6 +2557,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_pattern = f"Verified 2-2 Double-Step ({opp_s})"
                 final_summary = f"2-2 Double-Step -> {opp_s}"
                 print(f"🔄 [2-2 ROTATION] Verified 2-2 Double-Step -> {target_val}", flush=True)
+            elif db_regime == "DOMINANT_BIG" and s_streak < 3:
+                target_val = "BIG"
+                target_pattern = f"Live DB Dominant BIG Trend ({db_b_ratio*100:.0f}%)"
+                final_summary = f"Live DB BIG Trend ({db_b_ratio*100:.0f}%)"
+                print(f"🔥 [LEVEL 1 DB REGIME] Following Live DB BIG Dominance ({db_b_ratio*100:.0f}%) -> {target_val}", flush=True)
+            elif db_regime == "DOMINANT_SMALL" and s_streak < 3:
+                target_val = "SMALL"
+                target_pattern = f"Live DB Dominant SMALL Trend ({db_s_ratio*100:.0f}%)"
+                final_summary = f"Live DB SMALL Trend ({db_s_ratio*100:.0f}%)"
+                print(f"🔥 [LEVEL 1 DB REGIME] Following Live DB SMALL Dominance ({db_s_ratio*100:.0f}%) -> {target_val}", flush=True)
             elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
