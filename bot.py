@@ -2003,13 +2003,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             if tuple(sizes[i:i + L]) == pat:
                 cnt[sizes[i + L]] += 1
         tot = cnt["BIG"] + cnt["SMALL"]
-        if tot >= 8:  # Statistically significant sample across full DB
+        if tot >= 30:  # Statistically significant sample across full DB
             p_b = cnt["BIG"] / tot
             edge = abs(p_b - 0.5)
-            if edge >= 0.025:  # Empirical historical edge in full DB
+            if edge >= 0.12:  # Decisive empirical historical edge (>= 62% win rate)
                 full_db_size_val = "BIG" if p_b > 0.5 else "SMALL"
-                full_db_size_conf = min(96.0, round(75.0 + (edge * 100), 1))
-                full_db_size_desc = f"Full DB Match {list(pat)} (N={tot}): {full_db_size_val} ({max(p_b, 1.0-p_b)*100:.1f}%)"
+                full_db_size_conf = round(max(p_b, 1.0 - p_b) * 100, 1)
+                full_db_size_desc = f"Full DB Match {list(pat)} (N={tot}): {full_db_size_val} ({full_db_size_conf:.1f}%)"
                 print(f"📊 [FULL DB PATTERN] {full_db_size_desc}", flush=True)
                 break
 
@@ -2027,18 +2027,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 nxt = nums[i + L]
                 cnt["BIG" if nxt >= 5 else "SMALL"] += 1
         tot = cnt["BIG"] + cnt["SMALL"]
-        if tot >= 10:
+        if tot >= 35:
             p_b = cnt["BIG"] / tot
             edge = abs(p_b - 0.5)
-            if edge >= 0.03:
+            if edge >= 0.14:
                 full_db_num_val = "BIG" if p_b > 0.5 else "SMALL"
-                full_db_num_conf = min(95.0, round(74.0 + (edge * 100), 1))
-                full_db_num_desc = f"Full DB Digit Match {list(pat)} (N={tot}): {full_db_num_val} ({max(p_b, 1.0-p_b)*100:.1f}%)"
+                full_db_num_conf = round(max(p_b, 1.0 - p_b) * 100, 1)
+                full_db_num_desc = f"Full DB Digit Match {list(pat)} (N={tot}): {full_db_num_val} ({full_db_num_conf:.1f}%)"
                 print(f"🔢 [FULL DB DIGIT] {full_db_num_desc}", flush=True)
                 break
 
-    s_dragon = last_s if s_streak >= 4 else None
-    s_chop = opp_s if s_alt >= 4 else None
+    s_dragon = last_s if s_streak >= 3 else None
+    s_chop = opp_s if s_alt >= 3 else None
     s_22 = opp_s if is_s_2_2 else (s_pred_val if "2-2" in s_pattern_desc else None)
     s_contrarian = opp_s if s_streak >= 11 else None
 
@@ -2130,14 +2130,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     meta_val = "BIG" if unified_p_big >= 0.55 else ("SMALL" if unified_p_small >= 0.55 else None)
     meta_conf = round(max(unified_p_big, unified_p_small) * 100, 1)
 
-    full_db_size_weight = 6.0 if full_db_size_val else 1.0
-    full_db_num_weight = 5.0 if full_db_num_val else 1.0
+    full_db_size_weight = 3.0 if full_db_size_val else 1.0
+    full_db_num_weight = 2.5 if full_db_num_val else 1.0
 
     all_specialists = [
         {"name": "Agent 0 (Full DB 3,800-Round Sequence Matcher)", "val": full_db_size_val, "conf": full_db_size_conf, "arg": full_db_size_desc},
         {"name": "Agent 0B (Full DB 3,800-Round Digit Matcher)", "val": full_db_num_val, "conf": full_db_num_conf, "arg": full_db_num_desc},
-        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 4 else (75.0 if s_streak >= 2 else 50.0), "arg": f"Size streak len: {s_streak}"},
-        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt in (3, 4) else 50.0, "arg": f"Size chop len: {s_alt}"},
+        {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else (75.0 if s_streak >= 2 else 50.0), "arg": f"Size streak len: {s_streak}"},
+        {"name": "Agent 2 (Size 1-1 Chop Quant)", "val": s_chop, "conf": 88.0 if s_alt >= 3 else 50.0, "arg": f"Size chop len: {s_alt}"},
         {"name": "Agent 3 (Size 2-2 Symmetry Quant)", "val": s_22, "conf": 88.0 if is_s_2_2 else 50.0, "arg": "Size 2-2 pair symmetry"},
         {"name": "Agent 4 (Size Mean-Reversion Quant)", "val": s_contrarian, "conf": 80.0 if s_contrarian else 50.0, "arg": "Anti-exhaustion balance"},
         {"name": "Agent 4B (Pinterest Size Roadmap Quant)", "val": s_q4_val, "conf": s_q4_res[1], "arg": s_q4_res[2]},
@@ -2172,8 +2172,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ]
 
     # Dynamic High-Intensity Weight Assignment based on Empirical Win Rates & Market Regimes
-    dragon_weight = 4.5 if s_streak >= 4 else 1.5
-    chop_weight = 4.0 if s_alt >= 4 else 1.5
+    dragon_weight = 4.5 if s_streak >= 3 else 1.5
+    chop_weight = 4.0 if s_alt >= 3 else 1.5
     sym_weight = 4.5 if is_s_2_2 else (3.5 if "Confirmed 2-2" in s_pattern_desc else 2.0)
     mr_weight = 4.5 if (b20 >= 13 or s20 >= 13) else 1.5
     roadmap_weight = 4.5 if (s_q4_val is not None) else 1.0
@@ -2276,19 +2276,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # ====================================================
     # 🎯 1. DRAGON & STREAK TREND LOCK (Anti-Loss Streak Law)
     # ====================================================
-    # Rule A: Never bet against an active established dragon trend (s_streak >= 4)
-    # Full DB empirical analysis proves streaks of 3 break 51.2% of the time, so genuine dragon is streak >= 4!
-    if s_streak >= 4 and s_streak < 10 and not is_s_2_2 and w_size != last_s:
-        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow confirmed dragon ({last_s} x{s_streak})", flush=True)
+    # Rule A: Never bet against an active established dragon trend (s_streak >= 3)
+    if s_streak >= 3 and s_streak < 10 and not is_s_2_2 and w_size != last_s:
+        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active dragon ({last_s} x{s_streak})", flush=True)
         w_size = last_s
     # Rule B: In genuine confirmed 1-1 alternating chop (s_alt >= 4), swing with the alternation!
     elif s_alt >= 4 and s_alt <= 8 and not is_s_2_2 and w_size != opp_s:
         print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
         w_size = opp_s
-    # Rule C: Align with Full DB 3,800-Round Pattern Matcher if decisive edge exists
-    elif full_db_size_val and full_db_size_conf >= 78.0 and w_size != full_db_size_val:
-        print(f"📊 [FULL DB PATTERN LOCK] Overriding with 3,800-Round DB Empirical Match: {full_db_size_val} ({full_db_size_conf}%)", flush=True)
-        w_size = full_db_size_val
 
     # ====================================================
     # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
@@ -2299,20 +2294,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     target_margin = size_margin_pct
 
     # Ensure pattern name matches target_val direction
-    if s_streak >= 4 and w_size == last_s:
-        target_pattern = f"Confirmed Dragon Trend ({w_size} x{s_streak})"
+    if s_streak >= 3 and w_size == last_s:
+        target_pattern = f"Dragon Trend ({w_size} x{s_streak})"
     elif is_s_2_2:
         target_pattern = f"Confirmed 2-2 Double-Step ({w_size})"
     elif s_alt >= 4 and w_size == opp_s:
         target_pattern = f"1-1 Chop ({s_alt}x Alternation)"
-    elif full_db_size_val and w_size == full_db_size_val:
-        target_pattern = f"Full DB 3,800-Round Pattern ({full_db_size_val})"
     else:
         target_pattern = f"Quant Consensus Edge ({w_size})"
 
     target_edge_desc = f"SIZE edge ({size_margin_pct:.0f}%)"
 
-    s_strong_dragon = (s_streak >= 4)
+    s_strong_dragon = (s_streak >= 3)
     s_strong_chop = (s_alt >= 4)
     s_strong_22 = is_s_2_2
     has_confirmed_structure = (s_strong_dragon or s_strong_chop or s_strong_22)
@@ -2325,10 +2318,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # Core Market Structures:
     is_2_2 = is_s_2_2
-    is_dragon_confirmed = (s_streak >= 4 and not is_2_2)
+    is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
     is_chop_confirmed = (s_alt >= 4 and s_alt <= 8)
 
-    # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
+    # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 3 breaks)
     prev_dragon_len = 0
     if len(sizes) >= 2 and sizes[-1] != sizes[-2]:
         for k in range(2, len(sizes) + 1):
@@ -2336,13 +2329,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 prev_dragon_len += 1
             else:
                 break
-    is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 4)
+    is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 3)
 
     # Statistical Loss Hazards:
     is_streak_exhausted = (s_streak >= 10)
     is_chop_exhausted = (s_alt >= 9)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
-    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2 and not full_db_size_val)
+    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2)
 
     global CURRENT_CYCLE_TARGET
     cur_lvl = current_loss_streak + 1
@@ -2398,14 +2391,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
             print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
-        # 3B. FULL CLOUD DB PATTERN RECOVERY (3,800+ Rounds Historical Empirical Evidence):
-        elif full_db_size_val and full_db_size_conf >= 76.0:
-            target_val = full_db_size_val
-            CURRENT_CYCLE_TARGET = full_db_size_val
-            target_pattern = f"Level {cur_lvl} Full DB Pattern Recovery ({full_db_size_val})"
-            final_summary = f"L{cur_lvl} Full DB Recovery: {full_db_size_val}"
-            print(f"📊 [L{cur_lvl} FULL DB RECOVERY] 3,800-Round Historical Match -> {target_val} ({mult}X)", flush=True)
-
         # 4. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
         elif (is_post_dragon_transition or is_violent_chaos) and current_loss_streak >= 2:
             arbiter_wants_skip = True
@@ -2437,9 +2422,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Recovery: Locked target {target_val} ({mult}X recovery)"
             print(f"🛡️ [L{cur_lvl} RECOVERY FOLLOW-THROUGH] Locked target: {target_val} ({mult}X)", flush=True)
 
-        # FINAL ANTI-SUICIDE SAFEGUARD (Never counter-bet confirmed streak >= 4)
-        if s_streak >= 4 and not is_streak_exhausted and not is_2_2 and target_val != last_s:
-            print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight confirmed {last_s} x{s_streak} trend! Force-riding {last_s}!", flush=True)
+        # FINAL ANTI-SUICIDE SAFEGUARD (Never counter-bet active streak >= 3)
+        if s_streak >= 3 and not is_streak_exhausted and not is_2_2 and target_val != last_s:
+            print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight active {last_s} x{s_streak} trend! Force-riding {last_s}!", flush=True)
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
             target_pattern = f"Level {cur_lvl} Trend Ride Guard ({last_s} x{s_streak})"
@@ -2565,11 +2550,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_pattern = f"Verified 2-2 Double-Step ({opp_s})"
                 final_summary = f"2-2 Double-Step -> {opp_s}"
                 print(f"🔄 [2-2 ROTATION] Verified 2-2 Double-Step -> {target_val}", flush=True)
-            elif full_db_size_val and full_db_size_conf >= 78.0:
-                target_val = full_db_size_val
-                target_pattern = f"Full DB Pattern Edge ({full_db_size_val})"
-                final_summary = f"Full DB Pattern ({full_db_size_val})"
-                print(f"📊 [LEVEL 1 FULL DB] Following 3,800-Round Historical Match -> {target_val} ({full_db_size_conf}%)", flush=True)
             elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
