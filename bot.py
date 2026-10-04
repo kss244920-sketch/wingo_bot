@@ -25,8 +25,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (27B Parameter Pattern Specialist)
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Primary fast JSON reasoning model)
-    "allam-2-7b",               # Fast direct JSON instruct model (Secondary fallback)
+    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Ultra-fast 0.35s direct JSON reasoning model)
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
@@ -437,6 +436,7 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
     if pred_info:
         p_val = pred_info.get("target_val", "")
         p_type = pred_info.get("target_type", "SIZE")
+        signal_grade = pred_info.get("signal_grade", "LEVEL_1")
         if p_val == "SKIP" or p_type == "SKIP":
             pred_line = "\n🎯 <b>Prediction:</b> ⏸️ SKIP | <b>Outcome:</b> ⏸️ SKIPPED"
         else:
@@ -444,9 +444,20 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
                 is_win = (p_val == size)
             else:
                 is_win = (p_val == base_color)
-            status_tag = "✅ WIN" if is_win else "❌ LOSS"
+            grade_num = int(signal_grade.replace("LEVEL_", "")) if "LEVEL_" in signal_grade else 1
+            if is_win:
+                if grade_num == 1:
+                    status_tag = "✅ WIN (Direct L1)"
+                else:
+                    status_tag = f"✅ WIN (L{grade_num} Recovered)"
+            else:
+                if grade_num >= 5:
+                    status_tag = "🛑 STOP-LOSS (Capital Guard)"
+                else:
+                    next_l = grade_num + 1
+                    status_tag = f"❌ MISS (Escalating to L{next_l} {3**(next_l-1)}X)"
             p_emoji = "🐘 BIG" if p_val == "BIG" else ("🐜 SMALL" if p_val == "SMALL" else p_val)
-            pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} | <b>Outcome:</b> {status_tag}"
+            pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} ({signal_grade}) | <b>Outcome:</b> {status_tag}"
 
     text = (
         f"📦 <b>[CLOUD DB RECORD]</b>\n"
@@ -1481,7 +1492,7 @@ def detect_market_patterns(history_items):
         s_q_10x10 = (m10_fav, min(92.0, m10_conf), f"10x10 Markov: No.{last_num} -> {m10_fav} ({m10_conf}%)")
     else:
         p_10x10_markov = 0.50
-        s_q_10x10 = (s_pred_val, 60.0, f"10x10 Markov No.{last_num} baseline")
+        s_q_10x10 = (None, 50.0, f"10x10 Markov No.{last_num} baseline")
 
     # 22. Digit Gap & Dormancy Pressure Analysis
     dormancy_map = {}
@@ -1498,13 +1509,20 @@ def detect_market_patterns(history_items):
     big_dormancy_sum = sum(dormancy_map[d] for d in range(5, 10))
     tot_dorm = small_dormancy_sum + big_dormancy_sum
     p_dormancy_big = (big_dormancy_sum / tot_dorm) if tot_dorm > 0 else 0.5
-    dorm_fav = "BIG" if big_dormancy_sum >= small_dormancy_sum else "SMALL"
     dorm_edge = abs(big_dormancy_sum - small_dormancy_sum)
-    s_q_dorm = (dorm_fav, min(85.0, 65.0 + (dorm_edge * 0.5)), f"Digit Dormancy: {dorm_fav} overdue (Gap {max(big_dormancy_sum, small_dormancy_sum)} vs {min(big_dormancy_sum, small_dormancy_sum)})")
+    if dorm_edge >= 8:
+        dorm_fav = "BIG" if big_dormancy_sum > small_dormancy_sum else "SMALL"
+        s_q_dorm = (dorm_fav, min(85.0, 65.0 + (dorm_edge * 0.5)), f"Digit Dormancy: {dorm_fav} overdue (Gap {max(big_dormancy_sum, small_dormancy_sum)} vs {min(big_dormancy_sum, small_dormancy_sum)})")
+    else:
+        s_q_dorm = (None, 50.0, "Digit Dormancy Balanced")
 
     # 23. Baccarat Derived Roads Regularity
     p_derived_roads, derived_road_desc, is_derived_chaotic, derived_road_tag = compute_baccarat_derived_roads(sizes)
-    s_q_derived = ("BIG" if p_derived_roads >= 0.5 else "SMALL", 82.0 if not is_derived_chaotic else 60.0, derived_road_desc)
+    if derived_road_tag == "BALANCED" or p_derived_roads == 0.50:
+        s_q_derived = (None, 50.0, derived_road_desc)
+    else:
+        d_tgt = "BIG" if p_derived_roads > 0.50 else "SMALL"
+        s_q_derived = (d_tgt, 82.0 if not is_derived_chaotic else 60.0, derived_road_desc)
 
     # 24. Delta Jump Velocity & Early Chop Armor
     if len(nums) >= 6:
@@ -1521,7 +1539,7 @@ def detect_market_patterns(history_items):
         s_q_delta = (last_s, 75.0, f"Low Delta Clustering (Δ={avg_delta:.1f}) -> Number Cluster Favors {last_s}")
     else:
         p_delta_chop = 0.50
-        s_q_delta = (s_pred_val, 55.0, f"Delta Velocity Baseline (Δ={avg_delta:.1f})")
+        s_q_delta = (None, 50.0, f"Delta Velocity Baseline (Δ={avg_delta:.1f})")
 
     # 25. Parity-Color Invariant Cluster Correlation
     recent_colors_10 = colors[-10:] if len(colors) >= 10 else colors
@@ -1534,7 +1552,7 @@ def detect_market_patterns(history_items):
         s_q_parity = ("BIG", 74.0, f"Parity GREEN Dominance ({(1-red_ratio)*100:.0f}% Odd/Green) -> Big Edge")
     else:
         p_parity_color = 0.50
-        s_q_parity = (s_pred_val, 60.0, "Parity-Color Balanced")
+        s_q_parity = (None, 50.0, "Parity-Color Balanced")
 
     # 26. Period Modulo Micro-Cycle Quant
     try:
@@ -1559,7 +1577,7 @@ def detect_market_patterns(history_items):
         s_q_mod = (mod_fav, min(80.0, mod_conf), f"Period Mod-5 [{target_mod5}] Cycle -> {mod_fav} ({mod_conf}%)")
     except Exception:
         p_period_mod = 0.50
-        s_q_mod = (s_pred_val, 55.0, "Period Mod Neutral")
+        s_q_mod = (None, 50.0, "Period Mod Neutral")
 
     # 27. Mirror Number Coupling (Sum = 9 Symmetry)
     mirror_num = 9 - last_num
@@ -1577,7 +1595,7 @@ def detect_market_patterns(history_items):
         s_q_mirror = (mirror_group, 75.0, f"Mirror Partner {last_num}<->{mirror_num} Affinity ({p_mirror_affinity*100:.0f}%) -> {mirror_group}")
     else:
         p_mirror_prob = 0.50
-        s_q_mirror = (s_pred_val, 58.0, "Mirror Coupling Neutral")
+        s_q_mirror = (None, 50.0, "Mirror Coupling Neutral")
 
     # 28. Empirical Streak Survival Matrix (Ground Truth Hazard from Full Database)
     emp_k = s_streak
@@ -1906,7 +1924,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     - Dual-Layer Sniper Filter: Skips chaotic 50/50 noise; executes high-probability Pinterest roadmaps!
     - Delivers direct Level 1 accuracy.
     """
-    global POST_STOP_LOSS_COOLDOWN
+    global POST_STOP_LOSS_COOLDOWN, GROQ_COOLDOWN_UNTIL
     if POST_STOP_LOSS_COOLDOWN > 0:
         rounds_left = POST_STOP_LOSS_COOLDOWN
         POST_STOP_LOSS_COOLDOWN -= 1
@@ -2098,7 +2116,62 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     full_db_size_weight = 3.0 if full_db_size_val else 1.0
     full_db_num_weight = 2.5 if full_db_num_val else 1.0
 
+    ai_tgt = None
+    ai_conf = 50.0
+    ai_pat = ""
+    ai_reason = ""
+    ai_ok = False
+
+    # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq)
+    if GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
+        try:
+            hist_12 = []
+            for it in reversed(history_items[:12]):
+                n = int(it.get("num", 0))
+                sz = "BIG" if n >= 5 else "SMALL"
+                hist_12.append(f"{sz}({n})")
+            seq_text = ", ".join(hist_12)
+            ai_prompt = (
+                f"Recent WinGo 30S outcomes (oldest to newest): [{seq_text}]. "
+                f"Active streak: {last_s} x{s_streak}. "
+                f"Alternation count: {s_alt}x. "
+                f"Predict next outcome: BIG [5-9] or SMALL [0-4]. "
+                f"Return JSON only: {{\"prediction\": \"BIG\"|\"SMALL\", \"confidence\": 80, \"pattern\": \"name\", \"reason\": \"3-5 words\"}}"
+            )
+            r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                "model": "qwen/qwen3.8-27b",
+                "messages": [
+                    {"role": "system", "content": "You are a master mathematical binary sequence pattern analyst. Return strictly valid JSON only."},
+                    {"role": "user", "content": ai_prompt}
+                ],
+                "max_tokens": 120,
+                "temperature": 0.10
+            }, timeout=3.0)
+            if r_ai.status_code == 200:
+                raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                m = re.search(r'\{[^{}]*\}', raw_c)
+                if m:
+                    res_json = json.loads(m.group(0))
+                    raw_p = str(res_json.get("prediction", "")).upper()
+                    if raw_p in ("BIG", "HIGH"):
+                        ai_tgt = "BIG"
+                    elif raw_p in ("SMALL", "LOW"):
+                        ai_tgt = "SMALL"
+                    if ai_tgt:
+                        ai_conf = float(res_json.get("confidence", 80.0))
+                        ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
+                        ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
+                        ai_ok = True
+                        print(f"🧠 [MASTER AI] Qwen-27B Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
+            elif r_ai.status_code == 429:
+                GROQ_COOLDOWN_UNTIL = time.time() + 15.0
+        except Exception as e:
+            print(f"[MASTER AI ERROR] {e}", flush=True)
+
+    ai_weight = 6.0 if ai_ok else 1.0
+
     all_specialists = [
+        {"name": "Agent AI (Master Qwen-27B Neural Brain)", "val": ai_tgt, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}"},
         {"name": "Agent 0 (Full DB 3,800-Round Sequence Matcher)", "val": full_db_size_val, "conf": full_db_size_conf, "arg": full_db_size_desc},
         {"name": "Agent 0B (Full DB 3,800-Round Digit Matcher)", "val": full_db_num_val, "conf": full_db_num_conf, "arg": full_db_num_desc},
         {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else (75.0 if s_streak >= 2 else 50.0), "arg": f"Size streak len: {s_streak}"},
@@ -2171,6 +2244,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     res_weight = 4.0 if (s_q_res_val is not None) else 1.0
 
     weights = [
+        ai_weight,            # Agent AI: Master Qwen-27B Neural Brain (6.0 Weight)
         full_db_size_weight,  # Agent 0: Full Cloud DB Sequence Pattern Matcher
         full_db_num_weight,   # Agent 0B: Full Cloud DB Digit Transition Matcher
         dragon_weight,        # Agent 1: Dragon Trend Momentum
@@ -2344,83 +2418,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     recent_20_detailed = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-20:]])
 
     # ====================================================
-    # ====================================================
-    # 🎯 5. MASTER AI QUERY & RECOVERY / VIP LEVEL 1 COUNCILS
+    # 🎯 5. RECOVERY LOCK & VIP LEVEL 1 COUNCILS
     # ====================================================
     is_qualified_bet = False
     arbiter_wants_skip = False
     final_summary = ""
-
-    # Query Master AI (Qwen-27B Deep Mathematical Time-Series Reasoner)
-    shoe_str = ", ".join([("HIGH" if int(it.get("num", 0)) >= 5 else "LOW") + "(" + str(it.get("num", 0)) + ")" for it in history_items[-10:]])
-    prompt_master_ai = (
-        f"Historical sequence: [{shoe_str}]. "
-        f"Active streak: {('HIGH' if last_s == 'BIG' else 'LOW')} x{s_streak}. "
-        f"Alternation chop: {_chop_count}x. "
-        f"Predict the next state (HIGH or LOW)."
-    )
-
-    def _query_master_ai(prompt_text):
-        global GROQ_COOLDOWN_UNTIL
-        if time.time() < GROQ_COOLDOWN_UNTIL:
-            return {"ok": False}
-        for model_name in MASTER_AI_MODELS:
-            try:
-                r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                    "model": model_name,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are an expert mathematical time-series sequence analyst specializing in binary PRNG sequences. "
-                                "CRITICAL MATHEMATICAL RULES: "
-                                "1. If active streak >= 3, predict trend continuation. "
-                                "2. In genuine 1-1 chop of length >= 4, predict alternation swing. "
-                                "3. In 2-2 symmetrical pairs (AA BB AA), follow the 2-step rhythm. "
-                                "4. Output valid JSON only: {\"prediction\": \"HIGH\"|\"LOW\", \"confidence\": 85, \"reason\": \"3-5 word pattern description\"}. "
-                                "No markdown, no explanation."
-                            )
-                        },
-                        {"role": "user", "content": prompt_text}
-                    ],
-                    "max_tokens": 50,
-                    "temperature": 0.10
-                }, timeout=2.5)
-                if r.status_code == 200:
-                    choice = r.json().get("choices", [{}])[0]
-                    raw_c = choice.get("message", {}).get("content", "")
-                    m = re.search(r'\{[^{}]*\}', raw_c)
-                    if m:
-                        res = json.loads(m.group(0))
-                        raw_pred = str(res.get("prediction", "")).upper()
-                        if raw_pred in ("HIGH", "BIG"):
-                            parsed_tgt = "BIG"
-                        elif raw_pred in ("LOW", "SMALL"):
-                            parsed_tgt = "SMALL"
-                        else:
-                            parsed_tgt = None
-                        parsed_conf = float(res.get("confidence", 85.0))
-                        parsed_summary = str(res.get("reason") or res.get("summary") or "Pattern match").strip()
-                        if parsed_tgt in ("BIG", "SMALL"):
-                            return {
-                                "ok": True,
-                                "model": model_name,
-                                "action": "BET",
-                                "target": parsed_tgt,
-                                "confidence": parsed_conf,
-                                "summary": parsed_summary
-                            }
-                elif r.status_code == 429:
-                    continue
-            except Exception:
-                continue
-        GROQ_COOLDOWN_UNTIL = time.time() + 20.0
-        return {"ok": False}
-
-    ai_res = _query_master_ai(prompt_master_ai)
-    ai_ok = ai_res.get("ok", False)
-    ai_tgt = ai_res.get("target") if ai_ok else None
-    ai_sum = ai_res.get("summary") if ai_ok else ""
 
     if current_loss_streak > 0:
         # 🛡️ MARTINGALE DISCIPLINED TARGET LOCK (LEVEL 2 TO LEVEL 5)
@@ -2484,28 +2486,42 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_conf = max(88.0, calc_conf)
                 print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
 
-            # Tier 2: Strong Mathematical Quant Consensus Edge (>= 16% margin)
-            elif size_margin_pct >= 16.0 and w_size in ("BIG", "SMALL"):
+            # Tier 2: Master AI & Quant Concurrence (Both AI and Council agree on same side!)
+            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and size_margin_pct >= 10.0:
+                target_val = ai_tgt
+                target_pattern = f"Qwen-27B Deep AI & Quant Concurrence ({target_val})"
+                final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)"
+                target_conf = max(ai_conf, calc_conf)
+                print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
+
+            # Tier 3: Independent High-Conviction AI Signal (>= 75% confidence)
+            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0 and size_margin_pct < 25.0:
+                target_val = ai_tgt
+                target_pattern = f"Qwen-27B Deep AI Pattern ({target_val})"
+                final_summary = f"{ai_pat or ai_reason} (Qwen-27B)"
+                target_conf = ai_conf
+                print(f"🧠 [MASTER AI SUPREMACY] Qwen-27B High-Conviction Verdict: {target_val} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
+
+            # Tier 4: Strong Mathematical Quant Consensus Edge (>= 18% margin) when AI does NOT oppose
+            elif size_margin_pct >= 18.0 and w_size in ("BIG", "SMALL") and (not ai_ok or ai_tgt == w_size or ai_conf < 70.0):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
                 target_conf = calc_conf
                 print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
 
-            # Tier 3: Filter dead 50/50 ambiguous noise BEFORE LLM guessing (Capital Preservation)
+            # Tier 5: Conflict or Ambiguous Noise -> Capital Protection SAFE SKIP
+            elif ai_ok and ai_tgt in ("BIG", "SMALL") and w_size in ("BIG", "SMALL") and ai_tgt != w_size and ai_conf >= 70.0:
+                arbiter_wants_skip = True
+                is_qualified_bet = False
+                final_summary = f"AI-Quant Conflict: Qwen-27B predicts {ai_tgt} while Quants say {w_size}. SAFE SKIP."
+                print(f"🛡️ [AI-QUANT CONFLICT SHIELD] Qwen-27B ({ai_tgt}) opposes Quants ({w_size})! SAFE SKIP.", flush=True)
+
             elif is_dead_5050_noise:
                 arbiter_wants_skip = True
                 is_qualified_bet = False
                 final_summary = f"Ambiguous 50/50 Noise (Edge {size_margin_pct:.0f}%): Capital preserved."
                 print(f"🛡️ [50/50 NOISE SHIELD] Low margin ({size_margin_pct:.0f}%) noise filtered. SAFE SKIP.", flush=True)
-
-            # Tier 4: Independent Master AI Pattern Direction (Assists when moderate edge exists)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and size_margin_pct >= 10.0:
-                target_val = ai_tgt
-                target_pattern = f"Qwen-27B Deep AI Pattern ({target_val})"
-                final_summary = f"{ai_sum} (Qwen-27B)"
-                target_conf = ai_res.get("confidence", 85.0)
-                print(f"🧠 [MASTER AI] Qwen-27B Independent Pattern Verdict: {target_val} ({ai_sum})", flush=True)
 
             else:
                 arbiter_wants_skip = True
