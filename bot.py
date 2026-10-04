@@ -2209,12 +2209,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     streak_surv = p_info.get("streak_survival_rate", 0.50)
 
     # ====================================================
-    # 🎯 1. DRAGON & STREAK TREND LOCK (Established Trend Law)
+    # 🎯 1. DRAGON & STREAK TREND LOCK (Anti-Loss Streak Law)
     # ====================================================
-    # Never bet against an established dragon trend (s_streak >= 3) unless exhausted (>= 7)
-    if s_streak >= 3 and s_streak < 7 and not is_s_2_2 and w_size != last_s:
-        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active dragon ({last_s} x{s_streak})", flush=True)
+    # Rule A: Never bet against an active streak (s_streak >= 2) unless exhausted (>= 12)
+    if s_streak >= 2 and s_streak < 12 and not is_s_2_2 and w_size != last_s:
+        print(f"🐉 [STREAK TREND LOCK] Overriding counter-trend quant vote ({w_size}) to follow active streak ({last_s} x{s_streak})", flush=True)
         w_size = last_s
+    # Rule B: In active 1-1 alternating chop (s_alt >= 2), swing with the alternation!
+    elif s_alt >= 2 and s_alt <= 7 and not is_s_2_2 and w_size != opp_s:
+        print(f"⚡ [CHOP TREND LOCK] Overriding quant vote ({w_size}) to follow 1-1 chop swing ({opp_s} | {s_alt}x)", flush=True)
+        w_size = opp_s
 
     # ====================================================
     # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
@@ -2253,7 +2257,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # A true 2-2 pattern requires genuine 3-pair alternation
     is_2_2 = is_s_2_2
     is_dragon_confirmed = (s_streak >= 2 and not is_2_2)
-    is_chop_confirmed = (s_alt >= 2 and s_alt <= 5)
+    is_chop_confirmed = (s_alt >= 2 and s_alt <= 7)
     
     # Post-Dragon Transition Hazard (50/50 toss immediately after streak >= 4 breaks)
     prev_dragon_len = 0
@@ -2266,8 +2270,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_post_dragon_transition = (s_streak == 1 and prev_dragon_len >= 4)
 
     # Statistical Loss Hazards:
-    is_streak_exhausted = (s_streak >= 7 or (s_streak >= 5 and streak_surv < 0.35))
-    is_chop_exhausted = (s_alt >= 6)
+    is_streak_exhausted = (s_streak >= 12)
+    is_chop_exhausted = (s_alt >= 8)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
     is_dead_5050_noise = (size_margin_pct < 10.0 and 0.47 <= p_m10_val <= 0.53 and s_streak < 2 and s_alt < 2)
 
