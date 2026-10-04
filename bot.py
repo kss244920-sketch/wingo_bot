@@ -2302,25 +2302,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # 2. Dragon Trend (Streak >= 3)
     is_dragon_confirmed = (s_streak >= 3)
 
-    # 3. 2-2 Double-Step Pair Completion: AA BB A (or AA A after confirmed 2-2) -> complete pair with last_s
-    is_2_2_completion = False
-    if len(seq_runs) >= 2 and seq_runs[-1][1] == 1 and seq_runs[-2][1] == 2:
-        if len(seq_runs) >= 3 and (seq_runs[-3][1] == 2 or (len(seq_runs) >= 4 and seq_runs[-4][1] == 2)):
-            is_2_2_completion = True
+    # 3. 2-2 Double-Step Pair Completion: AA BB A -> complete pair with last_s (requires >= 3 runs)
+    is_2_2_completion = (len(seq_runs) >= 3 and seq_runs[-1][1] == 1 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
 
-    # 4. 2-2 Double-Step Pair Rotation: AA BB complete -> rotate to opp_s
-    is_2_2_rotation = (len(seq_runs) >= 2 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2)
+    # 4. 2-2 Double-Step Pair Rotation: AA BB AA -> rotate to opp_s (requires >= 3 runs of 2)
+    is_2_2_rotation = (len(seq_runs) >= 3 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
     is_2_2 = is_2_2_rotation or is_2_2_completion
 
-    # 5. 1-1 Chop Alternation Swing: >= 2 alternations
-    is_chop_confirmed = (_chop_count >= 2 and _chop_count <= 8)
-
-    # 6. Single-Big / Single-Small Asymmetry (Zombie Single Pattern)
-    is_zombie_single = False
-    if cur_len == 1 and len(seq_runs) >= 5:
-        recent_target_runs = [r[1] for r in seq_runs[-8:] if r[0] == last_s]
-        if len(recent_target_runs) >= 3 and max(recent_target_runs) == 1:
-            is_zombie_single = True
+    # 5. 1-1 Chop Alternation Swing: strictly chop lengths 2 and 3!
+    is_chop_confirmed = (_chop_count in (2, 3))
+    # At chop length 4, 56.5% of chops break into a double!
+    is_chop_double_break = (_chop_count == 4)
 
     roadmap_pattern_name = None
     roadmap_target_val = None
@@ -2334,12 +2326,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     elif is_2_2_rotation:
         roadmap_target_val = opp_s
         roadmap_pattern_name = f"2-2 Double-Step Rotation ({opp_s})"
-    elif is_zombie_single:
-        roadmap_target_val = opp_s
-        roadmap_pattern_name = f"Single-{last_s} Asymmetry Snapback ({opp_s})"
     elif is_chop_confirmed:
         roadmap_target_val = opp_s
         roadmap_pattern_name = f"1-1 Chop Swing ({_chop_count}x Alternation)"
+    elif is_chop_double_break:
+        roadmap_target_val = last_s
+        roadmap_pattern_name = f"1-1 Chop Double Break ({last_s})"
 
     # If roadmap pattern exists, IT OVERRULES 32-QUANT COUNCIL!
     if roadmap_target_val in ("BIG", "SMALL"):
@@ -2390,16 +2382,89 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     recent_20_detailed = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-20:]])
 
     # ====================================================
-    # 🎯 5. RECOVERY ARMOR & LEVEL 1 CONTINUOUS VIP ENGINE
+    # ====================================================
+    # 🎯 5. MASTER AI QUERY & RECOVERY / VIP LEVEL 1 COUNCILS
     # ====================================================
     is_qualified_bet = False
     arbiter_wants_skip = False
     final_summary = ""
 
+    # Query Master AI (Qwen-27B Deep Mathematical Time-Series Reasoner)
+    shoe_str = ", ".join([("HIGH" if int(it.get("num", 0)) >= 5 else "LOW") + "(" + str(it.get("num", 0)) + ")" for it in history_items[-10:]])
+    prompt_master_ai = (
+        f"Historical sequence: [{shoe_str}]. "
+        f"Active streak: {('HIGH' if last_s == 'BIG' else 'LOW')} x{s_streak}. "
+        f"Alternation chop: {_chop_count}x. "
+        f"Predict the next state (HIGH or LOW)."
+    )
+
+    def _query_master_ai(prompt_text):
+        global GROQ_COOLDOWN_UNTIL
+        if time.time() < GROQ_COOLDOWN_UNTIL:
+            return {"ok": False}
+        for model_name in MASTER_AI_MODELS:
+            try:
+                r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                    "model": model_name,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are an expert mathematical time-series sequence analyst specializing in binary PRNG sequences. "
+                                "CRITICAL MATHEMATICAL RULES: "
+                                "1. In binary sequences, streaks of length 1, 2, or 3 are normal random variations. NEVER predict mean-reversion on streaks of length < 4. "
+                                "2. If active streak >= 3, predict trend continuation. "
+                                "3. If alternation chop count is 2 or 3, predict alternation swing. "
+                                "4. In 2-2 symmetrical pairs (AA BB AA), follow the 2-step rhythm. "
+                                "5. Output valid JSON only: {\"prediction\": \"HIGH\"|\"LOW\", \"confidence\": 85, \"reason\": \"3-5 word pattern description\"}. "
+                                "No markdown, no explanation."
+                            )
+                        },
+                        {"role": "user", "content": prompt_text}
+                    ],
+                    "max_tokens": 50,
+                    "temperature": 0.10
+                }, timeout=2.5)
+                if r.status_code == 200:
+                    choice = r.json().get("choices", [{}])[0]
+                    raw_c = choice.get("message", {}).get("content", "")
+                    m = re.search(r'\{[^{}]*\}', raw_c)
+                    if m:
+                        res = json.loads(m.group(0))
+                        raw_pred = str(res.get("prediction", "")).upper()
+                        if raw_pred in ("HIGH", "BIG"):
+                            parsed_tgt = "BIG"
+                        elif raw_pred in ("LOW", "SMALL"):
+                            parsed_tgt = "SMALL"
+                        else:
+                            parsed_tgt = None
+                        parsed_conf = float(res.get("confidence", 85.0))
+                        parsed_summary = str(res.get("reason") or res.get("summary") or "Pattern match").strip()
+                        if parsed_tgt in ("BIG", "SMALL"):
+                            return {
+                                "ok": True,
+                                "model": model_name,
+                                "action": "BET",
+                                "target": parsed_tgt,
+                                "confidence": parsed_conf,
+                                "summary": parsed_summary
+                            }
+                elif r.status_code == 429:
+                    continue
+            except Exception:
+                continue
+        GROQ_COOLDOWN_UNTIL = time.time() + 20.0
+        return {"ok": False}
+
+    ai_res = _query_master_ai(prompt_master_ai)
+    ai_ok = ai_res.get("ok", False)
+    ai_tgt = ai_res.get("target") if ai_ok else None
+    ai_sum = ai_res.get("summary") if ai_ok else ""
+
     if current_loss_streak > 0:
         # 🛡️ DISCIPLINED TREND-RIDING RECOVERY (LEVEL 2 TO LEVEL 5)
         # Rule 1: NEVER counter-bet an active dragon (s_streak >= 3) - ALWAYS ride the active trend!
-        # Rule 2: In genuine confirmed 1-1 chop (s_alt >= 4), swing with the alternation!
+        # Rule 2: In genuine confirmed 1-1 chop (length 2 or 3), swing with the alternation!
         # Rule 3: In confirmed 2-2 pattern, rotate with the 2-step rhythm!
         # Rule 4: Trust 32-Quant mathematical consensus on single-flip transitions!
         mult = 3 ** current_loss_streak
@@ -2408,8 +2473,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         if is_dragon_confirmed and not is_streak_exhausted:
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} Dragon Ride Momentum ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
+            if ai_ok and ai_tgt == last_s:
+                target_pattern = f"Level {cur_lvl} Dragon Confluence ({last_s} x{s_streak})"
+                final_summary = f"L{cur_lvl} Dragon Confluence: {last_s} x{s_streak}"
+            else:
+                target_pattern = f"Level {cur_lvl} Dragon Ride Momentum ({last_s} x{s_streak})"
+                final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
             print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Dragon ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
         # 2. 2-2 DOUBLE-STEP PAIR COMPLETION:
@@ -2428,7 +2497,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} 2-2 Recovery -> {opp_s}"
             print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
 
-        # 4. CONFIRMED 1-1 CHOP SWING RECOVERY (_chop_count >= 2):
+        # 4. CONFIRMED 1-1 CHOP SWING RECOVERY (chop count 2 or 3):
         elif is_chop_confirmed and not is_chop_exhausted:
             target_val = opp_s
             CURRENT_CYCLE_TARGET = opp_s
@@ -2436,14 +2505,30 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
             print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({_chop_count}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
-        # 4. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
+        # 5. CHOP DOUBLE BREAK RECOVERY (chop count == 4):
+        elif is_chop_double_break:
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} Chop Double Break Recovery ({last_s})"
+            final_summary = f"L{cur_lvl} Chop Break: Follow double -> {last_s}"
+            print(f"⚡ [L{cur_lvl} CHOP DOUBLE BREAK] Chop 4x Break -> Double with {target_val} ({mult}X)", flush=True)
+
+        # 6. RECOVERY NOISE SHIELD (Safe Skips at L3+ on extreme chaos or post-dragon break):
         elif (is_post_dragon_transition or is_violent_chaos) and current_loss_streak >= 2:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = "Recovery Shield: High Volatility Noise Filtered (Preserving Recovery Level)"
             print(f"🛡️ [RECOVERY SHIELD] High Volatility / Post-Dragon Noise filtered at Level {cur_lvl}. SAFE SKIP.", flush=True)
 
-        # 5. 32-QUANT COUNCIL MATHEMATICAL CONSENSUS:
+        # 7. MASTER AI DEEP TIME-SERIES ARBITRATION (When table is between classic patterns):
+        elif ai_ok and ai_tgt in ("BIG", "SMALL"):
+            target_val = ai_tgt
+            CURRENT_CYCLE_TARGET = ai_tgt
+            target_pattern = f"Level {cur_lvl} Qwen-27B Deep AI Recovery ({ai_tgt})"
+            final_summary = f"L{cur_lvl} Deep AI: {ai_sum}"
+            print(f"🧠 [L{cur_lvl} MASTER AI RECOVERY] Qwen-27B Pattern: {ai_tgt} ({ai_sum}, {mult}X)", flush=True)
+
+        # 8. 32-QUANT COUNCIL MATHEMATICAL CONSENSUS:
         elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
             target_val = w_size
             CURRENT_CYCLE_TARGET = w_size
@@ -2451,14 +2536,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Quant Recovery: {w_size} ({size_margin_pct:.0f}% edge)"
             print(f"📊 [L{cur_lvl} QUANT RECOVERY] Decisive 32-Quant Edge: {target_val} ({size_margin_pct:.0f}% margin, {mult}X)", flush=True)
 
-        # 6. FLAT EDGE SHIELD AT L3+ (9X, 27X, 81X):
+        # 9. FLAT EDGE SHIELD AT L3+ (9X, 27X, 81X):
         elif current_loss_streak >= 2 and size_margin_pct < 10.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = "Recovery Shield: Ambiguous 50/50 Noise Filtered (Preserving Recovery Level)"
             print(f"🛡️ [RECOVERY SHIELD] Flat edge noise (<10%) filtered at Level {cur_lvl}. SAFE SKIP.", flush=True)
 
-        # 7. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Anti-Whipsaw Fallback):
+        # 10. DISCIPLINED DIRECTIONAL FOLLOW-THROUGH (Anti-Whipsaw Fallback):
         else:
             rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
             CURRENT_CYCLE_TARGET = rec_target
@@ -2494,76 +2579,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
         else:
-            # Query Master AI (Qwen-27B Deep Mathematical Time-Series Reasoner)
-            shoe_str = ", ".join([("HIGH" if int(it.get("num", 0)) >= 5 else "LOW") + "(" + str(it.get("num", 0)) + ")" for it in history_items[-10:]])
-            prompt_master_ai = (
-                f"Historical sequence: [{shoe_str}]. "
-                f"Active streak: {('HIGH' if last_s == 'BIG' else 'LOW')} x{s_streak}. "
-                f"Alternation chop: {_chop_count}x. "
-                f"Analyze the time-series pattern (trend continuation, 1-1 alternation, 2-2 double-step, or mean reversion) "
-                f"and predict the next state (HIGH or LOW)."
-            )
-
-            def _query_master_ai(prompt_text):
-                global GROQ_COOLDOWN_UNTIL
-                if time.time() < GROQ_COOLDOWN_UNTIL:
-                    return {"ok": False}
-                for model_name in MASTER_AI_MODELS:
-                    try:
-                        r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                            "model": model_name,
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "You are an expert mathematical time-series sequence analyst. "
-                                        "Given a historical binary sequence of HIGH (>=5) and LOW (<5) states and numbers, "
-                                        "detect the dominant pattern and predict the next state. "
-                                        "Output valid JSON only: {\"prediction\": \"HIGH\"|\"LOW\", \"confidence\": 85, \"reason\": \"3-5 word pattern description\"}. "
-                                        "No markdown, no explanation."
-                                    )
-                                },
-                                {"role": "user", "content": prompt_text}
-                            ],
-                            "max_tokens": 60,
-                            "temperature": 0.10
-                        }, timeout=2.5)
-                        if r.status_code == 200:
-                            choice = r.json().get("choices", [{}])[0]
-                            raw_c = choice.get("message", {}).get("content", "")
-                            m = re.search(r'\{[^{}]*\}', raw_c)
-                            if m:
-                                res = json.loads(m.group(0))
-                                raw_pred = str(res.get("prediction", "")).upper()
-                                if raw_pred in ("HIGH", "BIG"):
-                                    parsed_tgt = "BIG"
-                                elif raw_pred in ("LOW", "SMALL"):
-                                    parsed_tgt = "SMALL"
-                                else:
-                                    parsed_tgt = None
-                                parsed_conf = float(res.get("confidence", 85.0))
-                                parsed_summary = str(res.get("reason") or res.get("summary") or "Pattern match").strip()
-                                if parsed_tgt in ("BIG", "SMALL"):
-                                    return {
-                                        "ok": True,
-                                        "model": model_name,
-                                        "action": "BET",
-                                        "target": parsed_tgt,
-                                        "confidence": parsed_conf,
-                                        "summary": parsed_summary
-                                    }
-                        elif r.status_code == 429:
-                            continue
-                    except Exception:
-                        continue
-                GROQ_COOLDOWN_UNTIL = time.time() + 20.0
-                return {"ok": False}
-
-            ai_res = _query_master_ai(prompt_master_ai)
-            ai_ok = ai_res.get("ok", False)
-            ai_tgt = ai_res.get("target") if ai_ok else None
-            ai_sum = ai_res.get("summary") if ai_ok else ""
-
             # Level 1 Model Coordination Hierarchy:
             if is_post_dragon_transition:
                 arbiter_wants_skip = True
@@ -2579,7 +2594,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_conf = 95.0
                 print(f"🤖✨ [AI CONFLUENCE] Qwen-27B AI + Roadmap Agree -> {target_val} ({final_summary})", flush=True)
 
-            # Tier 2: Supreme Roadmap Pattern Recognition (Dragon, 2-2, 1-1 Chop)
+            # Tier 2: Supreme Roadmap Pattern Recognition (Dragon, 2-2, 1-1 Chop, Chop Double Break)
             elif roadmap_target_val in ("BIG", "SMALL"):
                 target_val = roadmap_target_val
                 target_pattern = roadmap_pattern_name
