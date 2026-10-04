@@ -507,8 +507,8 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
     # 1. Dragon Trend (REAL streak >= 3)
     if cur_len >= 3:
         if cur_len >= 10:
-            return opp_val, 86.0, f"Dragon Exhaustion ({last_val} x{cur_len} -> Reversal)"
-        dragon_conf = min(97.5, 86.0 + cur_len * 2.0)
+            return opp_val, 80.0, f"Dragon Exhaustion ({last_val} x{cur_len} -> Reversal)"
+        dragon_conf = min(92.0, 75.0 + cur_len * 2.5)
         return last_val, dragon_conf, f"Dragon Trend ({last_val} x{cur_len})"
 
     # 2. 1-1 Alternating Chop (Requires at least 4 trailing runs of length 1)
@@ -520,60 +520,27 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
             break
     if chop_count >= 4:
         if chop_count >= 9:
-            return last_val, 82.0, f"Chop Exhaustion ({chop_count}x -> Reversal)"
-        chop_conf = min(96.5, 82.0 + chop_count * 2.5)
+            return last_val, 78.0, f"Chop Exhaustion ({chop_count}x -> Reversal)"
+        chop_conf = min(90.0, 75.0 + chop_count * 2.0)
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
 
-    # 3. 2-2 Double-Step Pattern (AA BB AA BB)
-    if len(runs) >= 2:
-        r1 = runs[-1]
-        r2 = runs[-2]
-        if r1[1] == 2 and r2[1] == 2:
-            return opp_val, 86.0, f"2-2 Double-Step ({opp_val} Shift)"
-        if r1[1] == 1 and r2[1] == 2 and len(runs) >= 3 and runs[-3][1] == 2:
-            return last_val, 86.0, f"2-2 Double-Step ({last_val} Pair)"
+    # 3. 2-2 Double-Step Pattern (AA BB AA) - Strictly requires >= 3 alternating runs of 2
+    if len(runs) >= 3 and runs[-1][1] == 2 and runs[-2][1] == 2 and runs[-3][1] == 2:
+        return opp_val, 84.0, f"2-2 Double-Step ({opp_val} Shift)"
+    if len(runs) >= 3 and runs[-1][1] == 1 and runs[-2][1] == 2 and runs[-3][1] == 2:
+        return last_val, 84.0, f"2-2 Double-Step ({last_val} Pair)"
 
-    # 4. 1-2 Single-Double Pattern (A BB A BB)
-    if len(runs) >= 2:
-        r1 = runs[-1]
-        r2 = runs[-2]
-        if r1[1] == 2 and r2[1] == 1 and len(runs) >= 4 and runs[-3][1] == 2 and runs[-4][1] == 1:
-            return opp_val, 84.0, f"1-2 Single-Double ({opp_val} Shift)"
-        if r1[1] == 1 and r2[1] == 2 and len(runs) >= 3 and runs[-3][1] == 1:
-            return last_val, 84.0, f"1-2 Single-Double ({last_val} Pair)"
-
-    # 5. 2-1 Double-Single Pattern (AA B AA B)
-    if len(runs) >= 3:
-        r1 = runs[-1]
-        r2 = runs[-2]
-        r3 = runs[-3]
-        if r1[1] == 1 and r2[1] == 1 and r3[1] == 2:
-            return last_val, 82.0, f"2-1 Double-Single ({last_val} Pair)"
-        if r1[1] == 2 and r2[1] == 1 and r3[1] == 2:
-            return opp_val, 82.0, f"2-1 Double-Single ({opp_val} Shift)"
-
-    # 6. Confirmed 3-3 Triplet Pattern
+    # 4. Confirmed 3-3 Triplet Pattern (AAA BBB) - Strictly requires >= 2 runs of 3
     if len(runs) >= 2:
         r1 = runs[-1]
         r2 = runs[-2]
         if r2[1] == 3 and r1[1] == 3:
-            return opp_val, 88.0, f"3-3 Triplet ({opp_val} Shift)"
+            return opp_val, 84.0, f"3-3 Triplet ({opp_val} Shift)"
         if r2[1] == 3 and r1[1] in (1, 2):
-            return last_val, 84.0, f"3-3 Triplet ({last_val} Continuation)"
+            return last_val, 80.0, f"3-3 Triplet ({last_val} Continuation)"
 
-    # 7. Macro 20-Round Extreme Imbalance (Mean-Reversion)
-    recent_20 = norm_seq[-20:] if len(norm_seq) >= 20 else norm_seq
-    target_major = "BIG" if item_type == "SIZE" else "RED"
-    target_minor = "SMALL" if item_type == "SIZE" else "GREEN"
-    c_major = recent_20.count(target_major)
-    c_minor = len(recent_20) - c_major
-    if c_major >= 14:
-        return target_minor, 76.0, f"Macro 20-Round Imbalance ({target_minor} Reversion)"
-    elif c_minor >= 14:
-        return target_major, 76.0, f"Macro 20-Round Imbalance ({target_major} Reversion)"
-
-    # 8. Default: Transitional / Ambiguous Noise (Zero Speculation)
-    return last_val, 50.0, "Transitional Noise (No Setup)"
+    # 5. Default: Transitional Flow (Zero Speculation on Ambiguous Setup)
+    return last_val, 50.0, "Transitional Flow (No Confirmed Pattern)"
 
 # ====================================================
 # 🎴 BACCARAT DERIVED ROADS ENGINE (Big Eye, Small, Cockroach)
@@ -2359,7 +2326,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_streak_exhausted = (s_streak >= 10)
     is_chop_exhausted = (s_alt >= 9)
     is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
-    is_dead_5050_noise = (size_margin_pct < 12.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2)
+    is_dead_5050_noise = (size_margin_pct < 15.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2)
 
     global CURRENT_CYCLE_TARGET
     cur_lvl = current_loss_streak + 1
@@ -2458,30 +2425,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if current_loss_streak > 0:
         # 🛡️ MARTINGALE DISCIPLINED TARGET LOCK (LEVEL 2 TO LEVEL 5)
         # Fundamental Law of Martingale Recovery:
-        # In recovery, NEVER whipsaw or flip between BIG and SMALL on noise or LLM guesses!
-        # Lock and follow through on CURRENT_CYCLE_TARGET.
+        # In recovery, NEVER whipsaw or flip between BIG and SMALL on short-term noise or 3-streaks!
+        # Always hold and follow through on CURRENT_CYCLE_TARGET until win or hard stop-loss.
         mult = 3 ** current_loss_streak
         cur_lvl = current_loss_streak + 1
 
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
-
-        # Dragon Defense (Anti-Counter-Trend Shield):
-        # The ONLY threat to holding a target is an active opposite dragon (streak >= 3).
-        # If the market has produced streak >= 3 of the OPPOSITE side (e.g. market is doing S S S and our target is B),
-        # NEVER fight the dragon! Ride the dragon!
-        if s_streak >= 3 and not is_streak_exhausted and last_s != rec_target:
-            target_val = last_s
-            CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} Dragon Defense Ride ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Dragon Defense: Riding {last_s} x{s_streak}"
-            print(f"🐉 [L{cur_lvl} DRAGON DEFENSE] Opposite streak {last_s} x{s_streak} detected! Switching recovery target to {last_s} ({mult}X)!", flush=True)
-        else:
-            # Hold disciplined cycle target
-            target_val = rec_target
-            CURRENT_CYCLE_TARGET = rec_target
-            target_pattern = f"Level {cur_lvl} Disciplined Target Hold ({rec_target})"
-            final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X)"
-            print(f"🛡️ [L{cur_lvl} RECOVERY LOCK] Following locked target: {rec_target} ({mult}X)", flush=True)
+        target_val = rec_target
+        CURRENT_CYCLE_TARGET = rec_target
+        target_pattern = f"Level {cur_lvl} Disciplined Target Hold ({rec_target})"
+        final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X)"
+        print(f"🛡️ [L{cur_lvl} RECOVERY LOCK] Following locked target: {rec_target} ({mult}X)", flush=True)
 
         target_type = "SIZE"
         is_qualified_bet = True
@@ -2506,7 +2460,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
         else:
             # Level 1 Model Coordination Hierarchy:
-            # Tier 1: Supreme Roadmap Pattern Recognition (Dragon >= 3, Confirmed Chop >= 4, 2-2 Double-Step)
+            # Tier 1: Supreme Roadmap Pattern Recognition (Dragon >= 3, Confirmed Chop >= 4, Confirmed 2-2)
             if roadmap_target_val in ("BIG", "SMALL"):
                 target_val = roadmap_target_val
                 target_pattern = roadmap_pattern_name
@@ -2514,35 +2468,34 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_conf = max(88.0, calc_conf)
                 print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
 
-            # Tier 2: 32-Quant Council Mathematical Consensus
-            elif size_margin_pct >= 12.0 and w_size in ("BIG", "SMALL"):
+            # Tier 2: Strong Mathematical Quant Consensus Edge (>= 16% margin)
+            elif size_margin_pct >= 16.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
                 target_conf = calc_conf
                 print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
 
-            # Tier 3: Independent Master AI Pattern Direction (Assists when council is balanced)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL"):
+            # Tier 3: Filter dead 50/50 ambiguous noise BEFORE LLM guessing (Capital Preservation)
+            elif is_dead_5050_noise:
+                arbiter_wants_skip = True
+                is_qualified_bet = False
+                final_summary = f"Ambiguous 50/50 Noise (Edge {size_margin_pct:.0f}%): Capital preserved."
+                print(f"🛡️ [50/50 NOISE SHIELD] Low margin ({size_margin_pct:.0f}%) noise filtered. SAFE SKIP.", flush=True)
+
+            # Tier 4: Independent Master AI Pattern Direction (Assists when moderate edge exists)
+            elif ai_ok and ai_tgt in ("BIG", "SMALL") and size_margin_pct >= 10.0:
                 target_val = ai_tgt
                 target_pattern = f"Qwen-27B Deep AI Pattern ({target_val})"
                 final_summary = f"{ai_sum} (Qwen-27B)"
                 target_conf = ai_res.get("confidence", 85.0)
                 print(f"🧠 [MASTER AI] Qwen-27B Independent Pattern Verdict: {target_val} ({ai_sum})", flush=True)
 
-            # Tier 4: Filter dead 50/50 ambiguous noise
-            elif is_dead_5050_noise and consecutive_skips < 2:
+            else:
                 arbiter_wants_skip = True
                 is_qualified_bet = False
-                final_summary = "Ambiguous 50/50 Noise: Capital preserved until clear entry."
-                print(f"🛡️ [50/50 NOISE SHIELD] Filtered ambiguous noise. SAFE SKIP.", flush=True)
-
-            else:
-                target_val = w_size if w_size in ("BIG", "SMALL") else last_s
-                target_pattern = f"Market Structure ({target_val})"
-                final_summary = f"Market Structure ({target_val})"
-                target_conf = 80.0
-                print(f"🌊 [MARKET STRUCTURE] Direction: {target_val}", flush=True)
+                final_summary = "Ambiguous Market Structure: Preserving capital."
+                print(f"🛡️ [STRUCTURE SHIELD] Unconfirmed setup filtered. SAFE SKIP.", flush=True)
 
             if not arbiter_wants_skip:
                 CURRENT_CYCLE_TARGET = target_val
