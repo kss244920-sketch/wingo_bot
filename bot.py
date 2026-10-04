@@ -1948,7 +1948,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     s_pred_val = p_info.get("s_pred_val", opp_s)
     s_pred_conf = p_info.get("s_quants", {}).get("s_q4", (s_pred_val, 50.0, ""))[1]
     s_pattern_desc = p_info.get("s_pattern_desc", "Momentum Flow")
-    is_s_2_2 = (len(history_items) >= 4 and history_items[-1].get("size") == history_items[-2].get("size") and history_items[-3].get("size") == history_items[-4].get("size") and history_items[-1].get("size") != history_items[-3].get("size")) or ("2-2 Double-Step" in s_pattern_desc)
+    is_s_2_2 = ("Confirmed 2-2" in s_pattern_desc) or (len(history_items) >= 6 and history_items[-1].get("size") == history_items[-2].get("size") and history_items[-3].get("size") == history_items[-4].get("size") and history_items[-5].get("size") == history_items[-6].get("size") and history_items[-1].get("size") != history_items[-3].get("size") and history_items[-3].get("size") != history_items[-5].get("size"))
     s_quants = p_info.get("s_quants", {})
     probabilities = p_info.get("probabilities", {})
     unified_p_big = p_info.get("unified_p_big", 0.5)
@@ -2237,7 +2237,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     p_m10_val = probabilities.get("p_10x10_markov", 0.50)
 
     # Core Market Structures:
-    is_2_2 = (len(sizes) >= 4 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-1] != sizes[-3]) or ("2-2 Double-Step" in s_pattern_desc)
+    # Core Market Structures:
+    # A true 2-2 pattern requires genuine multi-pair alternation (at least 3 alternating pairs, not just 2 isolated pairs)
+    is_2_2 = ("Confirmed 2-2" in s_pattern_desc) or (len(sizes) >= 6 and sizes[-1] == sizes[-2] and sizes[-3] == sizes[-4] and sizes[-5] == sizes[-6] and sizes[-1] != sizes[-3] and sizes[-3] != sizes[-5])
     is_dragon_confirmed = (s_streak >= 3 and not is_2_2)
     is_chop_confirmed = (s_alt >= 3 and s_alt <= 5)
     
@@ -2283,24 +2285,37 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         # 🛡️ DISCIPLINED RECOVERY (LEVEL 2 TO LEVEL 5):
         mult = 3 ** current_loss_streak
 
-        # 1. TRUE DRAGON SHIELD (s_streak >= 4)
-        # Never fight an established 4+ dragon on recovery levels!
-        if s_streak >= 4 and not is_streak_exhausted:
+        # 0. STRATEGIC RECOVERY SKIP SHIELD (LEVEL 3, 4, 5 CAPITAL ARMOR):
+        # When multiplier is high (9X, 27X, 81X), NEVER gamble on high-hazard 50/50 noise!
+        # A skip preserves the recovery level with 100% capital safety until a clean sniper setup appears.
+        if current_loss_streak >= 2 and (is_post_dragon_transition or is_violent_chaos or is_dead_5050_noise):
+            hazard_name = "Post-Dragon Hazard" if is_post_dragon_transition else ("Violent Delta Chaos" if is_violent_chaos else "Dead 50/50 Noise")
+            final_summary = f"L{cur_lvl} Safety Armor: Filtered {hazard_name} (Level {cur_lvl} Preserved)"
+            print(f"🛡️ [L{cur_lvl} SAFETY SHIELD] {hazard_name} detected! Strategic SKIP to preserve Level {cur_lvl} capital ({mult}X safe).", flush=True)
+            return {
+                "target_type": "SKIP",
+                "target_val": "SKIP",
+                "target_conf": 50.0,
+                "color": "RED",
+                "size": "SKIP",
+                "reason": final_summary,
+                "consensus_tag": "🛡️ Capital Armor Guard",
+                "violet_alert": False,
+                "jackpot_tip": None,
+                "pattern_name": "Strategic Recovery Skip",
+                "signal_grade": signal_grade
+            }
+
+        # 1. ACTIVE HEALTHY DRAGON SHIELD (s_streak >= 3 and s_streak <= 5)
+        # Ride an established, healthy 3-5 dragon with the trend!
+        elif s_streak >= 3 and s_streak <= 5 and not is_streak_exhausted:
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} True Dragon Shield ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Dragon Shield: Following active {last_s} x{s_streak} streak"
-            print(f"🐉 [L{cur_lvl} TRUE DRAGON] Strong Dragon ({last_s} x{s_streak}) detected! Riding trend with {last_s} ({mult}X)!", flush=True)
+            target_pattern = f"Level {cur_lvl} Trend Ride Momentum ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Dragon Ride: Following active {last_s} x{s_streak} trend"
+            print(f"🐉 [L{cur_lvl} RECOVERY TREND] Active Trend ({last_s} x{s_streak}) detected! Riding with {last_s} ({mult}X)!", flush=True)
 
-        # 2. 2-2 DOUBLE-STEP ROTATION RECOVERY
-        elif is_2_2:
-            target_val = opp_s if s_streak >= 2 else last_s
-            CURRENT_CYCLE_TARGET = target_val
-            target_pattern = f"Level {cur_lvl} 2-2 Double-Step Recovery"
-            final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
-            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
-
-        # 3. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 3, NOT 2)
+        # 2. CONFIRMED 1-1 CHOP SWING RECOVERY (s_alt >= 3, NOT 2)
         elif is_chop_confirmed and not is_chop_exhausted:
             target_val = opp_s
             CURRENT_CYCLE_TARGET = opp_s
@@ -2308,9 +2323,25 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Chop Recovery: Swing -> {opp_s}"
             print(f"⚡ [L{cur_lvl} RECOVERY CHOP] Confirmed 1-1 Chop ({s_alt}x) -> Swing to {target_val} ({mult}X)", flush=True)
 
-        # 4. ANTI-WHIPSAW DIRECTIONAL LOCK (The Capital Armor)
-        # Lock onto CURRENT_CYCLE_TARGET. Do NOT switch back and forth on 1-off noise!
-        # Mathematically guarantees a win in alternating chops on L2 (100%), 2-2 chops on L3, 3-3 on L4.
+        # 3. VERIFIED 2-2 DOUBLE-STEP RECOVERY (Only when proven across 3 pairs)
+        elif is_2_2:
+            target_val = opp_s if s_streak >= 2 else last_s
+            CURRENT_CYCLE_TARGET = target_val
+            target_pattern = f"Level {cur_lvl} Verified 2-2 Recovery"
+            final_summary = f"L{cur_lvl} 2-2 Recovery -> {target_val}"
+            print(f"🔄 [L{cur_lvl} RECOVERY 2-2] Verified Symmetrical Rotation -> {target_val} ({mult}X)", flush=True)
+
+        # 4. STRONG 32-QUANT COUNCIL CONSENSUS
+        # If the 32 mathematical models have a decisive edge (margin >= 20% and 7+ quants agree)
+        elif size_margin_pct >= 20.0 and w_v >= 7 and w_size in ("BIG", "SMALL"):
+            target_val = w_size
+            CURRENT_CYCLE_TARGET = w_size
+            target_pattern = f"Level {cur_lvl} Quant Consensus Recovery ({w_size} | {size_margin_pct:.0f}% margin)"
+            final_summary = f"L{cur_lvl} Quant Recovery: {w_size} ({size_margin_pct:.0f}% edge)"
+            print(f"📊 [L{cur_lvl} QUANT RECOVERY] Decisive 32-Quant Edge: {target_val} ({size_margin_pct:.0f}% margin, {mult}X)", flush=True)
+
+        # 5. ANTI-WHIPSAW DIRECTIONAL LOCK (Disciplined Follow-through)
+        # In chop noise or unconfirmed states, stick to the target to eliminate whipsaws!
         else:
             rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else w_size
             CURRENT_CYCLE_TARGET = rec_target
@@ -2319,13 +2350,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"L{cur_lvl} Recovery Armor: Locked target {target_val} ({mult}X recovery)"
             print(f"🛡️ [L{cur_lvl} RECOVERY ARMOR] Anti-Whipsaw Directional Lock: {target_val} ({mult}X)", flush=True)
 
-        # FINAL ABSOLUTE ANTI-COUNTER-DRAGON GUARD (Failsafe for 4+ dragon only)
-        if s_streak >= 4 and not is_streak_exhausted and target_val != last_s:
-            print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} dragon! Force-riding {last_s}!", flush=True)
+        # FINAL ANTI-COUNTER-DRAGON FAILSAFE (Never counter-bet an active 3-5 streak)
+        if s_streak >= 3 and s_streak <= 5 and not is_streak_exhausted and target_val != last_s:
+            print(f"⚠️ [RECOVERY DRAGON OVERRIDE] Target {target_val} would fight {last_s} x{s_streak} trend! Force-riding {last_s}!", flush=True)
             target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} Anti-Counter-Dragon Guard ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} dragon"
+            target_pattern = f"Level {cur_lvl} Trend Ride Guard ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Guard: Riding {last_s} x{s_streak} trend"
 
         target_type = "SIZE"
         is_qualified_bet = True
@@ -2437,16 +2468,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_pattern = f"1-1 Chop Swing ({s_alt}x Alternation)"
                 final_summary = f"1-1 Chop Swing -> {opp_s}"
                 print(f"⚡ [1-1 CHOP] Chop Swing Confirmed -> {target_val}", flush=True)
+            elif size_margin_pct >= 18.0 and w_size in ("BIG", "SMALL") and (s_streak < 2 or w_size == last_s):
+                target_val = w_size
+                target_pattern = f"Quant Consensus Edge ({target_val})"
+                final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
+                print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
             elif is_2_2:
                 target_val = opp_s if s_streak >= 2 else last_s
                 target_pattern = "2-2 Double-Step Rotation"
                 final_summary = ai_sum if (ai_ok and ai_tgt == target_val) else f"2-2 Double-Step -> {target_val}"
                 print(f"🔄 [2-2 ROTATION] 2-2 Double-Step Confirmed -> {target_val}", flush=True)
-            elif size_margin_pct >= 15.0 and w_size in ("BIG", "SMALL") and (s_streak < 2 or w_size == last_s):
-                target_val = w_size
-                target_pattern = f"Quant Consensus Edge ({target_val})"
-                final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
-                print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
             elif ai_ok and ai_tgt in ("BIG", "SMALL") and (s_streak < 2 or ai_tgt == last_s):
                 target_val = ai_tgt
                 target_pattern = f"Master AI Confluence Bet ({target_val})"
