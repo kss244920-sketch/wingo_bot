@@ -23,12 +23,10 @@ STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 
-# High-Intensity Deep Reasoning Master AI Brain
+# High-Intensity Deep Reasoning Master AI Brain (27B Parameter Pattern Specialist)
 MASTER_AI_MODELS = [
-    "allam-2-7b",               # Fast direct JSON instruct model (Active, high throughput)
-    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Fast JSON, secondary fallback)
-    "openai/gpt-oss-20b",       # High reasoning quant specialist (Tertiary fallback)
-    "openai/gpt-oss-120b",      # 120B supreme arbiter (Final AI fallback)
+    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Primary fast JSON reasoning model)
+    "allam-2-7b",               # Fast direct JSON instruct model (Secondary fallback)
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
@@ -2496,14 +2494,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
         else:
-            # Query Master AI for Level 1 baseline if available
-            shoe_str = ", ".join([(it.get("size") or ("BIG" if int(it.get("num", 0)) >= 5 else "SMALL"))[0] + "(" + str(it.get("num", 0)) + ")" for it in history_items[-8:]])
+            # Query Master AI (Qwen-27B Deep Mathematical Time-Series Reasoner)
+            shoe_str = ", ".join([("HIGH" if int(it.get("num", 0)) >= 5 else "LOW") + "(" + str(it.get("num", 0)) + ")" for it in history_items[-10:]])
             prompt_master_ai = (
-                f"WinGo Arbiter. Synced: {tot_synced}. Shoe: {shoe_str}. "
-                f"Streak: {last_s}x{s_streak}. Chop: {s_alt}x. "
-                f"Quants: {w_size} ({w_v}-{l_v}, margin {size_margin_pct:.0f}%). "
-                f"Stage: Level 1 (1X). "
-                f'Decide BET (BIG or SMALL). Output JSON: {{"action":"BET","target":"BIG"|"SMALL","confidence":85,"summary":"3-5 words"}}'
+                f"Historical sequence: [{shoe_str}]. "
+                f"Active streak: {('HIGH' if last_s == 'BIG' else 'LOW')} x{s_streak}. "
+                f"Alternation chop: {_chop_count}x. "
+                f"Analyze the time-series pattern (trend continuation, 1-1 alternation, 2-2 double-step, or mean reversion) "
+                f"and predict the next state (HIGH or LOW)."
             )
 
             def _query_master_ai(prompt_text):
@@ -2515,60 +2513,50 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                         r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                             "model": model_name,
                             "messages": [
-                                {"role": "system", "content": "You are a quantitative casino arbiter. Output valid JSON only: {\"action\": \"BET\", \"target\": \"BIG\"|\"SMALL\", \"confidence\": 85, \"summary\": \"3-5 words\"}. No explanation."},
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are an expert mathematical time-series sequence analyst. "
+                                        "Given a historical binary sequence of HIGH (>=5) and LOW (<5) states and numbers, "
+                                        "detect the dominant pattern and predict the next state. "
+                                        "Output valid JSON only: {\"prediction\": \"HIGH\"|\"LOW\", \"confidence\": 85, \"reason\": \"3-5 word pattern description\"}. "
+                                        "No markdown, no explanation."
+                                    )
+                                },
                                 {"role": "user", "content": prompt_text}
                             ],
-                            "max_tokens": 80,
+                            "max_tokens": 60,
                             "temperature": 0.10
-                        }, timeout=2.0)
+                        }, timeout=2.5)
                         if r.status_code == 200:
                             choice = r.json().get("choices", [{}])[0]
-                            msg_obj = choice.get("message", {})
-                            raw_c = msg_obj.get("content") or ""
-                            if not raw_c.strip():
-                                raw_c = msg_obj.get("reasoning") or ""
-                            parsed_act, parsed_tgt, parsed_conf, parsed_summary = None, None, None, ""
+                            raw_c = choice.get("message", {}).get("content", "")
                             m = re.search(r'\{[^{}]*\}', raw_c)
                             if m:
-                                try:
-                                    res = json.loads(m.group(0))
-                                    parsed_act = str(res.get("action", "")).upper()
-                                    parsed_tgt = str(res.get("target", "")).upper()
-                                    parsed_conf = res.get("confidence")
-                                    parsed_summary = str(res.get("summary") or res.get("reason") or "").strip()
-                                except Exception:
-                                    pass
-                            if not parsed_act:
-                                m_act = re.search(r"(?:action|decision)\s*[:=]\s*[\"\'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
-                                m_tgt = re.search(r"(?:target|prediction|side)\s*[:=]\s*[\"\'\`]?([A-Za-z]+)", raw_c, re.IGNORECASE)
-                                m_sum = re.search(r"(?:summary|reason)\s*[:=]\s*[\"\'\`]?([^\n\r]+)", raw_c, re.IGNORECASE)
-                                if m_act:
-                                    parsed_act = m_act.group(1).upper()
-                                    parsed_tgt = m_tgt.group(1).upper() if m_tgt else ""
-                                    parsed_summary = m_sum.group(1).strip() if m_sum else ""
-
-                            if parsed_tgt in ("BIG", "SMALL"):
-                                raw_summary = re.sub(r"\(Note:.*?\)", "", parsed_summary, flags=re.DOTALL).strip()
-                                raw_summary = re.sub(r"[\*\_\`]", "", raw_summary).strip()
-                                if "." in raw_summary: raw_summary = raw_summary.split(".")[0].strip()
-                                if "\n" in raw_summary: raw_summary = raw_summary.split("\n")[0].strip()
-                                if len(raw_summary.split()) > 7:
-                                    raw_summary = " ".join(raw_summary.split()[:7])
-                                return {
-                                    "ok": True,
-                                    "model": model_name,
-                                    "action": "BET",
-                                    "target": parsed_tgt,
-                                    "confidence": parsed_conf,
-                                    "summary": raw_summary
-                                }
+                                res = json.loads(m.group(0))
+                                raw_pred = str(res.get("prediction", "")).upper()
+                                if raw_pred in ("HIGH", "BIG"):
+                                    parsed_tgt = "BIG"
+                                elif raw_pred in ("LOW", "SMALL"):
+                                    parsed_tgt = "SMALL"
+                                else:
+                                    parsed_tgt = None
+                                parsed_conf = float(res.get("confidence", 85.0))
+                                parsed_summary = str(res.get("reason") or res.get("summary") or "Pattern match").strip()
+                                if parsed_tgt in ("BIG", "SMALL"):
+                                    return {
+                                        "ok": True,
+                                        "model": model_name,
+                                        "action": "BET",
+                                        "target": parsed_tgt,
+                                        "confidence": parsed_conf,
+                                        "summary": parsed_summary
+                                    }
                         elif r.status_code == 429:
-                            continue
-                        else:
                             continue
                     except Exception:
                         continue
-                GROQ_COOLDOWN_UNTIL = time.time() + 30.0
+                GROQ_COOLDOWN_UNTIL = time.time() + 20.0
                 return {"ok": False}
 
             ai_res = _query_master_ai(prompt_master_ai)
@@ -2576,27 +2564,44 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             ai_tgt = ai_res.get("target") if ai_ok else None
             ai_sum = ai_res.get("summary") if ai_ok else ""
 
-            # Level 1 Selection Hierarchy:
+            # Level 1 Model Coordination Hierarchy:
             if is_post_dragon_transition:
                 arbiter_wants_skip = True
                 is_qualified_bet = False
                 final_summary = "Post-Dragon Break Transition: Filtering 50/50 toss until new trend emerges."
                 print(f"🛡️ [POST-DRAGON SHIELD] Post-dragon 50/50 break filtered. SAFE SKIP.", flush=True)
+
+            # Tier 1: AI & Roadmap Confluence (Highest Conviction Sure-Shot)
+            elif ai_ok and roadmap_target_val and ai_tgt == roadmap_target_val:
+                target_val = ai_tgt
+                target_pattern = f"AI & Roadmap Confluence: {roadmap_pattern_name}"
+                final_summary = f"{ai_sum} (Qwen-27B Confluence)"
+                target_conf = 95.0
+                print(f"🤖✨ [AI CONFLUENCE] Qwen-27B AI + Roadmap Agree -> {target_val} ({final_summary})", flush=True)
+
+            # Tier 2: Supreme Roadmap Pattern Recognition (Dragon, 2-2, 1-1 Chop)
             elif roadmap_target_val in ("BIG", "SMALL"):
                 target_val = roadmap_target_val
                 target_pattern = roadmap_pattern_name
                 final_summary = roadmap_pattern_name
-                print(f"🎴 [LEVEL 1 ROADMAP PATTERN] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
+                print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
+
+            # Tier 3: Independent Qwen-27B Deep AI Direction (When table is between classic patterns)
+            elif ai_ok and ai_tgt in ("BIG", "SMALL"):
+                target_val = ai_tgt
+                target_pattern = f"Qwen-27B Deep AI Pattern ({target_val})"
+                final_summary = f"{ai_sum} (Qwen-27B)"
+                target_conf = ai_res.get("confidence", 85.0)
+                print(f"🧠 [MASTER AI] Qwen-27B Independent Pattern Verdict: {target_val} ({ai_sum})", flush=True)
+
+            # Tier 4: 32-Quant Council Mathematical Consensus
             elif size_margin_pct >= 14.0 and w_size in ("BIG", "SMALL"):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
                 print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL"):
-                target_val = ai_tgt
-                target_pattern = f"Master AI Confluence Bet ({target_val})"
-                final_summary = ai_sum or f"Master AI Direction ({target_val})"
-                print(f"🧠 [MASTER AI] AI Prediction: {target_val}", flush=True)
+
+            # Tier 5: Filter ambiguous noise
             elif is_dead_5050_noise and consecutive_skips < 2:
                 arbiter_wants_skip = True
                 is_qualified_bet = False
