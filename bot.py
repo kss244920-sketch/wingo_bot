@@ -26,8 +26,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 # High-Intensity Deep Reasoning Master AI Brain
 MASTER_AI_MODELS = [
     "allam-2-7b",               # Fast direct JSON instruct model (Active, high throughput)
-    "openai/gpt-oss-20b",       # High reasoning quant specialist (Secondary fallback)
-    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Tertiary fallback)
+    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Fast JSON, secondary fallback)
+    "openai/gpt-oss-20b",       # High reasoning quant specialist (Tertiary fallback)
     "openai/gpt-oss-120b",      # 120B supreme arbiter (Final AI fallback)
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
@@ -2368,7 +2368,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                                 {"role": "system", "content": "You are a quantitative casino arbiter. Output valid JSON only: {\"action\": \"BET\", \"target\": \"BIG\"|\"SMALL\", \"confidence\": 85, \"summary\": \"3-5 words\"}. No explanation."},
                                 {"role": "user", "content": prompt_text}
                             ],
-                            "max_tokens": 40,
+                            "max_tokens": 80,
                             "temperature": 0.10
                         }, timeout=2.0)
                         if r.status_code == 200:
