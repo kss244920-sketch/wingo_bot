@@ -2425,21 +2425,37 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     if current_loss_streak > 0:
         # 🛡️ MARTINGALE DISCIPLINED TARGET LOCK (LEVEL 2 TO LEVEL 5)
         # Fundamental Law of Martingale Recovery:
-        # In recovery, NEVER whipsaw or flip between BIG and SMALL on short-term noise or 3-streaks!
+        # In recovery, NEVER whipsaw or flip between BIG and SMALL on noise!
         # Always hold and follow through on CURRENT_CYCLE_TARGET until win or hard stop-loss.
         mult = 3 ** current_loss_streak
         cur_lvl = current_loss_streak + 1
 
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
-        target_val = rec_target
-        CURRENT_CYCLE_TARGET = rec_target
-        target_pattern = f"Level {cur_lvl} Disciplined Target Hold ({rec_target})"
-        final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X)"
-        print(f"🛡️ [L{cur_lvl} RECOVERY LOCK] Following locked target: {rec_target} ({mult}X)", flush=True)
 
-        target_type = "SIZE"
-        is_qualified_bet = True
-        target_conf = min(98.0, 85.0 + current_loss_streak * 3.0)
+        # 🛡️ DRAGON FREEZE SHIELD (Anti-Freight-Train Protection at Level 4/5):
+        # If the market has produced an established opposite runaway dragon of length >= 4 against our target (e.g. BIG x4 vs SMALL),
+        # NEVER throw Level 4 (27X) or Level 5 (81X) capital directly into the runaway dragon!
+        # Freeze and emit SAFE SKIP to preserve capital and hold recovery level until the dragon breaks!
+        if s_streak >= 4 and last_s != rec_target:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Dragon Freeze ({last_s} x{s_streak})"
+            final_summary = f"Dragon Freeze: Runaway {last_s} x{s_streak} active against {rec_target}. Preserving Level {cur_lvl} capital."
+            print(f"🛡️ [DRAGON FREEZE SHIELD] Runaway {last_s} x{s_streak} active against {rec_target}! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+        else:
+            target_val = rec_target
+            CURRENT_CYCLE_TARGET = rec_target
+            target_pattern = f"Level {cur_lvl} Disciplined Target Hold ({rec_target})"
+            final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X)"
+            print(f"🛡️ [L{cur_lvl} RECOVERY LOCK] Following locked target: {rec_target} ({mult}X)", flush=True)
+
+            target_type = "SIZE"
+            is_qualified_bet = True
+            target_conf = min(98.0, 85.0 + current_loss_streak * 3.0)
 
     else:
         # 👑 LEVEL 1 (1X BASE BET): Trend & Structural Execution
