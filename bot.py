@@ -2122,49 +2122,65 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     ai_reason = ""
     ai_ok = False
 
-    # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq)
+    # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq with Allam-7B Failover)
     if GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
         try:
+            # FIX: Slice the ACTUAL last 12 rounds in chronological order (oldest to newest)
             hist_12 = []
-            for it in reversed(history_items[:12]):
+            for it in history_items[-12:]:
                 n = int(it.get("num", 0))
                 sz = "BIG" if n >= 5 else "SMALL"
                 hist_12.append(f"{sz}({n})")
             seq_text = ", ".join(hist_12)
+
             ai_prompt = (
-                f"Recent WinGo 30S outcomes (oldest to newest): [{seq_text}]. "
-                f"Active streak: {last_s} x{s_streak}. "
-                f"Alternation count: {s_alt}x. "
-                f"Predict next outcome: BIG [5-9] or SMALL [0-4]. "
-                f"Return JSON only: {{\"prediction\": \"BIG\"|\"SMALL\", \"confidence\": 80, \"pattern\": \"name\", \"reason\": \"3-5 words\"}}"
+                f"Recent WinGo 30S draws (oldest to newest): [{seq_text}].\n"
+                f"Current state: Last={last_s}({last_num}), Streak={last_s} x{s_streak}, Alternation={s_alt}x.\n"
+                "Mathematical pattern rules:\n"
+                "- If streak >= 3: favor dragon continuation unless extreme streak >= 8.\n"
+                "- If 1-1 chop >= 3: favor alternation continuation.\n"
+                "- If 2-2 symmetry: favor completing or rotating 2-2 pair.\n"
+                "- Otherwise detect momentum trend bias vs mean-reversion.\n"
+                "Predict the NEXT outcome: BIG [5-9] or SMALL [0-4].\n"
+                'Return strictly valid JSON only: {"prediction": "BIG"|"SMALL", "confidence": 75-90, "pattern": "Pattern Name", "reason": "3-6 words explanation"}'
             )
-            r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                "model": "qwen/qwen3.8-27b",
-                "messages": [
-                    {"role": "system", "content": "You are a master mathematical binary sequence pattern analyst. Return strictly valid JSON only."},
-                    {"role": "user", "content": ai_prompt}
-                ],
-                "max_tokens": 120,
-                "temperature": 0.10
-            }, timeout=3.0)
-            if r_ai.status_code == 200:
-                raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-                m = re.search(r'\{[^{}]*\}', raw_c)
-                if m:
-                    res_json = json.loads(m.group(0))
-                    raw_p = str(res_json.get("prediction", "")).upper()
-                    if raw_p in ("BIG", "HIGH"):
-                        ai_tgt = "BIG"
-                    elif raw_p in ("SMALL", "LOW"):
-                        ai_tgt = "SMALL"
-                    if ai_tgt:
-                        ai_conf = float(res_json.get("confidence", 80.0))
-                        ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
-                        ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
-                        ai_ok = True
-                        print(f"🧠 [MASTER AI] Qwen-27B Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
-            elif r_ai.status_code == 429:
-                GROQ_COOLDOWN_UNTIL = time.time() + 15.0
+
+            # Try primary model Qwen-27B, fallback to Allam-7B
+            candidate_models = ["qwen/qwen3.8-27b", "allam-2-7b"]
+            for mdl in candidate_models:
+                try:
+                    r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                        "model": mdl,
+                        "messages": [
+                            {"role": "system", "content": "You are a master mathematical binary sequence pattern analyst. Return strictly valid JSON only."},
+                            {"role": "user", "content": ai_prompt}
+                        ],
+                        "max_tokens": 120,
+                        "temperature": 0.10
+                    }, timeout=2.8)
+                    if r_ai.status_code == 200:
+                        raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                        m = re.search(r'\{[^{}]*\}', raw_c)
+                        if m:
+                            res_json = json.loads(m.group(0))
+                            raw_p = str(res_json.get("prediction", "")).upper()
+                            if raw_p in ("BIG", "HIGH"):
+                                ai_tgt = "BIG"
+                            elif raw_p in ("SMALL", "LOW"):
+                                ai_tgt = "SMALL"
+                            if ai_tgt:
+                                ai_conf = float(res_json.get("confidence", 80.0))
+                                ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
+                                ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
+                                ai_ok = True
+                                mdl_label = "Qwen-27B" if "qwen" in mdl else "Allam-7B"
+                                print(f"🧠 [MASTER AI] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
+                                break
+                    elif r_ai.status_code == 429:
+                        GROQ_COOLDOWN_UNTIL = time.time() + 15.0
+                        break
+                except Exception:
+                    continue
         except Exception as e:
             print(f"[MASTER AI ERROR] {e}", flush=True)
 
