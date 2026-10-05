@@ -436,7 +436,6 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
     if pred_info:
         p_val = pred_info.get("target_val", "")
         p_type = pred_info.get("target_type", "SIZE")
-        signal_grade = pred_info.get("signal_grade", "LEVEL_1")
         if p_val == "SKIP" or p_type == "SKIP":
             pred_line = "\n🎯 <b>Prediction:</b> ⏸️ SKIP | <b>Outcome:</b> ⏸️ SKIPPED"
         else:
@@ -444,20 +443,9 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
                 is_win = (p_val == size)
             else:
                 is_win = (p_val == base_color)
-            grade_num = int(signal_grade.replace("LEVEL_", "")) if "LEVEL_" in signal_grade else 1
-            if is_win:
-                if grade_num == 1:
-                    status_tag = "✅ WIN (Direct L1)"
-                else:
-                    status_tag = f"✅ WIN (L{grade_num} Recovered)"
-            else:
-                if grade_num >= 5:
-                    status_tag = "🛑 STOP-LOSS (Capital Guard)"
-                else:
-                    next_l = grade_num + 1
-                    status_tag = f"❌ MISS (Escalating to L{next_l} {3**(next_l-1)}X)"
+            outcome_tag = "✅ WIN" if is_win else "❌ LOSS"
             p_emoji = "🐘 BIG" if p_val == "BIG" else ("🐜 SMALL" if p_val == "SMALL" else p_val)
-            pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} ({signal_grade}) | <b>Outcome:</b> {status_tag}"
+            pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} | <b>Outcome:</b> {outcome_tag}"
 
     text = (
         f"📦 <b>[CLOUD DB RECORD]</b>\n"
