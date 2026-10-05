@@ -2124,13 +2124,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             ai_prompt = (
                 f"Recent WinGo 30S draws (oldest to newest): [{seq_text}].\n"
                 f"Current state: Last={last_s}({last_num}), Streak={last_s} x{s_streak}, Alternation={s_alt}x.\n"
-                "Mathematical pattern rules:\n"
-                "- If streak >= 3: favor dragon continuation unless extreme streak >= 8.\n"
-                "- If 1-1 chop >= 3: favor alternation continuation.\n"
-                "- If 2-2 symmetry: favor completing or rotating 2-2 pair.\n"
-                "- Otherwise detect momentum trend bias vs mean-reversion.\n"
-                "Predict the NEXT outcome: BIG [5-9] or SMALL [0-4].\n"
-                'Return strictly valid JSON only: {"prediction": "BIG"|"SMALL", "confidence": 75-90, "pattern": "Pattern Name", "reason": "3-6 words explanation"}'
+                "Sniper Capital Preservation Rules:\n"
+                "1. DRAGON TREND: If streak >= 3, predict trend continuation (BIG if BIG streak, SMALL if SMALL streak) with confidence 80-92%.\n"
+                "2. 1-1 CHOP: If alternation >= 3 (B-S-B-S), predict next alternation (confidence 80-88%).\n"
+                "3. 2-2 DOUBLE-STEP: If sequence is AA BB A, predict A to complete 2-2; if AA BB AA, predict opposite to rotate (confidence 80-88%).\n"
+                "4. NOISE FILTER: If market is choppy, ambiguous, or lacks clear pattern, return prediction: 'SKIP' with confidence 50-65% to protect capital. NEVER guess on noise!\n"
+                "Predict the NEXT outcome: BIG [5-9], SMALL [0-4], or SKIP.\n"
+                'Return strictly valid JSON only: {"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Pattern Name", "reason": "3-6 words explanation"}'
             )
 
             # Try primary model Qwen-27B, fallback to Allam-7B
@@ -2140,11 +2140,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                     r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                         "model": mdl,
                         "messages": [
-                            {"role": "system", "content": "You are a master mathematical binary sequence pattern analyst. Return strictly valid JSON only."},
+                            {"role": "system", "content": "You are an ultra-disciplined quantitative sniper. Protect capital above all. Never guess on choppy noise. Return strictly valid JSON only."},
                             {"role": "user", "content": ai_prompt}
                         ],
                         "max_tokens": 120,
-                        "temperature": 0.10
+                        "temperature": 0.05
                     }, timeout=2.8)
                     if r_ai.status_code == 200:
                         raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -2156,8 +2156,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                                 ai_tgt = "BIG"
                             elif raw_p in ("SMALL", "LOW"):
                                 ai_tgt = "SMALL"
+                            elif raw_p in ("SKIP", "WAIT", "NONE", "PASS"):
+                                ai_tgt = "SKIP"
                             if ai_tgt:
-                                ai_conf = float(res_json.get("confidence", 80.0))
+                                ai_conf = float(res_json.get("confidence", 80.0 if ai_tgt != "SKIP" else 55.0))
                                 ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
                                 ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
                                 ai_ok = True
@@ -2172,10 +2174,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         except Exception as e:
             print(f"[MASTER AI ERROR] {e}", flush=True)
 
-    ai_weight = 6.0 if ai_ok else 1.0
+    ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0) else None
+    ai_weight = 6.0 if (ai_ok and ai_vote_val) else 1.0
 
     all_specialists = [
-        {"name": "Agent AI (Master Qwen-27B Neural Brain)", "val": ai_tgt, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}"},
+        {"name": "Agent AI (Master Qwen-27B Neural Brain)", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}"},
         {"name": "Agent 0 (Full DB 3,800-Round Sequence Matcher)", "val": full_db_size_val, "conf": full_db_size_conf, "arg": full_db_size_desc},
         {"name": "Agent 0B (Full DB 3,800-Round Digit Matcher)", "val": full_db_num_val, "conf": full_db_num_conf, "arg": full_db_num_desc},
         {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else (75.0 if s_streak >= 2 else 50.0), "arg": f"Size streak len: {s_streak}"},
@@ -2429,36 +2432,41 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     final_summary = ""
 
     if current_loss_streak > 0:
-        # 🛡️ MARTINGALE DISCIPLINED TARGET LOCK (LEVEL 2 TO LEVEL 5)
-        # Fundamental Law of Martingale Recovery:
-        # In recovery, NEVER whipsaw or flip between BIG and SMALL on noise!
-        # Always hold and follow through on CURRENT_CYCLE_TARGET until win or hard stop-loss.
+        # 🛡️ SMART ADAPTIVE RECOVERY PROTOCOL (LEVEL 2 TO LEVEL 5)
         mult = 3 ** current_loss_streak
         cur_lvl = current_loss_streak + 1
 
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
-        # 🛡️ DRAGON FREEZE SHIELD (Anti-Freight-Train Protection at Level 2-5):
-        # If the market has produced an established opposite runaway dragon of length >= 3 against our target (e.g. BIG x3 vs SMALL),
-        # NEVER throw Level 3 (9X), Level 4 (27X), or Level 5 (81X) capital directly into the runaway dragon!
-        # Freeze and emit SAFE SKIP to preserve capital and hold recovery level until the dragon breaks!
-        if s_streak >= 3 and last_s != rec_target:
-            arbiter_wants_skip = True
-            is_qualified_bet = False
-            target_type = "SKIP"
-            target_val = "SKIP"
-            target_conf = 50.0
-            signal_grade = "SKIP"
-            detected_pattern_name = f"Dragon Freeze ({last_s} x{s_streak})"
-            final_summary = f"Dragon Freeze: Runaway {last_s} x{s_streak} active against {rec_target}. Preserving Level {cur_lvl} capital."
-            print(f"🛡️ [DRAGON FREEZE SHIELD] Runaway {last_s} x{s_streak} active against {rec_target}! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+        # 🛡️ 1. ANTI-DRAGON REVERSAL SHIELD (Never fight streak >= 2 in recovery!):
+        # If market printed an opposite outcome that has now formed a streak >= 2 against our target:
+        # PIVOT and ride the winning trend! Do NOT commit suicide against a forming dragon!
+        if s_streak >= 2 and last_s != rec_target:
+            if s_streak >= 4:
+                # Mature runaway dragon: freeze and skip to avoid catching exhaustion top
+                arbiter_wants_skip = True
+                is_qualified_bet = False
+                target_type = "SKIP"
+                target_val = "SKIP"
+                target_conf = 50.0
+                signal_grade = "SKIP"
+                detected_pattern_name = f"Dragon Freeze ({last_s} x{s_streak})"
+                final_summary = f"Dragon Freeze: Runaway {last_s} x{s_streak} active. Level {cur_lvl} preserved."
+                print(f"🛡️ [DRAGON FREEZE SHIELD] Runaway {last_s} x{s_streak} active! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+            else:
+                # Emerging dragon (streak 2 or 3): PIVOT to ride the dragon to a recovery win!
+                rec_target = last_s
+                CURRENT_CYCLE_TARGET = last_s
+                target_val = last_s
+                target_pattern = f"Dragon Pivot Recovery ({last_s} x{s_streak})"
+                final_summary = f"L{cur_lvl} Trend Pivot: Riding {last_s} x{s_streak} dragon ({mult}X)"
+                print(f"🔄 [DRAGON PIVOT RECOVERY] Market formed {last_s} x{s_streak}! Pivoting L{cur_lvl} to {last_s} ({mult}X)!", flush=True)
+                target_type = "SIZE"
+                is_qualified_bet = True
+                target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
 
-        # 🛡️ POST-DRAGON REBOUND SHIELD (Prevent 1-Cut Dragon Rebound Trap):
-        # When an opposite dragon of >= 3 just broke with a single opposite outcome (e.g. BIG x5 -> SMALL x1),
-        # the market is highly prone to an immediate dragon rebound (back to BIG).
-        # At high recovery levels (Level 3, 4, 5), NEVER risk massive capital on the 1-cut rebound round!
-        # Skip 1 round to let the reversal confirm itself!
-        elif is_post_dragon_transition and cur_lvl >= 3:
+        # 🛡️ 2. POST-DRAGON REBOUND SHIELD (Prevent 1-Cut Dragon Rebound Trap):
+        elif is_post_dragon_transition and cur_lvl >= 2:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2466,13 +2474,24 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             target_conf = 50.0
             signal_grade = "SKIP"
             detected_pattern_name = f"Post-Dragon Rebound Shield (Prev {seq_runs[-2][0]} x{prev_dragon_len})"
-            final_summary = f"Post-Dragon Rebound Shield: Allowing market to settle after {prev_dragon_len}x dragon. Preserving Level {cur_lvl} capital."
+            final_summary = f"Post-Dragon Rebound Shield: Settling after {prev_dragon_len}x dragon. Level {cur_lvl} preserved."
             print(f"🛡️ [POST-DRAGON REBOUND SHIELD] Rebound hazard after {prev_dragon_len}x dragon! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
-        # 🧠 MASTER AI HIGH-CONVICTION CONFLICT SHIELD (At High Recovery Levels L4/L5):
-        # If Master AI (Qwen-27B) with >= 75% confidence explicitly warns that the market is going the OPPOSITE way,
-        # do NOT throw 27X or 81X capital against the AI! Emit SAFE SKIP to protect capital!
-        elif ai_tgt and ai_tgt != rec_target and ai_conf >= 75.0 and cur_lvl >= 4 and ai_ok:
+        # 🛡️ 3. HIGH-LEVEL NOISE GUARD (At Level 3, 4, 5, only fire on confirmed edge):
+        elif cur_lvl >= 3 and not roadmap_target_val and (not ai_ok or ai_tgt == "SKIP" or ai_conf < 80.0) and size_margin_pct < 30.0:
+            # At Level 3+ (9X, 27X, 81X), NEVER risk huge money on ambiguous choppy 50/50 noise!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"High-Level Capital Shield (L{cur_lvl})"
+            final_summary = f"Level {cur_lvl} Sniper Guard: Market is choppy noise. Holding recovery level until high-conviction setup."
+            print(f"🛡️ [HIGH-LEVEL CAPITAL SHIELD] Choppy noise at Level {cur_lvl}! Preserving capital with SAFE SKIP.", flush=True)
+
+        # 🧠 4. MASTER AI DIVERGENCE GUARD:
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 75.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2483,13 +2502,23 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"Master AI Divergence Guard: Qwen-27B opposes {rec_target} with {ai_conf:.0f}% confidence. Preserving Level {cur_lvl} capital."
             print(f"🛡️ [MASTER AI DIVERGENCE GUARD] Qwen-27B opposes {rec_target} ({ai_conf:.0f}%)! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
+        # 5. CONFIRMED ROADMAP IN RECOVERY:
+        elif roadmap_target_val in ("BIG", "SMALL"):
+            target_val = roadmap_target_val
+            CURRENT_CYCLE_TARGET = roadmap_target_val
+            target_pattern = f"Recovery Roadmap Follow ({roadmap_target_val})"
+            final_summary = f"L{cur_lvl} Recovery: {roadmap_pattern_name} ({mult}X)"
+            print(f"🎴 [L{cur_lvl} RECOVERY ROADMAP] Following {roadmap_pattern_name} -> {target_val} ({mult}X)", flush=True)
+            target_type = "SIZE"
+            is_qualified_bet = True
+            target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
+
         else:
             target_val = rec_target
             CURRENT_CYCLE_TARGET = rec_target
             target_pattern = f"Level {cur_lvl} Disciplined Target Hold ({rec_target})"
             final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X)"
             print(f"🛡️ [L{cur_lvl} RECOVERY LOCK] Following locked target: {rec_target} ({mult}X)", flush=True)
-
             target_type = "SIZE"
             is_qualified_bet = True
             target_conf = min(98.0, 85.0 + current_loss_streak * 3.0)
@@ -2521,48 +2550,36 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_conf = max(88.0, calc_conf)
                 print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
 
-            # Tier 2: Master AI & Quant Concurrence (Both AI and Council agree on same side!)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and size_margin_pct >= 10.0:
+            # Tier 2: Master AI & Quant Concurrence (Both AI >= 80% and Council agree on same side!)
+            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 80.0 and size_margin_pct >= 10.0:
                 target_val = ai_tgt
                 target_pattern = f"Qwen-27B Deep AI & Quant Concurrence ({target_val})"
                 final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)"
                 target_conf = max(ai_conf, calc_conf)
                 print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
 
-            # Tier 3: Independent High-Conviction AI Signal (>= 75% confidence)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0 and size_margin_pct < 25.0:
+            # Tier 3: Independent High-Conviction AI Signal (>= 80% confidence, NOT SKIP)
+            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 80.0 and size_margin_pct < 25.0:
                 target_val = ai_tgt
                 target_pattern = f"Qwen-27B Deep AI Pattern ({target_val})"
                 final_summary = f"{ai_pat or ai_reason} (Qwen-27B)"
                 target_conf = ai_conf
                 print(f"🧠 [MASTER AI SUPREMACY] Qwen-27B High-Conviction Verdict: {target_val} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
 
-            # Tier 4: Strong Mathematical Quant Consensus Edge (>= 18% margin) when AI does NOT oppose
-            elif size_margin_pct >= 18.0 and w_size in ("BIG", "SMALL") and (not ai_ok or ai_tgt == w_size or ai_conf < 70.0):
+            # Tier 4: Strong Mathematical Quant Consensus Edge (>= 30% margin) when AI does NOT oppose
+            elif size_margin_pct >= 30.0 and w_size in ("BIG", "SMALL") and (not ai_ok or ai_tgt == w_size or ai_tgt == "SKIP" or ai_conf < 70.0):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
                 target_conf = calc_conf
                 print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
 
-            # Tier 5: Conflict or Ambiguous Noise -> Capital Protection SAFE SKIP
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and w_size in ("BIG", "SMALL") and ai_tgt != w_size and ai_conf >= 70.0:
-                arbiter_wants_skip = True
-                is_qualified_bet = False
-                final_summary = f"AI-Quant Conflict: Qwen-27B predicts {ai_tgt} while Quants say {w_size}. SAFE SKIP."
-                print(f"🛡️ [AI-QUANT CONFLICT SHIELD] Qwen-27B ({ai_tgt}) opposes Quants ({w_size})! SAFE SKIP.", flush=True)
-
-            elif is_dead_5050_noise:
-                arbiter_wants_skip = True
-                is_qualified_bet = False
-                final_summary = f"Ambiguous 50/50 Noise (Edge {size_margin_pct:.0f}%): Capital preserved."
-                print(f"🛡️ [50/50 NOISE SHIELD] Low margin ({size_margin_pct:.0f}%) noise filtered. SAFE SKIP.", flush=True)
-
+            # Tier 5: Everything else is ambiguous noise -> Capital Protection SAFE SKIP
             else:
                 arbiter_wants_skip = True
                 is_qualified_bet = False
-                final_summary = "Ambiguous Market Structure: Preserving capital."
-                print(f"🛡️ [STRUCTURE SHIELD] Unconfirmed setup filtered. SAFE SKIP.", flush=True)
+                final_summary = "Ambiguous Noise Filtered: Preserving capital."
+                print(f"🛡️ [SNIPER SHIELD] Choppy noise filtered. SAFE SKIP.", flush=True)
 
             if not arbiter_wants_skip:
                 CURRENT_CYCLE_TARGET = target_val
