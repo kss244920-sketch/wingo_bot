@@ -2434,11 +2434,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
-        # 🛡️ DRAGON FREEZE SHIELD (Anti-Freight-Train Protection at Level 4/5):
-        # If the market has produced an established opposite runaway dragon of length >= 4 against our target (e.g. BIG x4 vs SMALL),
-        # NEVER throw Level 4 (27X) or Level 5 (81X) capital directly into the runaway dragon!
+        # 🛡️ DRAGON FREEZE SHIELD (Anti-Freight-Train Protection at Level 2-5):
+        # If the market has produced an established opposite runaway dragon of length >= 3 against our target (e.g. BIG x3 vs SMALL),
+        # NEVER throw Level 3 (9X), Level 4 (27X), or Level 5 (81X) capital directly into the runaway dragon!
         # Freeze and emit SAFE SKIP to preserve capital and hold recovery level until the dragon breaks!
-        if s_streak >= 4 and last_s != rec_target:
+        if s_streak >= 3 and last_s != rec_target:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2448,6 +2448,37 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             detected_pattern_name = f"Dragon Freeze ({last_s} x{s_streak})"
             final_summary = f"Dragon Freeze: Runaway {last_s} x{s_streak} active against {rec_target}. Preserving Level {cur_lvl} capital."
             print(f"🛡️ [DRAGON FREEZE SHIELD] Runaway {last_s} x{s_streak} active against {rec_target}! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+
+        # 🛡️ POST-DRAGON REBOUND SHIELD (Prevent 1-Cut Dragon Rebound Trap):
+        # When an opposite dragon of >= 3 just broke with a single opposite outcome (e.g. BIG x5 -> SMALL x1),
+        # the market is highly prone to an immediate dragon rebound (back to BIG).
+        # At high recovery levels (Level 3, 4, 5), NEVER risk massive capital on the 1-cut rebound round!
+        # Skip 1 round to let the reversal confirm itself!
+        elif is_post_dragon_transition and cur_lvl >= 3:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Post-Dragon Rebound Shield (Prev {seq_runs[-2][0]} x{prev_dragon_len})"
+            final_summary = f"Post-Dragon Rebound Shield: Allowing market to settle after {prev_dragon_len}x dragon. Preserving Level {cur_lvl} capital."
+            print(f"🛡️ [POST-DRAGON REBOUND SHIELD] Rebound hazard after {prev_dragon_len}x dragon! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+
+        # 🧠 MASTER AI HIGH-CONVICTION CONFLICT SHIELD (At High Recovery Levels L4/L5):
+        # If Master AI (Qwen-27B) with >= 75% confidence explicitly warns that the market is going the OPPOSITE way,
+        # do NOT throw 27X or 81X capital against the AI! Emit SAFE SKIP to protect capital!
+        elif ai_tgt and ai_tgt != rec_target and ai_conf >= 75.0 and cur_lvl >= 4 and ai_ok:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Master AI Divergence Guard ({ai_tgt})"
+            final_summary = f"Master AI Divergence Guard: Qwen-27B opposes {rec_target} with {ai_conf:.0f}% confidence. Preserving Level {cur_lvl} capital."
+            print(f"🛡️ [MASTER AI DIVERGENCE GUARD] Qwen-27B opposes {rec_target} ({ai_conf:.0f}%)! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+
         else:
             target_val = rec_target
             CURRENT_CYCLE_TARGET = rec_target
