@@ -517,17 +517,15 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
             chop_count += 1
         else:
             break
-    if chop_count >= 4:
-        if chop_count >= 9:
-            return last_val, 78.0, f"Chop Exhaustion ({chop_count}x -> Reversal)"
-        chop_conf = min(90.0, 75.0 + chop_count * 2.0)
+    if chop_count == 4:
+        chop_conf = 84.0
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
+    elif chop_count >= 5:
+        return last_val, 50.0, f"Chop Exhaustion Zone ({chop_count}x -> Filtered)"
 
-    # 3. 2-2 Double-Step Pattern (AA BB AA) - Strictly requires >= 3 alternating runs of 2
+    # 3. 2-2 Double-Step Pattern Rotation (AA BB AA) - Strictly requires >= 3 alternating runs of 2
     if len(runs) >= 3 and runs[-1][1] == 2 and runs[-2][1] == 2 and runs[-3][1] == 2:
         return opp_val, 84.0, f"2-2 Double-Step ({opp_val} Shift)"
-    if len(runs) >= 3 and runs[-1][1] == 1 and runs[-2][1] == 2 and runs[-3][1] == 2:
-        return last_val, 84.0, f"2-2 Double-Step ({last_val} Pair)"
 
     # 4. Confirmed 3-3 Triplet Pattern (AAA BBB) - Strictly requires >= 2 runs of 3
     if len(runs) >= 2:
@@ -2350,38 +2348,39 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # 2. Dragon Trend (Streak >= 3)
     is_dragon_confirmed = (s_streak >= 3)
 
-    # 3. 2-2 Double-Step Pair Completion: AA BB A -> complete pair with last_s (requires >= 3 runs)
-    is_2_2_completion = (len(seq_runs) >= 3 and seq_runs[-1][1] == 1 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
-
-    # 4. 2-2 Double-Step Pair Rotation: AA BB AA -> rotate to opp_s (requires >= 3 runs of 2)
+    # 3. 2-2 Double-Step Pair Rotation: AA BB AA -> rotate to opp_s (strictly requires >= 3 runs of 2)
     is_2_2_rotation = (len(seq_runs) >= 3 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
-    is_2_2 = is_2_2_rotation or is_2_2_completion
+    is_2_2 = is_2_2_rotation
 
-    # 5. True 1-1 Chop Alternation (requires at least 4 alternating singletons)
-    is_chop_confirmed = (_chop_count >= 4 and _chop_count <= 8)
+    # 4. True 1-1 Chop Alternation (requires strictly 4 alternating singletons; >= 5 is exhaustion zone)
+    is_chop_confirmed = (_chop_count == 4)
 
     roadmap_pattern_name = None
     roadmap_target_val = None
 
-    if is_dragon_confirmed and s_streak < 10:
+    if is_dragon_confirmed and s_streak < 6:
         roadmap_target_val = last_s
         roadmap_pattern_name = f"Dragon Trend Momentum ({last_s} x{s_streak})"
-    elif is_2_2_completion:
-        roadmap_target_val = last_s
-        roadmap_pattern_name = f"2-2 Double-Step Pair Completion ({last_s})"
     elif is_2_2_rotation:
         roadmap_target_val = opp_s
         roadmap_pattern_name = f"2-2 Double-Step Rotation ({opp_s})"
     elif is_chop_confirmed:
         roadmap_target_val = opp_s
-        roadmap_pattern_name = f"1-1 Chop Swing ({_chop_count}x Alternation)"
+        roadmap_pattern_name = f"1-1 Chop Swing (4x Alternation)"
 
-    # If genuine confirmed structural roadmap pattern exists, align council
+    # If genuine confirmed structural roadmap pattern exists, verify no sharp conflict with quants
     if roadmap_target_val in ("BIG", "SMALL"):
-        w_size = roadmap_target_val
-        target_pattern = roadmap_pattern_name
-        calc_conf = max(88.0, calc_conf)
-        print(f"🎴 [ROADMAP SUPREMACY] Pattern Active: {roadmap_pattern_name} -> Lock {w_size}!", flush=True)
+        # If quant council strongly opposes roadmap target (margin >= 20%), filter conflict to protect capital
+        if (big_weight > small_weight and roadmap_target_val == "SMALL" and size_margin_pct >= 20.0) or \
+           (small_weight > big_weight and roadmap_target_val == "BIG" and size_margin_pct >= 20.0):
+            print(f"🛡️ [ROADMAP-QUANT CONFLICT] Roadmap ({roadmap_target_val}) opposes Quants ({w_size} | {size_margin_pct:.0f}%). Filtering conflict!", flush=True)
+            roadmap_target_val = None
+            roadmap_pattern_name = None
+        else:
+            w_size = roadmap_target_val
+            target_pattern = roadmap_pattern_name
+            calc_conf = max(88.0, calc_conf)
+            print(f"🎴 [ROADMAP SUPREMACY] Pattern Active: {roadmap_pattern_name} -> Lock {w_size}!", flush=True)
 
     # ====================================================
     # 🎯 2. PERMANENT LOCK: STRICTLY BIG / SMALL (SIZE)
@@ -2430,6 +2429,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_qualified_bet = False
     arbiter_wants_skip = False
     final_summary = ""
+    detected_pattern_name = None
 
     if current_loss_streak > 0:
         # 🛡️ SMART ADAPTIVE RECOVERY PROTOCOL (LEVEL 2 TO LEVEL 5)
@@ -2438,32 +2438,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
-        # 🛡️ 1. ANTI-DRAGON REVERSAL SHIELD (Never fight streak >= 2 in recovery!):
-        # If market printed an opposite outcome that has now formed a streak >= 2 against our target:
-        # PIVOT and ride the winning trend! Do NOT commit suicide against a forming dragon!
+        # 🛡️ 1. ANTI-DRAGON CAPITAL SHIELD (Never fight opposing streak in recovery!):
+        # If market printed an opposite outcome that has now formed a streak >= 2 against our recovery target:
+        # DO NOT PIVOT (avoids 2-2 ping-pong trap)! DO NOT BET AGAINST IT!
+        # SAFE SKIP! Preserves Level cur_lvl capital until the opposing streak breaks!
         if s_streak >= 2 and last_s != rec_target:
-            if s_streak >= 4:
-                # Mature runaway dragon: freeze and skip to avoid catching exhaustion top
-                arbiter_wants_skip = True
-                is_qualified_bet = False
-                target_type = "SKIP"
-                target_val = "SKIP"
-                target_conf = 50.0
-                signal_grade = "SKIP"
-                detected_pattern_name = f"Dragon Freeze ({last_s} x{s_streak})"
-                final_summary = f"Dragon Freeze: Runaway {last_s} x{s_streak} active. Level {cur_lvl} preserved."
-                print(f"🛡️ [DRAGON FREEZE SHIELD] Runaway {last_s} x{s_streak} active! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
-            else:
-                # Emerging dragon (streak 2 or 3): PIVOT to ride the dragon to a recovery win!
-                rec_target = last_s
-                CURRENT_CYCLE_TARGET = last_s
-                target_val = last_s
-                target_pattern = f"Dragon Pivot Recovery ({last_s} x{s_streak})"
-                final_summary = f"L{cur_lvl} Trend Pivot: Riding {last_s} x{s_streak} dragon ({mult}X)"
-                print(f"🔄 [DRAGON PIVOT RECOVERY] Market formed {last_s} x{s_streak}! Pivoting L{cur_lvl} to {last_s} ({mult}X)!", flush=True)
-                target_type = "SIZE"
-                is_qualified_bet = True
-                target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Anti-Dragon Capital Shield ({last_s} x{s_streak})"
+            final_summary = f"Anti-Dragon Shield: Opposing {last_s} x{s_streak} active. Holding Level {cur_lvl} target {rec_target} safely."
+            print(f"🛡️ [ANTI-DRAGON CAPITAL SHIELD] Opposing {last_s} x{s_streak} active against {rec_target}! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
         # 🛡️ 2. POST-DRAGON REBOUND SHIELD (Prevent 1-Cut Dragon Rebound Trap):
         elif is_post_dragon_transition and cur_lvl >= 2:
@@ -2478,8 +2466,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             print(f"🛡️ [POST-DRAGON REBOUND SHIELD] Rebound hazard after {prev_dragon_len}x dragon! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
         # 🛡️ 3. HIGH-LEVEL NOISE GUARD (At Level 3, 4, 5, only fire on confirmed edge):
-        elif cur_lvl >= 3 and not roadmap_target_val and (not ai_ok or ai_tgt == "SKIP" or ai_conf < 80.0) and size_margin_pct < 30.0:
-            # At Level 3+ (9X, 27X, 81X), NEVER risk huge money on ambiguous choppy 50/50 noise!
+        elif cur_lvl >= 3 and (size_margin_pct < 20.0 or w_size != rec_target):
+            # At Level 3+ (9X, 27X, 81X), NEVER risk huge money on ambiguous choppy 50/50 noise or when quants oppose our target!
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2487,8 +2475,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             target_conf = 50.0
             signal_grade = "SKIP"
             detected_pattern_name = f"High-Level Capital Shield (L{cur_lvl})"
-            final_summary = f"Level {cur_lvl} Sniper Guard: Market is choppy noise. Holding recovery level until high-conviction setup."
-            print(f"🛡️ [HIGH-LEVEL CAPITAL SHIELD] Choppy noise at Level {cur_lvl}! Preserving capital with SAFE SKIP.", flush=True)
+            final_summary = f"Level {cur_lvl} Sniper Guard: Market is choppy noise or divergent. Holding recovery level until high-conviction setup."
+            print(f"🛡️ [HIGH-LEVEL CAPITAL SHIELD] Choppy noise or divergence at Level {cur_lvl}! Preserving capital with SAFE SKIP.", flush=True)
 
         # 🧠 4. MASTER AI DIVERGENCE GUARD:
         elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 75.0:
@@ -2501,17 +2489,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             detected_pattern_name = f"Master AI Divergence Guard ({ai_tgt})"
             final_summary = f"Master AI Divergence Guard: Qwen-27B opposes {rec_target} with {ai_conf:.0f}% confidence. Preserving Level {cur_lvl} capital."
             print(f"🛡️ [MASTER AI DIVERGENCE GUARD] Qwen-27B opposes {rec_target} ({ai_conf:.0f}%)! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
-
-        # 5. CONFIRMED ROADMAP IN RECOVERY:
-        elif roadmap_target_val in ("BIG", "SMALL"):
-            target_val = roadmap_target_val
-            CURRENT_CYCLE_TARGET = roadmap_target_val
-            target_pattern = f"Recovery Roadmap Follow ({roadmap_target_val})"
-            final_summary = f"L{cur_lvl} Recovery: {roadmap_pattern_name} ({mult}X)"
-            print(f"🎴 [L{cur_lvl} RECOVERY ROADMAP] Following {roadmap_pattern_name} -> {target_val} ({mult}X)", flush=True)
-            target_type = "SIZE"
-            is_qualified_bet = True
-            target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
 
         else:
             target_val = rec_target
@@ -2566,8 +2543,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 target_conf = ai_conf
                 print(f"🧠 [MASTER AI SUPREMACY] Qwen-27B High-Conviction Verdict: {target_val} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
 
-            # Tier 4: Strong Mathematical Quant Consensus Edge (>= 30% margin) when AI does NOT oppose
-            elif size_margin_pct >= 30.0 and w_size in ("BIG", "SMALL") and (not ai_ok or ai_tgt == w_size or ai_tgt == "SKIP" or ai_conf < 70.0):
+            # Tier 4: Strong Mathematical Quant Consensus Edge (>= 25% margin) when AI does NOT oppose
+            elif size_margin_pct >= 25.0 and w_size in ("BIG", "SMALL") and (not ai_ok or ai_tgt == w_size or ai_tgt == "SKIP" or ai_conf < 70.0):
                 target_val = w_size
                 target_pattern = f"Quant Consensus Edge ({target_val})"
                 final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
@@ -2595,7 +2572,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         target_val = "SKIP"
         target_conf = 50.0
         signal_grade = "SKIP"
-        detected_pattern_name = "Filtered Noise"
+        if not detected_pattern_name:
+            detected_pattern_name = "Filtered Noise"
         jackpot_tip = None
         if not final_summary:
             final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
