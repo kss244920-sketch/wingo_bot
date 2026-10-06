@@ -426,31 +426,32 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
     if not STORAGE_CHANNEL_ID:
         return
 
+    c_emoji = "🔴" if base_color == "RED" else "🟢"
     if has_violet:
-        c_tag = "🔴 RED + 🟣 VIOLET" if base_color == "RED" else "🟢 GREEN + 🟣 VIOLET"
+        c_tag = f"{c_emoji} <code>{base_color}</code> + 🟣 <code>VIOLET</code>"
     else:
-        c_tag = "🔴 RED" if base_color == "RED" else "🟢 GREEN"
+        c_tag = f"{c_emoji} <code>{base_color}</code>"
 
-    s_emoji = "🐘 BIG" if size == "BIG" else "🐜 SMALL"
     pred_line = ""
     if pred_info:
         p_val = pred_info.get("target_val", "")
         p_type = pred_info.get("target_type", "SIZE")
         if p_val == "SKIP" or p_type == "SKIP":
-            pred_line = "\n<blockquote>🎯 <b>Prediction:</b> ⏸️ SKIP | <b>Outcome:</b> ⏸️ SKIPPED</blockquote>"
+            pred_line = "\n<blockquote>🎯 Prediction: ⏸️ <code>SKIP</code> | Outcome: ⏸️ <code>SKIPPED</code></blockquote>"
         else:
             if p_type == "SIZE":
                 is_win = (p_val == size)
             else:
                 is_win = (p_val == base_color)
-            outcome_tag = "✅ WIN" if is_win else "❌ LOSS"
-            pred_line = f"\n<blockquote>🎯 <b>Prediction:</b> {p_val} | <b>Outcome:</b> {outcome_tag}</blockquote>"
+            outcome_emoji = "✅" if is_win else "❌"
+            outcome_text = "WIN" if is_win else "LOSS"
+            pred_line = f"\n<blockquote>🎯 Prediction: <code>{p_val}</code> | Outcome: {outcome_emoji} <code>{outcome_text}</code></blockquote>"
 
     text = (
-        f"📦 <b>[CLOUD DB RECORD]</b>\n"
-        f"<blockquote>🔢 <b>Season ID (Period):</b> <code>{period}</code>\n"
-        f"🎨 <b>Color:</b> {size} (No. {number}) | {c_tag}</blockquote>\n"
-        f"📊 <b>Total Synced:</b> {len(MEMORY_HISTORY)} rounds"
+        f"📦 <code>[CLOUD DB RECORD]</code>\n"
+        f"<blockquote>🔢 Season ID (Period): <code>{period}</code>\n"
+        f"🎨 Color: <code>{size} (No. {number})</code> | {c_tag}</blockquote>\n"
+        f"📊 Total Synced: {len(MEMORY_HISTORY)} rounds"
         f"{pred_line}"
     )
     try:
@@ -2600,8 +2601,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     if target_type == "SKIP" or target_val == "SKIP":
         msg = (
             f"<blockquote>"
-            f"⏳ <b>Period :</b> <code>...{short_period}</code>\n"
-            f"🎯 <b>Prediction :</b> ⏸️ <b>SKIP</b>"
+            f"⏳ Period : <code>...{short_period}</code>\n"
+            f"🎯 Prediction : ⏸️ <code>SKIP</code>"
             f"</blockquote>"
         )
         try:
@@ -2613,9 +2614,24 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
 
     # Screenshot 2 Format for Prediction:
     arrow = "🔺" if target_val == "BIG" else "🔻"
-    num_chances = "5, 6, 7, 8, 9" if target_val == "BIG" else "0, 1, 2, 3, 4"
+    cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
+    single_num = None
     if jackpot_tip:
-        num_chances = f"{jackpot_tip} ({'5-9' if target_val == 'BIG' else '0-4'})"
+        nums = re.findall(r"\b\d\b", str(jackpot_tip))
+        if nums and int(nums[0]) in cand_nums:
+            single_num = int(nums[0])
+
+    if single_num is None:
+        if MEMORY_HISTORY:
+            last_num = MEMORY_HISTORY[-1].get("number", 0)
+            trans_counts = defaultdict(int)
+            for i in range(len(MEMORY_HISTORY) - 1):
+                if MEMORY_HISTORY[i].get("number") == last_num:
+                    trans_counts[MEMORY_HISTORY[i + 1].get("number")] += 1
+            sorted_cands = sorted(cand_nums, key=lambda n: trans_counts[n], reverse=True)
+            single_num = sorted_cands[0]
+        else:
+            single_num = 7 if target_val == "BIG" else 3
 
     level = CURRENT_LOSS_STREAK + 1
     mult = 3 ** (level - 1)
@@ -2636,12 +2652,12 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         strategy_text += " [🟣 Violet 0/5 Alert]"
 
     msg = (
-        f"<b>Win Go 30-SEC Prediction</b>\n"
+        f"<code>Win Go 30-SEC Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
-        f"<blockquote>Bet on ➔ {arrow} <b>{target_val}</b>\n"
-        f"Number Chance➔ <b>{num_chances}</b></blockquote>\n\n"
-        f"<b>CONCLUSION of Engine:</b>\n"
+        f"📝 Period: <code>{target_period}</code>\n\n"
+        f"<blockquote>Bet on ➔ {arrow} <code>{target_val}</code>\n"
+        f"Number Chance➔ <code>{single_num}</code></blockquote>\n\n"
+        f"<code>CONCLUSION of Engine:</code>\n"
         f"─────────────────────\n"
         f"<i>{strategy_text}</i>"
     )
@@ -2649,7 +2665,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     try:
         # Send without pin so channel is not spammed with pinned message notifications
         send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
-        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Level {level} | Pattern: {pattern_name}", flush=True)
+        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Num: {single_num} | Level {level} | Pattern: {pattern_name}", flush=True)
     except Exception as e:
         print(f"[USER ALERT ERROR] {e}", flush=True)
 
@@ -2713,7 +2729,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
             conclusion_text += f"\n🟣 Violet Bonus Hit: Number {actual_number} (4.5X Win!)"
 
-        result_tag = f"Result➔ <b>{actual_size}</b> {{ 🟢 <b><u>WIN</u></b> 🟢 }}"
+        result_tag = f"Result➔ <code>{actual_size}</code> {{ 🟢 <u>WIN</u> 🟢 }}"
 
     else:
         loss_level = CURRENT_LOSS_STREAK + 1
@@ -2733,14 +2749,14 @@ def send_user_result(period, actual_number, actual_color, pred):
             mult = 3 ** (next_level - 1)
             conclusion_text = f"Level {loss_level} Missed. Continuous Escalation to Level {next_level} ({mult}X) Recovery!"
 
-        result_tag = f"Result➔ <b>{actual_size}</b> {{ 🔴 <b><u>LOSS</u></b> 🔴 }}"
+        result_tag = f"Result➔ <code>{actual_size}</code> {{ 🔴 <u>LOSS</u> 🔴 }}"
 
     msg = (
-        f"<b>Win Go 30-SEC Prediction</b>\n"
+        f"<code>Win Go 30-SEC Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📝 <b>Period:</b> <code>{period}</code>\n\n"
+        f"📝 Period: <code>{period}</code>\n\n"
         f"<blockquote>{result_tag}</blockquote>\n\n"
-        f"<b>CONCLUSION of Engine:</b>\n"
+        f"<code>CONCLUSION of Engine:</code>\n"
         f"─────────────────────\n"
         f"<i>{conclusion_text}</i>"
     )
