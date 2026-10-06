@@ -2542,6 +2542,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # 🎯 6. FINAL SNIPER FILTER (Real Skips on Noise)
     # ====================================================
     opposite_nums_tip = None
+    jackpot_tip = None
+    predicted_single_num = None
     if not is_qualified_bet or arbiter_wants_skip:
         target_type = "SKIP"
         target_val = "SKIP"
