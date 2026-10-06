@@ -2444,11 +2444,24 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
+        # 🐉 ANTI-DRAGON RECOVERY ALIGNMENT (Never bet against an active opposing dragon!):
+        # In binary PRNG, streaks of 1-2 often break/bounce (75.8%), where holding target works.
+        # But once the opposing side hits 3+ times in a row, an active DRAGON is in progress!
+        # Blindly holding the opposite target causes fatal 5-round stop-loss busts.
+        # Align with the dragon's momentum so the dragon delivers the recovery win!
+        if s_streak >= 3 and last_s in ("BIG", "SMALL") and last_s != rec_target:
+            rec_target = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_pattern = f"Level {cur_lvl} Dragon Momentum Recovery ({last_s} x{s_streak})"
+            final_summary = f"L{cur_lvl} Dragon Alignment: Following active {last_s} x{s_streak} ({mult}X)"
+            print(f"🐉 [DRAGON RECOVERY ALIGNMENT] Opposing {last_s} reached streak {s_streak}! Aligning recovery target to {last_s} ({mult}X)!", flush=True)
+        else:
+            target_pattern = f"Level {cur_lvl} Continuous Martingale Recovery ({rec_target})"
+            final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X) - Zero-Skip Protocol"
+            print(f"🎯 [L{cur_lvl} RECOVERY LOCK] Following locked recovery target: {rec_target} ({mult}X) [CONTINUOUS]", flush=True)
+
         target_val = rec_target
         CURRENT_CYCLE_TARGET = rec_target
-        target_pattern = f"Level {cur_lvl} Continuous Martingale Recovery ({rec_target})"
-        final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X) - Zero-Skip Protocol"
-        print(f"🎯 [L{cur_lvl} RECOVERY LOCK] Following locked recovery target: {rec_target} ({mult}X) [CONTINUOUS]", flush=True)
         target_type = "SIZE"
         is_qualified_bet = True
         arbiter_wants_skip = False
