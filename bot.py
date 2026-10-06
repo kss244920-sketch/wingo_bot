@@ -2638,7 +2638,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
 
     strategy_text = pattern_name or "Quant Consensus Edge"
     if level >= 2:
-        strategy_text = f"Level {level} ({mult}X) Martingale Recovery on {target_val}"
+        strat_base = pattern_name or "Quant Consensus Edge"
+        strategy_text = f"{strat_base} [Level {level} ({mult}X) Recovery]"
     elif reason:
         clean_r = re.sub(r"\(Note:.*?\)", "", reason, flags=re.DOTALL).strip()
         clean_r = re.sub(r"[\*\_\`]", "", clean_r).strip()
@@ -2658,8 +2659,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         f"<blockquote><b>Bet on ➔</b> {arrow} <code>{target_val}</code>\n"
         f"<b>Number Chance➔</b> <code>{single_num}</code></blockquote>\n\n"
         f"<code>CONCLUSION of Engine:</code>\n"
-        f"─────────────────────\n"
-        f"<i>{strategy_text}</i>"
+        f"<i>Strategy: {strategy_text}</i>\n"
+        f"─────────────────────"
     )
 
     try:
@@ -2707,6 +2708,17 @@ def send_user_result(period, actual_number, actual_color, pred):
         is_win = (target_val == actual_size)
         t_display = f"🐘 {to_bold('BIG [5-9]')}" if target_val == "BIG" else f"🐜 {to_bold('SMALL [0-4]')}"
 
+    strat_name = pred.get("pattern_name") or ""
+    if not strat_name and pred.get("reason"):
+        clean_r = re.sub(r"\(Note:.*?\)", "", str(pred.get("reason", "")), flags=re.DOTALL).strip()
+        clean_r = re.sub(r"[\*\_\`]", "", clean_r).strip()
+        if "." in clean_r: clean_r = clean_r.split(".")[0].strip()
+        words = clean_r.split()
+        if 2 <= len(words) <= 8 and len(clean_r) <= 45:
+            strat_name = clean_r
+    if not strat_name:
+        strat_name = "Quant Consensus Edge"
+
     if is_win:
         win_level = CURRENT_LOSS_STREAK + 1
         CYCLE_WINS += 1
@@ -2718,9 +2730,11 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         mult = 3 ** (win_level - 1)
         if win_level == 1:
-            conclusion_text = f"Level 1 Win Secured! ({mult}X Base Profit Restored)"
+            outcome_details = f"Level 1 Win Secured! ({mult}X Base Profit Restored)"
         else:
-            conclusion_text = f"Level {win_level} Recovery Win Delivered! ({mult}X Capital Recovered)"
+            outcome_details = f"Level {win_level} Recovery Win Delivered! ({mult}X Capital Recovered)"
+
+        conclusion_text = f"Strategy: {strat_name}\n{outcome_details}"
 
         tip_str = str(pred.get("jackpot_tip") or "")
         tip_numbers = re.findall(r"\b\d\b", tip_str)
@@ -2738,7 +2752,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
             # Reached max safety limit (5-Level Hard Stop-Loss)
-            conclusion_text = f"Level {MAX_MARTINGALE_LEVEL} Safety Hard Cap reached. Resetting to Level 1 Base."
+            outcome_details = f"Level {MAX_MARTINGALE_LEVEL} Safety Hard Cap reached. Resetting to Level 1 Base."
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
             CURRENT_LOSS_STREAK = 0
@@ -2747,8 +2761,9 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
-            conclusion_text = f"Level {loss_level} Missed. Continuous Escalation to Level {next_level} ({mult}X) Recovery!"
+            outcome_details = f"Level {loss_level} Missed. Continuous Escalation to Level {next_level} ({mult}X) Recovery!"
 
+        conclusion_text = f"Strategy: {strat_name}\n{outcome_details}"
         result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🔴 <b><u>LOSS</u></b> 🔴 }}"
 
     msg = (
@@ -2757,8 +2772,8 @@ def send_user_result(period, actual_number, actual_color, pred):
         f"📝 <b>Period:</b> <code>{period}</code>\n\n"
         f"<blockquote>{result_tag}</blockquote>\n\n"
         f"<code>CONCLUSION of Engine:</code>\n"
-        f"─────────────────────\n"
-        f"<i>{conclusion_text}</i>"
+        f"<i>{conclusion_text}</i>\n"
+        f"─────────────────────"
     )
 
     save_cache()
