@@ -445,6 +445,14 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
                 is_win = (p_val == base_color)
             outcome_emoji = "✅" if is_win else "❌"
             outcome_text = "WIN" if is_win else "LOSS"
+            if is_win and pred_info:
+                pred_num = pred_info.get("predicted_num")
+                tip_str = str(pred_info.get("jackpot_tip") or "")
+                tip_numbers = re.findall(r"\b\d\b", tip_str)
+                if pred_num is not None:
+                    tip_numbers.append(str(pred_num))
+                if str(number) in tip_numbers:
+                    outcome_text = f"WIN (🎯 JACKPOT {number} 9X!)"
             pred_line = f"\n<blockquote>🎯 <b>Prediction:</b> <code>{p_val}</code> | <b>Outcome:</b> {outcome_emoji} <code>{outcome_text}</code></blockquote>"
 
     text = (
@@ -2548,7 +2556,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         detected_pattern_name = target_pattern
         # High-Conviction Sure-Shot Number Engine (9X Payout)
         cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
-        nums_list = [int(it.get("num", 0)) for it in history_items]
+        nums_list = [int(it.get("num", 0) if "num" in it else it.get("number", 0)) for it in history_items]
         last_num = nums_list[-1] if nums_list else 0
         num_next_counts = defaultdict(int)
         for i in range(len(nums_list) - 1):
@@ -2557,13 +2565,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
         cand_transitions = sum(num_next_counts[n] for n in cand_nums)
         jackpot_tip = None
-        if CURRENT_LOSS_STREAK <= 1 and w_v >= 12 and cand_transitions >= 6:
+        predicted_single_num = None
+
+        # 🎯 STRICT USER RULE: ONLY give number when there is TOO MUCH HIGH PROBABILITY!
+        # Do NOT give a number on each bet! Base rate is 20%. Must exceed >= 40% (2x edge) on solid sample.
+        if current_loss_streak == 0 and w_v >= 10 and cand_transitions >= 12 and not is_post_dragon_transition:
             sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
             top_cand = sorted_cands[0]
             top_ratio = num_next_counts[top_cand] / cand_transitions if cand_transitions > 0 else 0
-            if top_ratio >= 0.35:
-                top_shots = sorted_cands[:2]
-                jackpot_tip = f"{', '.join(str(n) for n in top_shots)} [9X Payout]"
+            if top_ratio >= 0.40 and num_next_counts[top_cand] >= 5:
+                predicted_single_num = top_cand
+                jackpot_tip = f"{top_cand} [9X Payout | {int(top_ratio * 100)}% High Prob]"
+                print(f"🎯 [HIGH PROBABILITY NUMBER] Last={last_num} -> Top={top_cand} ({num_next_counts[top_cand]}/{cand_transitions} = {top_ratio*100:.1f}%) [HIGH PROBABILITY]", flush=True)
 
         opposite_nums_tip = None
 
@@ -2577,6 +2590,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         "consensus_tag": consensus_tag,
         "violet_alert": False,
         "jackpot_tip": jackpot_tip,
+        "predicted_num": predicted_single_num,
         "opposite_nums": opposite_nums_tip,
         "signal_grade": signal_grade,
         "pattern_name": detected_pattern_name
@@ -2603,7 +2617,7 @@ def to_bold(text):
 # ====================================================
 # 🚀 USER SIGNALS (HIGH-VISIBILITY BOLD VIP CARDS)
 # ====================================================
-def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None):
+def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None, predicted_num=None):
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
     if IS_STANDBY_MODE:
@@ -2628,23 +2642,21 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     # Screenshot 2 Format for Prediction:
     arrow = "🔺" if target_val == "BIG" else "🔻"
     cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
+    
     single_num = None
-    if jackpot_tip:
+    if predicted_num is not None and int(predicted_num) in cand_nums:
+        single_num = int(predicted_num)
+    elif jackpot_tip:
         nums = re.findall(r"\b\d\b", str(jackpot_tip))
         if nums and int(nums[0]) in cand_nums:
             single_num = int(nums[0])
 
-    if single_num is None:
-        if MEMORY_HISTORY:
-            last_num = MEMORY_HISTORY[-1].get("number", 0)
-            trans_counts = defaultdict(int)
-            for i in range(len(MEMORY_HISTORY) - 1):
-                if MEMORY_HISTORY[i].get("number") == last_num:
-                    trans_counts[MEMORY_HISTORY[i + 1].get("number")] += 1
-            sorted_cands = sorted(cand_nums, key=lambda n: trans_counts[n], reverse=True)
-            single_num = sorted_cands[0]
-        else:
-            single_num = 7 if target_val == "BIG" else 3
+    # 🎯 STRICT USER RULE: Only show Number Chance when there is truly HIGH PROBABILITY!
+    # DO NOT force/guess a number on each bet!
+    if single_num is not None:
+        number_line = f"\n<b>Number Chance➔</b> <code>{single_num}</code>"
+    else:
+        number_line = ""
 
     level = CURRENT_LOSS_STREAK + 1
     mult = 3 ** (level - 1)
@@ -2669,8 +2681,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         f"<code>Win Go 30-SEC Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
-        f"<blockquote><b>Bet on ➔</b> {arrow} <code>{target_val}</code>\n"
-        f"<b>Number Chance➔</b> <code>{single_num}</code></blockquote>\n\n"
+        f"<blockquote><b>Bet on ➔</b> {arrow} <code>{target_val}</code>{number_line}</blockquote>\n\n"
         f"<code>CONCLUSION of Engine:</code>\n"
         f"<i>Strategy: {strategy_text}</i>\n"
         f"─────────────────────"
@@ -2750,13 +2761,21 @@ def send_user_result(period, actual_number, actual_color, pred):
         conclusion_text = f"Strategy: {strat_name}\n{outcome_details}"
 
         tip_str = str(pred.get("jackpot_tip") or "")
+        pred_num = pred.get("predicted_num")
         tip_numbers = re.findall(r"\b\d\b", tip_str)
-        if str(actual_number) in tip_numbers:
-            conclusion_text += f"\n🚀 Jackpot Hit: Number {actual_number} (9X Win!)"
-        elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
-            conclusion_text += f"\n🟣 Violet Bonus Hit: Number {actual_number} (4.5X Win!)"
+        if pred_num is not None:
+            tip_numbers.append(str(pred_num))
 
-        result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }}"
+        is_jackpot = is_win and (str(actual_number) in tip_numbers)
+
+        if is_jackpot:
+            result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }} 🎯 <b><u>JACKPOT 9X WIN!</u></b>"
+            conclusion_text += f"\n🎯 <b>Jackpot Hit:</b> Number <code>{actual_number}</code> (9X Direct Payout Secured!)"
+        elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
+            result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }} 🟣 <b><u>VIOLET BONUS!</u></b>"
+            conclusion_text += f"\n🟣 <b>Violet Bonus Hit:</b> Number <code>{actual_number}</code> (4.5X Win!)"
+        else:
+            result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }}"
 
     else:
         loss_level = CURRENT_LOSS_STREAK + 1
@@ -2895,12 +2914,13 @@ def run_live_bot():
                                         "conf": t_conf, "reason": decision["reason"],
                                         "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
                                         "jackpot_tip": decision.get("jackpot_tip"),
+                                        "predicted_num": decision.get("predicted_num"),
                                         "opposite_nums": decision.get("opposite_nums"),
                                         "grade": decision["signal_grade"],
                                         "pattern_name": decision.get("pattern_name", "")
                                     }
                                     save_cache()
-                                    send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""), decision.get("opposite_nums"))
+                                    send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""), decision.get("opposite_nums"), decision.get("predicted_num"))
                             except Exception as e:
                                 print(f"[STARTUP PREDICTION ERROR] {e}", flush=True)
                         time.sleep(1.0)
@@ -3010,12 +3030,13 @@ def run_live_bot():
                                     "consensus": consensus_tag,
                                     "violet_alert": violet_alert,
                                     "jackpot_tip": jackpot_tip,
+                                    "predicted_num": decision.get("predicted_num"),
                                     "opposite_nums": decision.get("opposite_nums"),
                                     "grade": signal_grade,
                                     "pattern_name": pattern_name
                                 }
                                 save_cache()
-                                send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"))
+                                send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"))
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
