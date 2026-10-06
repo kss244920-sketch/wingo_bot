@@ -2358,7 +2358,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     roadmap_pattern_name = None
     roadmap_target_val = None
 
-    if is_dragon_confirmed and s_streak < 6:
+    if is_dragon_confirmed and s_streak < 6 and w_size == last_s and size_margin_pct >= 15.0:
         roadmap_target_val = last_s
         roadmap_pattern_name = f"Dragon Trend Momentum ({last_s} x{s_streak})"
     elif is_2_2_rotation:
@@ -2370,9 +2370,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # If genuine confirmed structural roadmap pattern exists, verify no sharp conflict with quants
     if roadmap_target_val in ("BIG", "SMALL"):
-        # If quant council strongly opposes roadmap target (margin >= 20%), filter conflict to protect capital
-        if (big_weight > small_weight and roadmap_target_val == "SMALL" and size_margin_pct >= 20.0) or \
-           (small_weight > big_weight and roadmap_target_val == "BIG" and size_margin_pct >= 20.0):
+        # If quant council opposes roadmap target (margin >= 15%), filter conflict to protect capital
+        if (big_weight > small_weight and roadmap_target_val == "SMALL" and size_margin_pct >= 15.0) or \
+           (small_weight > big_weight and roadmap_target_val == "BIG" and size_margin_pct >= 15.0):
             print(f"🛡️ [ROADMAP-QUANT CONFLICT] Roadmap ({roadmap_target_val}) opposes Quants ({w_size} | {size_margin_pct:.0f}%). Filtering conflict!", flush=True)
             roadmap_target_val = None
             roadmap_pattern_name = None
@@ -2465,18 +2465,19 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"Post-Dragon Rebound Shield: Settling after {prev_dragon_len}x dragon. Level {cur_lvl} preserved."
             print(f"🛡️ [POST-DRAGON REBOUND SHIELD] Rebound hazard after {prev_dragon_len}x dragon! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
-        # 🛡️ 3. HIGH-LEVEL NOISE GUARD (At Level 3, 4, 5, only fire on confirmed edge):
-        elif cur_lvl >= 3 and (size_margin_pct < 20.0 or w_size != rec_target):
-            # At Level 3+ (9X, 27X, 81X), NEVER risk huge money on ambiguous choppy 50/50 noise or when quants oppose our target!
+        # 🛡️ 3. RECOVERY CAPITAL SHIELD (L2: margin >= 15% & non-opposed; L3+: margin >= 20% & non-opposed):
+        elif (cur_lvl == 2 and (size_margin_pct < 15.0 or w_size != rec_target)) or \
+             (cur_lvl >= 3 and (size_margin_pct < 20.0 or w_size != rec_target)):
+            # In recovery (L2-L5), NEVER risk recovery capital on ambiguous choppy 50/50 noise or when quants oppose our target!
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
             target_val = "SKIP"
             target_conf = 50.0
             signal_grade = "SKIP"
-            detected_pattern_name = f"High-Level Capital Shield (L{cur_lvl})"
+            detected_pattern_name = f"Recovery Capital Shield (L{cur_lvl})"
             final_summary = f"Level {cur_lvl} Sniper Guard: Market is choppy noise or divergent. Holding recovery level until high-conviction setup."
-            print(f"🛡️ [HIGH-LEVEL CAPITAL SHIELD] Choppy noise or divergence at Level {cur_lvl}! Preserving capital with SAFE SKIP.", flush=True)
+            print(f"🛡️ [RECOVERY CAPITAL SHIELD] Choppy noise or divergence at Level {cur_lvl}! Preserving capital with SAFE SKIP.", flush=True)
 
         # 🧠 4. MASTER AI DIVERGENCE GUARD:
         elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 75.0:
