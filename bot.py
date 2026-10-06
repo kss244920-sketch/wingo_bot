@@ -437,20 +437,19 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
         p_val = pred_info.get("target_val", "")
         p_type = pred_info.get("target_type", "SIZE")
         if p_val == "SKIP" or p_type == "SKIP":
-            pred_line = "\n🎯 <b>Prediction:</b> ⏸️ SKIP | <b>Outcome:</b> ⏸️ SKIPPED"
+            pred_line = "\n<blockquote>🎯 <b>Prediction:</b> ⏸️ SKIP | <b>Outcome:</b> ⏸️ SKIPPED</blockquote>"
         else:
             if p_type == "SIZE":
                 is_win = (p_val == size)
             else:
                 is_win = (p_val == base_color)
             outcome_tag = "✅ WIN" if is_win else "❌ LOSS"
-            p_emoji = "🐘 BIG" if p_val == "BIG" else ("🐜 SMALL" if p_val == "SMALL" else p_val)
-            pred_line = f"\n🎯 <b>Prediction:</b> {p_emoji} | <b>Outcome:</b> {outcome_tag}"
+            pred_line = f"\n<blockquote>🎯 <b>Prediction:</b> {p_val} | <b>Outcome:</b> {outcome_tag}</blockquote>"
 
     text = (
         f"📦 <b>[CLOUD DB RECORD]</b>\n"
-        f"🔢 <b>Season ID (Period):</b> <code>{period}</code>\n"
-        f"🎨 <b>Color:</b> <b>{c_tag}</b> | <b>{s_emoji}</b> (No. {number})\n"
+        f"<blockquote>🔢 <b>Season ID (Period):</b> <code>{period}</code>\n"
+        f"🎨 <b>Color:</b> {size} (No. {number}) | {c_tag}</blockquote>\n"
         f"📊 <b>Total Synced:</b> {len(MEMORY_HISTORY)} rounds"
         f"{pred_line}"
     )
@@ -2597,11 +2596,13 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         print(f"⏸️ [STANDBY SILENT] Period: ...{short_period} | Secondary instance silent (duplicate prevention active).", flush=True)
         return
 
-    # User requirement: "par ye sirf SKIP bole ok prediciotn me kuch or extra befaltu nhi"
+    # User requirement: Screenshot 4 for SKIP
     if target_type == "SKIP" or target_val == "SKIP":
         msg = (
-            f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
-            f"🎯 <b>Prediction</b> : ⏸️ <b>SKIP</b>"
+            f"<blockquote>"
+            f"⏳ <b>Period :</b> <code>...{short_period}</code>\n"
+            f"🎯 <b>Prediction :</b> ⏸️ <b>SKIP</b>"
+            f"</blockquote>"
         )
         try:
             send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
@@ -2610,46 +2611,19 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
             print(f"[USER ALERT ERROR] {e}", flush=True)
         return
 
-    if target_type == "COLOR":
-        c_name = to_bold(target_val)
-        c_emoji = f"🔴 {c_name}" if target_val == "RED" else f"🟢 {c_name}"
-        target_code = c_emoji
-        bet_label = target_val
-    else:
-        s_name = to_bold("BIG [5-9]") if target_val == "BIG" else to_bold("SMALL [0-4]")
-        s_emoji = f"🐘 {s_name}" if target_val == "BIG" else f"🐜 {s_name}"
-        target_code = s_emoji
-        bet_label = target_val
+    # Screenshot 2 Format for Prediction:
+    arrow = "🔺" if target_val == "BIG" else "🔻"
+    num_chances = "5, 6, 7, 8, 9" if target_val == "BIG" else "0, 1, 2, 3, 4"
+    if jackpot_tip:
+        num_chances = f"{jackpot_tip} ({'5-9' if target_val == 'BIG' else '0-4'})"
 
     level = CURRENT_LOSS_STREAK + 1
     mult = 3 ** (level - 1)
-    stage_str = to_bold(f"LEVEL {level} ({mult}X)")
-    conf_str = to_bold(f"{confidence:.1f}%")
-    pattern_str = to_bold(pattern_name) if pattern_name else to_bold("Market Momentum")
 
-    if level == 1:
-        banner = f"👑 <b>{to_bold('WINGO 30S VIP PREDICTION')}</b> 👑"
-        footer = f"💡 <i>Place 1X Base Bet on {bet_label}. High Probability Setup!</i>"
-    elif level == 2:
-        banner = f"⚡ <b>{to_bold('WINGO 30S RECOVERY SIGNAL')}</b> ⚡"
-        footer = f"💰 <i>Place 3X Bet on {bet_label}! Full capital + profit recovery!</i>"
-    elif level == 3:
-        banner = f"🔥 <b>{to_bold('WINGO 30S LEVEL 3 RECOVERY')}</b> 🔥"
-        footer = f"🚀 <i>Place 9X Bet on {bet_label}! Strong capital recovery!</i>"
-    elif level == 4:
-        banner = f"💎 <b>{to_bold('WINGO 30S LEVEL 4 HIGH RECOVERY')}</b> 💎"
-        footer = f"🎯 <i>Place 27X Bet on {bet_label}! High-leverage recovery!</i>"
-    else:
-        banner = f"👑 <b>{to_bold('WINGO 30S LEVEL 5 FINAL RECOVERY')}</b> 👑"
-        footer = f"🛡️ <i>Place 81X Bet on {bet_label}! Final recovery stage (Hard Stop-Loss protected).</i>"
-
-    v_tip_line = ""
-    if violet_alert:
-        v_tip_line = f"\n🟣 <b>Jackpot Tip</b> : <b>{to_bold('Numbers 0, 5 (Violet 4.5X)')}</b>"
-
-    # Clean, concise strategy summary (choti si summary: max 5-8 words)
-    strategy_text = pattern_name or "Market Structure"
-    if reason:
+    strategy_text = pattern_name or "Quant Consensus Edge"
+    if level >= 2:
+        strategy_text = f"Level {level} ({mult}X) Martingale Recovery on {target_val}"
+    elif reason:
         clean_r = re.sub(r"\(Note:.*?\)", "", reason, flags=re.DOTALL).strip()
         clean_r = re.sub(r"[\*\_\`]", "", clean_r).strip()
         if "." in clean_r: clean_r = clean_r.split(".")[0].strip()
@@ -2658,18 +2632,18 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         if 2 <= len(words) <= 8 and len(clean_r) <= 50:
             strategy_text = clean_r
 
-    strat_str = to_bold(strategy_text)
+    if violet_alert:
+        strategy_text += " [🟣 Violet 0/5 Alert]"
 
     msg = (
-        f"{banner}\n"
-        f"<blockquote>"
-        f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
-        f"🎯 <b>Prediction</b> : <b>{target_code}</b>\n"
-        f"📊 <b>Stage</b> : <b>{stage_str}</b>\n"
-        f"🧩 <b>Strategy</b> : <b>{strat_str}</b>"
-        f"{v_tip_line}\n"
-        f"</blockquote>\n"
-        f"{footer}"
+        f"<b>Win Go 30-SEC Prediction</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
+        f"<blockquote>Bet on ➔ {arrow} <b>{target_val}</b>\n"
+        f"Number Chance➔ <b>{num_chances}</b></blockquote>\n\n"
+        f"<b>CONCLUSION of Engine:</b>\n"
+        f"─────────────────────\n"
+        f"<i>{strategy_text}</i>"
     )
 
     try:
@@ -2727,47 +2701,19 @@ def send_user_result(period, actual_number, actual_color, pred):
         POST_STOP_LOSS_COOLDOWN = 0
 
         mult = 3 ** (win_level - 1)
-        win_stage = to_bold(f"LEVEL {win_level} ({mult}X)")
-
         if win_level == 1:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 1 WIN ✅')}</b> 🟢"
-            sub = "💰 <i>Direct win secured! Next round resets to Level 1 (1X).</i>"
-        elif win_level == 2:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 2 RECOVERY WIN ✅')}</b> 🟢"
-            sub = "💸 <i>Recovery win secured! Capital + profit restored to Level 1.</i>"
-        elif win_level == 3:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 3 RECOVERY WIN ✅')}</b> 🟢"
-            sub = "🤑 <i>Level 3 recovery delivered! Capital + profit restored to Level 1.</i>"
-        elif win_level == 4:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 4 RECOVERY WIN ✅')}</b> 🟢"
-            sub = "💎 <i>Level 4 recovery delivered! Huge turnaround, resetting to Level 1.</i>"
+            conclusion_text = f"Level 1 Win Secured! ({mult}X Base Profit Restored)"
         else:
-            win_banner = f"🟢 <b>{to_bold('ROUND RESULT : LEVEL 5 ULTRA WIN ✅')}</b> 🟢"
-            sub = "👑 <i>Level 5 ultimate win delivered! Complete recovery, resetting to Level 1.</i>"
+            conclusion_text = f"Level {win_level} Recovery Win Delivered! ({mult}X Capital Recovered)"
 
-        bonus_hit = ""
         tip_str = str(pred.get("jackpot_tip") or "")
-        import re
         tip_numbers = re.findall(r"\b\d\b", tip_str)
         if str(actual_number) in tip_numbers:
-            bonus_hit = f"\n🚀 <b>Jackpot Hit</b> : <b>{to_bold(f'NUMBER {actual_number} [9X WIN! 🎉]')}</b>"
+            conclusion_text += f"\n🚀 Jackpot Hit: Number {actual_number} (9X Win!)"
         elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
-            bonus_hit = f"\n🟣 <b>Bonus Hit</b> : <b>{to_bold('VIOLET 0/5 [4.5X HIT]')}</b>"
+            conclusion_text += f"\n🟣 Violet Bonus Hit: Number {actual_number} (4.5X Win!)"
 
-        status_str = to_bold("WIN ✅ (PROFIT SECURED)")
-
-        msg = (
-            f"{win_banner}\n"
-            f"<blockquote>"
-            f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
-            f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
-            f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
-            f"🏆 <b>Status</b> : <b>{status_str}</b>\n"
-            f"📊 <b>Stage</b> : <b>{win_stage}</b>"
-            f"{bonus_hit}\n"
-            f"</blockquote>\n"
-            f"{sub}"
-        )
+        result_tag = f"Result➔ <b>{actual_size}</b> {{ 🟢 <b><u>WIN</u></b> 🟢 }}"
 
     else:
         loss_level = CURRENT_LOSS_STREAK + 1
@@ -2776,20 +2722,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
             # Reached max safety limit (5-Level Hard Stop-Loss)
-            stop_banner = f"🛑 <b>{to_bold('ROUND RESULT : STOP-LOSS CAPITAL GUARD')}</b> 🛑"
-            status_str = to_bold(f"STOP-LOSS (LEVEL {MAX_MARTINGALE_LEVEL} HARD CAP)")
-            loss_stage = to_bold(f"LEVEL {loss_level} (STOP-LOSS)")
-            msg = (
-                f"{stop_banner}\n"
-                f"<blockquote>"
-                f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
-                f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
-                f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
-                f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
-                f"📊 <b>Stage</b> : <b>{loss_stage}</b>\n"
-                f"</blockquote>\n"
-                f"🛡️ <i>Strict {MAX_MARTINGALE_LEVEL}-Level safety stop-loss triggered to protect capital from wipeout. Resetting to LEVEL 1 (1X) base for fresh cycle.</i>"
-            )
+            conclusion_text = f"Level {MAX_MARTINGALE_LEVEL} Safety Hard Cap reached. Resetting to Level 1 Base."
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
             CURRENT_LOSS_STREAK = 0
@@ -2798,20 +2731,19 @@ def send_user_result(period, actual_number, actual_color, pred):
         else:
             next_level = CURRENT_LOSS_STREAK + 1
             mult = 3 ** (next_level - 1)
-            loss_banner = f"🔴 <b>{to_bold(f'ROUND RESULT : LEVEL {loss_level} LOSS ❌')}</b> 🔴"
-            status_str = to_bold("LOSS ❌ (RECOVERY NEXT)")
-            next_stage_str = to_bold(f"LEVEL {next_level} ({mult}X RECOVERY)")
-            msg = (
-                f"{loss_banner}\n"
-                f"<blockquote>"
-                f"⏳ <b>Period</b> : <code>...{short_period}</code>\n"
-                f"🎯 <b>Prediction</b> : <b>{t_display}</b>\n"
-                f"🎲 <b>Result</b> : <b>{c_display} | {s_display}</b>\n"
-                f"⚠️ <b>Status</b> : <b>{status_str}</b>\n"
-                f"⚡ <b>Next Stage</b> : <b>{next_stage_str}</b>\n"
-                f"</blockquote>\n"
-                f"⚡ <i>Round ...{short_period} missed. Escalating to Level {next_level} ({mult}X) for full recovery!</i>"
-            )
+            conclusion_text = f"Level {loss_level} Missed. Continuous Escalation to Level {next_level} ({mult}X) Recovery!"
+
+        result_tag = f"Result➔ <b>{actual_size}</b> {{ 🔴 <b><u>LOSS</u></b> 🔴 }}"
+
+    msg = (
+        f"<b>Win Go 30-SEC Prediction</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📝 <b>Period:</b> <code>{period}</code>\n\n"
+        f"<blockquote>{result_tag}</blockquote>\n\n"
+        f"<b>CONCLUSION of Engine:</b>\n"
+        f"─────────────────────\n"
+        f"<i>{conclusion_text}</i>"
+    )
 
     save_cache()
     try:
