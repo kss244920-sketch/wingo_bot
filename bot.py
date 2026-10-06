@@ -437,7 +437,7 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
         p_val = pred_info.get("target_val", "")
         p_type = pred_info.get("target_type", "SIZE")
         if p_val == "SKIP" or p_type == "SKIP":
-            pred_line = "\n<blockquote>🎯 Prediction: ⏸️ <code>SKIP</code> | Outcome: ⏸️ <code>SKIPPED</code></blockquote>"
+            pred_line = "\n<blockquote>🎯 <b>Prediction:</b> ⏸️ <code>SKIP</code> | <b>Outcome:</b> ⏸️ <code>SKIPPED</code></blockquote>"
         else:
             if p_type == "SIZE":
                 is_win = (p_val == size)
@@ -445,13 +445,13 @@ def log_round_to_storage_channel(period, number, base_color, has_violet, size, p
                 is_win = (p_val == base_color)
             outcome_emoji = "✅" if is_win else "❌"
             outcome_text = "WIN" if is_win else "LOSS"
-            pred_line = f"\n<blockquote>🎯 Prediction: <code>{p_val}</code> | Outcome: {outcome_emoji} <code>{outcome_text}</code></blockquote>"
+            pred_line = f"\n<blockquote>🎯 <b>Prediction:</b> <code>{p_val}</code> | <b>Outcome:</b> {outcome_emoji} <code>{outcome_text}</code></blockquote>"
 
     text = (
         f"📦 <code>[CLOUD DB RECORD]</code>\n"
-        f"<blockquote>🔢 Season ID (Period): <code>{period}</code>\n"
-        f"🎨 Color: <code>{size} (No. {number})</code> | {c_tag}</blockquote>\n"
-        f"📊 Total Synced: {len(MEMORY_HISTORY)} rounds"
+        f"<blockquote>🔢 <b>Season ID (Period):</b> <code>{period}</code>\n"
+        f"🎨 <b>Color:</b> <code>{size} (No. {number})</code> | {c_tag}</blockquote>\n"
+        f"📊 <b>Total Synced:</b> {len(MEMORY_HISTORY)} rounds"
         f"{pred_line}"
     )
     try:
@@ -2601,8 +2601,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     if target_type == "SKIP" or target_val == "SKIP":
         msg = (
             f"<blockquote>"
-            f"⏳ Period : <code>...{short_period}</code>\n"
-            f"🎯 Prediction : ⏸️ <code>SKIP</code>"
+            f"⏳ <b>Period :</b> <code>...{short_period}</code>\n"
+            f"🎯 <b>Prediction :</b> ⏸️ <code>SKIP</code>"
             f"</blockquote>"
         )
         try:
@@ -2654,9 +2654,9 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     msg = (
         f"<code>Win Go 30-SEC Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📝 Period: <code>{target_period}</code>\n\n"
-        f"<blockquote>Bet on ➔ {arrow} <code>{target_val}</code>\n"
-        f"Number Chance➔ <code>{single_num}</code></blockquote>\n\n"
+        f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
+        f"<blockquote><b>Bet on ➔</b> {arrow} <code>{target_val}</code>\n"
+        f"<b>Number Chance➔</b> <code>{single_num}</code></blockquote>\n\n"
         f"<code>CONCLUSION of Engine:</code>\n"
         f"─────────────────────\n"
         f"<i>{strategy_text}</i>"
@@ -2729,7 +2729,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
             conclusion_text += f"\n🟣 Violet Bonus Hit: Number {actual_number} (4.5X Win!)"
 
-        result_tag = f"Result➔ <code>{actual_size}</code> {{ 🟢 <u>WIN</u> 🟢 }}"
+        result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }}"
 
     else:
         loss_level = CURRENT_LOSS_STREAK + 1
@@ -2749,12 +2749,12 @@ def send_user_result(period, actual_number, actual_color, pred):
             mult = 3 ** (next_level - 1)
             conclusion_text = f"Level {loss_level} Missed. Continuous Escalation to Level {next_level} ({mult}X) Recovery!"
 
-        result_tag = f"Result➔ <code>{actual_size}</code> {{ 🔴 <u>LOSS</u> 🔴 }}"
+        result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🔴 <b><u>LOSS</u></b> 🔴 }}"
 
     msg = (
         f"<code>Win Go 30-SEC Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📝 Period: <code>{period}</code>\n\n"
+        f"📝 <b>Period:</b> <code>{period}</code>\n\n"
         f"<blockquote>{result_tag}</blockquote>\n\n"
         f"<code>CONCLUSION of Engine:</code>\n"
         f"─────────────────────\n"
