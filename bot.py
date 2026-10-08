@@ -2110,81 +2110,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     full_db_size_weight = 3.0 if full_db_size_val else 1.0
     full_db_num_weight = 2.5 if full_db_num_val else 1.0
 
-    ai_tgt = None
-    ai_conf = 50.0
-    ai_pat = ""
-    ai_reason = ""
-    ai_ok = False
-
-    # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq with Allam-7B Failover)
-    if GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
-        try:
-            # FIX: Slice the ACTUAL last 12 rounds in chronological order (oldest to newest)
-            hist_12 = []
-            for it in history_items[-12:]:
-                n = int(it.get("num", 0))
-                sz = "BIG" if n >= 5 else "SMALL"
-                hist_12.append(f"{sz}({n})")
-            seq_text = ", ".join(hist_12)
-
-            ai_prompt = (
-                f"Recent WinGo 30S draws (oldest to newest): [{seq_text}].\n"
-                f"Current state: Last={last_s}({last_num}), Streak={last_s} x{s_streak}, Alternation={s_alt}x.\n"
-                "Sniper Capital Preservation Rules:\n"
-                "1. DRAGON TREND: If streak == 3 and not Violet (0/5), predict continuation. If streak >= 4 (exhaustion zone), be cautious or predict 'SKIP' if momentum fades.\n"
-                "2. 1-1 CHOP: If alternation >= 3 (B-S-B-S), predict next alternation (confidence 80-88%).\n"
-                "3. 2-2 DOUBLE-STEP: If sequence is AA BB A, predict A to complete 2-2; if AA BB AA, predict opposite to rotate (confidence 80-88%).\n"
-                "4. NOISE FILTER: If market is choppy, ambiguous, or lacks clear pattern, return prediction: 'SKIP' with confidence 50-65% to protect capital. NEVER guess on noise!\n"
-                "Predict the NEXT outcome: BIG [5-9], SMALL [0-4], or SKIP.\n"
-                'Return strictly valid JSON only: {"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Pattern Name", "reason": "3-6 words explanation"}'
-            )
-
-            # Try primary model Qwen-27B, fallback to Allam-7B
-            candidate_models = ["qwen/qwen3.8-27b", "allam-2-7b"]
-            for mdl in candidate_models:
-                try:
-                    r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                        "model": mdl,
-                        "messages": [
-                            {"role": "system", "content": "You are an ultra-disciplined quantitative sniper. Protect capital above all. Never guess on choppy noise. Return strictly valid JSON only."},
-                            {"role": "user", "content": ai_prompt}
-                        ],
-                        "max_tokens": 120,
-                        "temperature": 0.05
-                    }, timeout=2.8)
-                    if r_ai.status_code == 200:
-                        raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-                        m = re.search(r'\{[^{}]*\}', raw_c)
-                        if m:
-                            res_json = json.loads(m.group(0))
-                            raw_p = str(res_json.get("prediction", "")).upper()
-                            if raw_p in ("BIG", "HIGH"):
-                                ai_tgt = "BIG"
-                            elif raw_p in ("SMALL", "LOW"):
-                                ai_tgt = "SMALL"
-                            elif raw_p in ("SKIP", "WAIT", "NONE", "PASS"):
-                                ai_tgt = "SKIP"
-                            if ai_tgt:
-                                ai_conf = float(res_json.get("confidence", 80.0 if ai_tgt != "SKIP" else 55.0))
-                                ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
-                                ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
-                                ai_ok = True
-                                mdl_label = "Qwen-27B" if "qwen" in mdl else "Allam-7B"
-                                print(f"🧠 [MASTER AI] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
-                                break
-                    elif r_ai.status_code == 429:
-                        GROQ_COOLDOWN_UNTIL = time.time() + 15.0
-                        break
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"[MASTER AI ERROR] {e}", flush=True)
-
-    ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0) else None
-    ai_weight = 6.0 if (ai_ok and ai_vote_val) else 1.0
-
-    all_specialists = [
-        {"name": "Agent AI (Master Qwen-27B Neural Brain)", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}"},
+    quant_specialists = [
         {"name": "Agent 0 (Full DB 3,800-Round Sequence Matcher)", "val": full_db_size_val, "conf": full_db_size_conf, "arg": full_db_size_desc},
         {"name": "Agent 0B (Full DB 3,800-Round Digit Matcher)", "val": full_db_num_val, "conf": full_db_num_conf, "arg": full_db_num_desc},
         {"name": "Agent 1 (Size Dragon Momentum Quant)", "val": s_dragon, "conf": 88.0 if s_streak >= 3 else (75.0 if s_streak >= 2 else 50.0), "arg": f"Size streak len: {s_streak}"},
@@ -2256,53 +2182,24 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     mom_weight = 4.5 if (s_q_mom_val is not None) else 1.0
     res_weight = 4.0 if (s_q_res_val is not None) else 1.0
 
-    weights = [
-        ai_weight,            # Agent AI: Master Qwen-27B Neural Brain (6.0 Weight)
-        full_db_size_weight,  # Agent 0: Full Cloud DB Sequence Pattern Matcher
-        full_db_num_weight,   # Agent 0B: Full Cloud DB Digit Transition Matcher
-        dragon_weight,        # Agent 1: Dragon Trend Momentum
-        chop_weight,          # Agent 2: 1-1 Chop
-        sym_weight,           # Agent 3: 2-2 Symmetry
-        mr_weight,            # Agent 4: Mean-Reversion
-        roadmap_weight,       # Agent 4B: Pinterest Size 9-Roadmap Engine
-        markov_weight,        # Agent 5: Markov Multi-Order N-Gram
-        bayes_num_weight,     # Agent 6: Number-to-Size Bayes
-        imbalance_weight,     # Agent 7: Multi-Window Size Imbalance
-        mr_weight,            # Agent 8: Mean-Reversion Imbalance
-        rhythm_weight,        # Agent 9: Autocorrelation Rhythm
-        entropy_weight,       # Agent 10: Shannon Entropy Gatekeeper
-        outlier_weight,       # Agent 11: Range Boundary Outlier
-        hazard_weight,        # Agent 12: Weibull Hazard Survival
-        fourier_weight,       # Agent 13: Fourier Spectral DFT
-        kolmo_weight,         # Agent 14: Kolmogorov Complexity
-        bayes_decay_weight,   # Agent 15: Exponential Bayesian Decay
-        dirichlet_weight,     # Agent 16: Dirichlet-Multinomial Bayesian Digit Quant
-        mc_weight,            # Agent 17: Monte Carlo 10k Simulation
-        ewma_weight,          # Agent 18: EWMA Trend Momentum
-        kelly_weight,         # Agent 19: Kelly Criterion Edge
-        meta_weight,          # Agent 20: Unified 38-Probability Meta-Engine
-        rsi_weight,           # Agent 21: Digit RSI-14 Momentum
-        markov10_weight,      # Agent 22: 10x10 Full Digit Markov
-        dorm_weight,          # Agent 23: Digit Gap & Dormancy Pressure
-        derived_weight,       # Agent 24: Baccarat Derived Roads Regularity
-        delta_weight,         # Agent 25: Delta Jump Velocity & Early Chop
-        parity_weight,        # Agent 26: Parity-Color Cluster Invariant
-        mod_weight,           # Agent 27: Period Modulo Micro-Cycle
-        mirror_weight,        # Agent 28: Mirror Number Coupling
-        emp_weight,           # Agent 29: Empirical Streak Survival Matrix
-        boll_weight,          # Agent 30: Digit Bollinger Bands & Z-Score
-        mom_weight,           # Agent 31: Digit Velocity & Acceleration Derivatives
-        res_weight            # Agent 32: Consecutive Sum Parity & PRNG Residue
+    quant_weights = [
+        full_db_size_weight, full_db_num_weight, dragon_weight, chop_weight, sym_weight,
+        mr_weight, roadmap_weight, markov_weight, bayes_num_weight, imbalance_weight,
+        mr_weight, rhythm_weight, entropy_weight, outlier_weight, hazard_weight,
+        fourier_weight, kolmo_weight, bayes_decay_weight, dirichlet_weight, mc_weight,
+        ewma_weight, kelly_weight, meta_weight, rsi_weight, markov10_weight,
+        dorm_weight, derived_weight, delta_weight, parity_weight, mod_weight,
+        mirror_weight, emp_weight, boll_weight, mom_weight, res_weight
     ]
 
-    big_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "BIG")
-    small_weight = sum(weights[i] for i, s in enumerate(all_specialists) if s["val"] == "SMALL")
-    big_votes = sum(1 for s in all_specialists if s["val"] == "BIG")
-    small_votes = sum(1 for s in all_specialists if s["val"] == "SMALL")
+    big_weight = sum(quant_weights[i] for i, s in enumerate(quant_specialists) if s["val"] == "BIG")
+    small_weight = sum(quant_weights[i] for i, s in enumerate(quant_specialists) if s["val"] == "SMALL")
+    big_votes = sum(1 for s in quant_specialists if s["val"] == "BIG")
+    small_votes = sum(1 for s in quant_specialists if s["val"] == "SMALL")
     active_votes = big_votes + small_votes
     total_active_weight = big_weight + small_weight
 
-    # Decisive Winning Size Selection
+    # Decisive Winning Size Selection from Quants
     if big_weight > small_weight:
         w_size = "BIG"
         w_v, l_v = big_votes, small_votes
@@ -2312,7 +2209,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         w_v, l_v = small_votes, big_votes
         w_weight = small_weight
     else:
-        # Fallback to Unified Probability Engine
         w_size = "BIG" if unified_p_big >= 0.50 else "SMALL"
         w_v = big_votes if w_size == "BIG" else small_votes
         l_v = small_votes if w_size == "BIG" else big_votes
@@ -2322,6 +2218,93 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
     calc_conf = min(97.5, max(80.0, round(78.0 + (size_margin_pct * 0.25) + (w_v * 0.4), 1)))
+
+    is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
+
+    ai_tgt = None
+    ai_conf = 50.0
+    ai_pat = ""
+    ai_reason = ""
+    ai_ok = False
+
+    # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq with Allam-7B Failover)
+    # Briefed with COMPLETE Quantitative Intelligence from all 32 Math Models & 3,800-Round Database
+    if GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
+        try:
+            hist_15 = []
+            for it in history_items[-15:]:
+                n = int(it.get("num", 0))
+                sz = "BIG" if n >= 5 else "SMALL"
+                hist_15.append(f"{sz}({n})")
+            seq_text = ", ".join(hist_15)
+
+            db_summary_parts = []
+            if full_db_size_desc:
+                db_summary_parts.append(full_db_size_desc)
+            if full_db_num_desc:
+                db_summary_parts.append(full_db_num_desc)
+            db_summary_str = " | ".join(db_summary_parts) if db_summary_parts else "No direct database sequence lock"
+
+            ai_prompt = (
+                f"You are the Supreme AI Quantitative Arbiter for WinGo 30S (BIG [5-9] vs SMALL [0-4]).\n"
+                f"Your mission is to SYNTHESIZE sequence patterns with the 32 Mathematical Quant Models for MAXIMUM ACCURACY.\n\n"
+                f"Shoe Sequence (last 15 draws, oldest->newest): [{seq_text}].\n"
+                f"Current State: Last={last_s}({last_num}) | Streak={last_s} x{s_streak} | Alternation Chop={s_alt}x | Volatility: Δ={p_info.get('avg_delta', 4.5):.1f} ({'High Volatility Chaos' if is_violent_chaos else 'Stable'})\n\n"
+                f"Quantitative Intelligence Brief:\n"
+                f"- 32-Specialist Council Consensus: {w_size} ({w_v} vs {l_v} votes | Decisive Margin: {size_margin_pct:.1f}%)\n"
+                f"- Cloud Historical DB (3,800+ rounds): {db_summary_str}\n"
+                f"- Multi-Window Probabilities: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
+                f"- Dominant Roadmap Flow: [{s_pattern_desc}]\n\n"
+                f"DECISION & CONFLUENCE DIRECTIVES:\n"
+                f"1. CONFLUENCE CONFIRMATION: If the visual shoe pattern and Quant Council agree, confirm the BET with 85-95% confidence.\n"
+                f"2. DIVERGENCE / CONFLICT: If Quants favor one side but the sequence shows a reversal trap or exhaustion, return 'SKIP' (confidence 50-60%). NEVER guess on conflicting models!\n"
+                f"3. NOISE & EXHAUSTION: If market is choppy, erratic (Δ > 5.5), or lacks clear direction, return 'SKIP'. (Streak >= 8 or Chop >= 7 is exhaustion zone -> SKIP).\n"
+                f"4. CAPITAL PRESERVATION: Protect capital above all. Return strictly valid JSON only:\n"
+                '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
+            )
+
+            candidate_models = ["qwen/qwen3.8-27b", "allam-2-7b"]
+            for mdl in candidate_models:
+                try:
+                    r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
+                        "model": mdl,
+                        "messages": [
+                            {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper. Return strictly valid JSON only."},
+                            {"role": "user", "content": ai_prompt}
+                        ],
+                        "max_tokens": 120,
+                        "temperature": 0.05
+                    }, timeout=2.8)
+                    if r_ai.status_code == 200:
+                        raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                        m = re.search(r'\{[^{}]*\}', raw_c)
+                        if m:
+                            res_json = json.loads(m.group(0))
+                            raw_p = str(res_json.get("prediction", "")).upper()
+                            if raw_p in ("BIG", "HIGH"):
+                                ai_tgt = "BIG"
+                            elif raw_p in ("SMALL", "LOW"):
+                                ai_tgt = "SMALL"
+                            elif raw_p in ("SKIP", "WAIT", "NONE", "PASS"):
+                                ai_tgt = "SKIP"
+                            if ai_tgt:
+                                ai_conf = float(res_json.get("confidence", 80.0 if ai_tgt != "SKIP" else 55.0))
+                                ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
+                                ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
+                                ai_ok = True
+                                mdl_label = "Qwen-27B" if "qwen" in mdl else "Allam-7B"
+                                print(f"🧠 [MASTER AI] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
+                                break
+                    elif r_ai.status_code == 429:
+                        GROQ_COOLDOWN_UNTIL = time.time() + 15.0
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"[MASTER AI ERROR] {e}", flush=True)
+
+    ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0) else None
+    all_specialists = [{"name": "Agent AI (Master Qwen-27B Neural Brain)", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}"}] + quant_specialists
 
     streak_surv = p_info.get("streak_survival_rate", 0.50)
 
@@ -2376,12 +2359,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         roadmap_target_val = opp_s
         roadmap_pattern_name = f"1-1 Chop Swing (4x Alternation)"
 
-    # If genuine confirmed structural roadmap pattern exists, verify no sharp conflict with quants
+    # If genuine confirmed structural roadmap pattern exists, verify no sharp conflict with quants or master AI
     if roadmap_target_val in ("BIG", "SMALL"):
         # If quant council opposes roadmap target (margin >= 15%), filter conflict to protect capital
         if (big_weight > small_weight and roadmap_target_val == "SMALL" and size_margin_pct >= 15.0) or \
            (small_weight > big_weight and roadmap_target_val == "BIG" and size_margin_pct >= 15.0):
             print(f"🛡️ [ROADMAP-QUANT CONFLICT] Roadmap ({roadmap_target_val}) opposes Quants ({w_size} | {size_margin_pct:.0f}%). Filtering conflict!", flush=True)
+            roadmap_target_val = None
+            roadmap_pattern_name = None
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != roadmap_target_val and ai_conf >= 75.0:
+            print(f"🛡️ [ROADMAP-AI CONFLICT] Roadmap ({roadmap_target_val}) opposes Master AI ({ai_tgt} | {ai_conf:.0f}%). Filtering conflict!", flush=True)
             roadmap_target_val = None
             roadmap_pattern_name = None
         else:
@@ -2413,7 +2400,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     # Statistical Loss Hazards:
     is_streak_exhausted = (s_streak >= 10)
     is_chop_exhausted = (s_alt >= 9)
-    is_violent_chaos = (p_info.get("avg_delta", 4.5) > 5.5 and p_info.get("is_high_volatility", False))
     is_dead_5050_noise = (size_margin_pct < 15.0 and not is_dragon_confirmed and not is_chop_confirmed and not is_2_2)
 
     global CURRENT_CYCLE_TARGET
@@ -2440,43 +2426,77 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     detected_pattern_name = None
 
     if current_loss_streak > 0:
-        # 🛡️ ABSOLUTE CONTINUOUS MARTINGALE RECOVERY (LEVEL 2 TO LEVEL 5)
-        # Fundamental Law of Capital Recovery:
-        # NEVER SKIP during recovery! In binary 50/50 PRNG, opposing streaks break
-        # within 1-5 rounds in 96.9% of cycles (79.3% in L1/L2).
-        # Any skip during recovery misses the winning break/bounce and causes artificial loss streaks!
-        # By holding CURRENT_CYCLE_TARGET consecutively without ANY interruption,
-        # we secure a direct 96.9%+ recovery win rate!
         mult = 3 ** current_loss_streak
         cur_lvl = current_loss_streak + 1
-
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
-        # 🐉 ANTI-DRAGON RECOVERY ALIGNMENT (Never bet against an active opposing dragon!):
-        # In binary PRNG, streaks of 1-2 often break/bounce (75.8%), where holding target works.
-        # But once the opposing side hits 3+ times in a row, an active DRAGON is in progress!
-        # Blindly holding the opposite target causes fatal 5-round stop-loss busts.
-        # Align with the dragon's momentum so the dragon delivers the recovery win!
-        if s_streak >= 3 and last_s in ("BIG", "SMALL") and last_s != rec_target:
-            rec_target = last_s
-            CURRENT_CYCLE_TARGET = last_s
-            target_pattern = f"Level {cur_lvl} Dragon Momentum Recovery ({last_s} x{s_streak})"
-            final_summary = f"L{cur_lvl} Dragon Alignment: Following active {last_s} x{s_streak} ({mult}X)"
-            print(f"🐉 [DRAGON RECOVERY ALIGNMENT] Opposing {last_s} reached streak {s_streak}! Aligning recovery target to {last_s} ({mult}X)!", flush=True)
-        else:
-            target_pattern = f"Level {cur_lvl} Continuous Martingale Recovery ({rec_target})"
-            final_summary = f"L{cur_lvl} Recovery: Holding {rec_target} ({mult}X) - Zero-Skip Protocol"
-            print(f"🎯 [L{cur_lvl} RECOVERY LOCK] Following locked recovery target: {rec_target} ({mult}X) [CONTINUOUS]", flush=True)
+        # 🛡️ RECOVERY CAPITAL PROTECTION & SNIPER ENTRY:
+        # In recovery (Level 2 to Level 5), capital at risk is 3X, 9X, 27X, 81X!
+        # Law 1: NEVER flip target at streak 3! (3-cut trap: 50% of streaks break at 3).
+        # Law 2: NEVER fire recovery bets into violent delta chaos or opposing momentum!
 
-        target_val = rec_target
-        CURRENT_CYCLE_TARGET = rec_target
-        target_type = "SIZE"
-        is_qualified_bet = True
-        arbiter_wants_skip = False
-        target_conf = min(98.0, 85.0 + current_loss_streak * 3.0)
+        # A. Violent Delta Chaos Guard:
+        if is_violent_chaos:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Recovery Chaos Shield (L{cur_lvl})"
+            final_summary = f"Recovery Capital Guard: Violent delta chaos (Δ={p_info.get('avg_delta', 4.5):.1f}). Level {cur_lvl} preserved."
+            print(f"🛡️ [RECOVERY DELTA CHAOS] Erratic jump swings at Level {cur_lvl}! SAFE SKIP (Level Preserved).", flush=True)
+
+        # B. Opposing Dragon Momentum Guard (Never bet against an active 3+ opposing streak!):
+        elif s_streak >= 3 and last_s in ("BIG", "SMALL") and last_s != rec_target:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Opposing Dragon Shield (L{cur_lvl})"
+            final_summary = f"Recovery Capital Guard: Opposing {last_s} x{s_streak} active. Holding Level {cur_lvl} ({mult}X) safely."
+            print(f"🛡️ [OPPOSING DRAGON GUARD] Opposing {last_s} reached x{s_streak}! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+
+        # C. Strong Quant Opposition Guard:
+        elif w_size in ("BIG", "SMALL") and w_size != rec_target and size_margin_pct >= 20.0:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Recovery Quant Shield (L{cur_lvl})"
+            final_summary = f"Recovery Capital Guard: Quants oppose recovery target ({w_size} | {size_margin_pct:.0f}% margin). Level {cur_lvl} preserved."
+            print(f"🛡️ [QUANT OPPOSITION GUARD] Quants oppose recovery target {rec_target} ({w_size} | {size_margin_pct:.0f}%)! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+
+        # D. Master AI Divergence Guard:
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 75.0:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Recovery AI Divergence Shield (L{cur_lvl})"
+            final_summary = f"Recovery Capital Guard: Master AI favors {ai_tgt} ({ai_conf:.0f}%). Level {cur_lvl} preserved."
+            print(f"🧠 [RECOVERY AI GUARD] Master AI warns against recovery {rec_target} (AI: {ai_tgt} | {ai_conf:.0f}%)! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+
+        # E. Qualified High-Conviction Recovery Strike:
+        else:
+            target_val = rec_target
+            CURRENT_CYCLE_TARGET = rec_target
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Level {cur_lvl} High-Conviction Martingale Recovery ({rec_target})"
+            final_summary = f"Level {cur_lvl} Recovery: Striking {rec_target} ({mult}X)"
+            target_conf = min(98.0, 85.0 + current_loss_streak * 3.0)
+            print(f"🎯 [L{cur_lvl} RECOVERY STRIKE] Clean conditions aligned: Striking recovery {rec_target} ({mult}X)!", flush=True)
 
     else:
-        # 👑 LEVEL 1 (1X BASE BET): Trend & Structural Execution
+        # 👑 LEVEL 1 (1X BASE PLAY): Highest Confluence Execution
         if POST_STOP_LOSS_COOLDOWN > 0:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2487,56 +2507,60 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = False
             final_summary = "Post-Dragon Break Transition: Filtering 50/50 toss until new trend emerges."
             print(f"🛡️ [POST-DRAGON SHIELD] Post-dragon 50/50 break filtered. SAFE SKIP.", flush=True)
-        elif is_violent_chaos and not roadmap_target_val and consecutive_skips < 1:
+        elif is_violent_chaos:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
+        elif ai_ok and ai_tgt == "SKIP":
+            # 🧠 Master AI Noise / Trap Filter: Strictly honored!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"Master AI Noise Filter: {ai_pat or ai_reason}"
+            print(f"🧠 [MASTER AI VETO] AI identified noise: {ai_pat} - {ai_reason}. SAFE SKIP.", flush=True)
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and w_size in ("BIG", "SMALL") and ai_tgt != w_size and size_margin_pct >= 15.0:
+            # ⚔️ AI & Quant Conflict: Neural model and Math engine are in direct opposition!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"AI-Quant Conflict: AI favors {ai_tgt} vs Quants {w_size} ({size_margin_pct:.0f}%)."
+            print(f"⚔️ [AI-QUANT CONFLICT] AI ({ai_tgt}) opposes Quants ({w_size} | {size_margin_pct:.0f}%). SAFE SKIP.", flush=True)
+        elif roadmap_target_val in ("BIG", "SMALL") and (not ai_ok or ai_tgt == roadmap_target_val or ai_conf < 75.0):
+            # Tier 1: Confirmed Structural Roadmap (Dragon 3-6, Confirmed Chop 4, Confirmed 2-2)
+            target_val = roadmap_target_val
+            target_pattern = roadmap_pattern_name
+            final_summary = roadmap_pattern_name
+            target_conf = max(88.0, calc_conf)
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 75.0 and size_margin_pct >= 10.0:
+            # Tier 2: Supreme Concurrence (AI & Quants agree 100% on same direction!)
+            target_val = ai_tgt
+            target_pattern = f"Master AI & Quant Concurrence ({target_val})"
+            final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)"
+            target_conf = max(ai_conf, calc_conf)
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
+        elif size_margin_pct >= 28.0 and w_size in ("BIG", "SMALL") and w_v >= 12 and (not ai_ok or ai_tgt == w_size or ai_conf < 70.0):
+            # Tier 3: Decisive Quant Consensus Edge (>= 28% margin, >= 12 votes) with AI not opposing
+            target_val = w_size
+            target_pattern = f"Quant Consensus Edge ({target_val})"
+            final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
+            target_conf = calc_conf
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin, {w_v} votes)", flush=True)
         else:
-            # Level 1 Model Coordination Hierarchy:
-            # Tier 1: Supreme Roadmap Pattern Recognition (Dragon >= 3, Confirmed Chop >= 4, Confirmed 2-2)
-            if roadmap_target_val in ("BIG", "SMALL"):
-                target_val = roadmap_target_val
-                target_pattern = roadmap_pattern_name
-                final_summary = roadmap_pattern_name
-                target_conf = max(88.0, calc_conf)
-                print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
+            # Tier 4: Ambiguous 50/50 Noise Filter -> Capital Protection SAFE SKIP!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = "Ambiguous Noise Filtered: Preserving capital for high-concurrence sniper entry."
+            print(f"🛡️ [SNIPER SHIELD] Choppy noise filtered. SAFE SKIP.", flush=True)
 
-            # Tier 2: Master AI & Quant Concurrence (Both AI >= 80% and Council agree on same side!)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 80.0 and size_margin_pct >= 10.0:
-                target_val = ai_tgt
-                target_pattern = f"Qwen-27B Deep AI & Quant Concurrence ({target_val})"
-                final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)"
-                target_conf = max(ai_conf, calc_conf)
-                print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
-
-            # Tier 3: Independent High-Conviction AI Signal (>= 80% confidence, NOT SKIP)
-            elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 80.0 and size_margin_pct < 25.0:
-                target_val = ai_tgt
-                target_pattern = f"Qwen-27B Deep AI Pattern ({target_val})"
-                final_summary = f"{ai_pat or ai_reason} (Qwen-27B)"
-                target_conf = ai_conf
-                print(f"🧠 [MASTER AI SUPREMACY] Qwen-27B High-Conviction Verdict: {target_val} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
-
-            # Tier 4: Strong Mathematical Quant Consensus Edge (>= 25% margin) when AI does NOT oppose
-            elif size_margin_pct >= 25.0 and w_size in ("BIG", "SMALL") and (not ai_ok or ai_tgt == w_size or ai_tgt == "SKIP" or ai_conf < 70.0):
-                target_val = w_size
-                target_pattern = f"Quant Consensus Edge ({target_val})"
-                final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
-                target_conf = calc_conf
-                print(f"📊 [QUANT CONSENSUS] Decisive Consensus: {target_val} ({size_margin_pct:.0f}% margin)", flush=True)
-
-            # Tier 5: Everything else is ambiguous noise -> Capital Protection SAFE SKIP
-            else:
-                arbiter_wants_skip = True
-                is_qualified_bet = False
-                final_summary = "Ambiguous Noise Filtered: Preserving capital."
-                print(f"🛡️ [SNIPER SHIELD] Choppy noise filtered. SAFE SKIP.", flush=True)
-
-            if not arbiter_wants_skip:
-                CURRENT_CYCLE_TARGET = target_val
-                target_type = "SIZE"
-                is_qualified_bet = True
+        if not arbiter_wants_skip and is_qualified_bet:
+            CURRENT_CYCLE_TARGET = target_val
+            target_type = "SIZE"
 
     # ====================================================
     # 🎯 6. FINAL SNIPER FILTER (Real Skips on Noise)
