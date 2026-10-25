@@ -203,6 +203,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
+                "version": "2.4.0",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
@@ -2888,7 +2889,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
-    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE!")
+    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.4.0-Production)")
     print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
     print("🤖 Agent 2: GPT-20B (1-1 Zig-Zag Chop & Alternation Specialist)")
     print("🤖 Agent 3: Qwen-27B (2-2 Double-Step & Symmetry Specialist)")
