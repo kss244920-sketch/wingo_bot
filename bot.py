@@ -203,7 +203,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.4.0",
+                "version": "2.4.1",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
@@ -1950,7 +1950,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     - Delivers direct Level 1 accuracy.
     """
     global POST_STOP_LOSS_COOLDOWN, GROQ_COOLDOWN_UNTIL
-    if POST_STOP_LOSS_COOLDOWN > 0:
+    if consecutive_skips >= 1:
+        POST_STOP_LOSS_COOLDOWN = 0
+    elif POST_STOP_LOSS_COOLDOWN > 0:
         rounds_left = POST_STOP_LOSS_COOLDOWN
         POST_STOP_LOSS_COOLDOWN -= 1
         save_cache()
@@ -2609,6 +2611,22 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     opposite_nums_tip = None
     jackpot_tip = None
     predicted_single_num = None
+
+    # 🚨 HARD ANTI-CONSECUTIVE SKIP ENFORCEMENT:
+    # Under NO circumstance is the bot allowed to produce 2 skips in a row!
+    # If the previous round was a SKIP, immediately override any skip filter and force an actionable bet on dominant size!
+    if consecutive_skips >= 1 and (not is_qualified_bet or arbiter_wants_skip):
+        arbiter_wants_skip = False
+        is_qualified_bet = True
+        target_val = w_size if w_size in ("BIG", "SMALL") else "BIG"
+        target_type = "SIZE"
+        target_conf = max(78.0, calc_conf)
+        signal_grade = f"LEVEL_{current_loss_streak + 1}"
+        CURRENT_CYCLE_TARGET = target_val
+        detected_pattern_name = f"Anti-Skip Direct Strike ({target_val})"
+        final_summary = f"Anti-Skip Force Strike: {target_val} ({w_v} vs {l_v})"
+        print(f"⚡ [ANTI-CONSECUTIVE SKIP HARD LOCK] Previous round was SKIP. Forcing action on {target_val} ({w_v}-{l_v})!", flush=True)
+
     if not is_qualified_bet or arbiter_wants_skip:
         target_type = "SKIP"
         target_val = "SKIP"
@@ -2889,7 +2907,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
-    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.4.0-Production)")
+    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.4.1-Production)")
     print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
     print("🤖 Agent 2: GPT-20B (1-1 Zig-Zag Chop & Alternation Specialist)")
     print("🤖 Agent 3: Qwen-27B (2-2 Double-Step & Symmetry Specialist)")
@@ -2927,178 +2945,178 @@ def run_live_bot():
                     time.sleep(1.0)
                     continue
 
-                    raw_color = str(latest_item.get("color", ""))
-                    num = int(latest_item.get("number", 0))
+                raw_color = str(latest_item.get("color", ""))
+                num = int(latest_item.get("number", 0))
 
-                    has_violet = (num in (0, 5)) or ("violet" in raw_color.lower())
-                    if num == 0:
-                        actual_color = "RED"
-                    elif num == 5:
-                        actual_color = "GREEN"
-                    else:
-                        actual_color = "RED" if "red" in raw_color.lower() else "GREEN"
+                has_violet = (num in (0, 5)) or ("violet" in raw_color.lower())
+                if num == 0:
+                    actual_color = "RED"
+                elif num == 5:
+                    actual_color = "GREEN"
+                else:
+                    actual_color = "RED" if "red" in raw_color.lower() else "GREEN"
 
-                    actual_size = "BIG" if num >= 5 else "SMALL"
+                actual_size = "BIG" if num >= 5 else "SMALL"
 
-                    # 2. On initial startup: sync baseline and dispatch immediate prediction!
-                    if last_processed_period is None:
-                        last_processed_period = current_period
-                        for item in reversed(items):
-                            p = str(item.get("issueNumber", ""))
-                            if p:
-                                save_to_memory(p, int(item.get("number", 0)), str(item.get("color", "")), auto_save=False)
+                # 2. On initial startup: sync baseline and dispatch immediate prediction!
+                if last_processed_period is None:
+                    last_processed_period = current_period
+                    for item in reversed(items):
+                        p = str(item.get("issueNumber", ""))
+                        if p:
+                            save_to_memory(p, int(item.get("number", 0)), str(item.get("color", "")), auto_save=False)
+                    try:
+                        MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
+                    except Exception:
+                        pass
+                    save_cache()
+                    print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Generating immediate startup prediction...", flush=True)
+
+                    # Immediate startup prediction (Zero startup delay!)
+                    next_target_period = get_next_period(current_period)
+                    if len(MEMORY_HISTORY) >= 6 and next_target_period not in MEMORY_PREDICTIONS:
                         try:
-                            MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
-                        except Exception:
-                            pass
-                        save_cache()
-                        print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Generating immediate startup prediction...", flush=True)
-
-                        # Immediate startup prediction (Zero startup delay!)
-                        next_target_period = get_next_period(current_period)
-                        if len(MEMORY_HISTORY) >= 6 and next_target_period not in MEMORY_PREDICTIONS:
-                            try:
-                                decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
-                                t_type = decision["target_type"]
-                                t_val = decision["target_val"]
-                                t_conf = decision["target_conf"]
-                                if t_type == "SKIP" or t_val == "SKIP":
-                                    CONSECUTIVE_SKIPS += 1
-                                    MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
-                                    save_cache()
-                                    send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
-                                    print(f"⏸️ [STARTUP SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk on startup.", flush=True)
-                                else:
-                                    CONSECUTIVE_SKIPS = 0
-                                    MEMORY_PREDICTIONS[next_target_period] = {
-                                        "target_type": t_type, "target_val": t_val,
-                                        "color": decision["color"], "size": decision["size"],
-                                        "conf": t_conf, "reason": decision["reason"],
-                                        "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
-                                        "jackpot_tip": decision.get("jackpot_tip"),
-                                        "predicted_num": decision.get("predicted_num"),
-                                        "opposite_nums": decision.get("opposite_nums"),
-                                        "grade": decision["signal_grade"],
-                                        "pattern_name": decision.get("pattern_name", "")
-                                    }
-                                    save_cache()
-                                    send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""), decision.get("opposite_nums"), decision.get("predicted_num"))
-                            except Exception as e:
-                                print(f"[STARTUP PREDICTION ERROR] {e}", flush=True)
-                        time.sleep(1.0)
-                        continue
-
-                    if current_period != last_processed_period:
-                        last_processed_period = current_period
-                        v_tag = "+VIOLET" if has_violet else ""
-                        print(f"\n[ROUND COMPLETE] Season ID: {current_period} | Result: {actual_color}{v_tag} | {actual_size} ({num})", flush=True)
-
-                        # A. Evaluate Previous Prediction Result (check recent items so no result is ever missed)
-                        evaluated_any = False
-                        evaluated_pred_for_round = None
-                        for itm in reversed(items[:5]):
-                            p_chk = str(itm.get("issueNumber", ""))
-                            if p_chk in MEMORY_PREDICTIONS:
-                                p_num = int(itm.get("number", 0))
-                                p_raw = str(itm.get("color", ""))
-                                if p_num == 0:
-                                    p_col = "RED"
-                                elif p_num == 5:
-                                    p_col = "GREEN"
-                                else:
-                                    p_col = "RED" if "red" in p_raw.lower() else "GREEN"
-                                pred = MEMORY_PREDICTIONS[p_chk]
-                                send_user_result(p_chk, p_num, p_col, pred)
-                                if p_chk == current_period:
-                                    evaluated_pred_for_round = pred
-                                del MEMORY_PREDICTIONS[p_chk]
-                                evaluated_any = True
-
-                        if evaluated_any:
-                            save_cache()
-
-                        # Clean up any stale predictions older than 5 rounds
-                        try:
-                            cur_p_int = int(current_period)
-                            stale_keys = [k for k in list(MEMORY_PREDICTIONS.keys()) if int(k) < (cur_p_int - 5)]
-                            for k in stale_keys:
-                                del MEMORY_PREDICTIONS[k]
-                        except Exception:
-                            pass
-
-                        # B. Sync batch of draws into RAM memory
-                        new_added = False
-                        for item in reversed(items):
-                            p = str(item.get("issueNumber", ""))
-                            if not p:
-                                continue
-                            r_c = str(item.get("color", ""))
-                            n = int(item.get("number", 0))
-                            if save_to_memory(p, n, r_c, auto_save=False):
-                                new_added = True
-
-                        if new_added:
-                            try:
-                                MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
-                            except Exception:
-                                pass
-                            save_cache()
-
-                        # C. Background async logging to Storage Channel
-                        threading.Thread(
-                            target=log_round_to_storage_channel,
-                            args=(current_period, num, actual_color, has_violet, actual_size, evaluated_pred_for_round),
-                            daemon=True
-                        ).start()
-
-                        # D. Read in-memory history and trigger 16-Agent AI & Quant Council
-                        next_target_period = get_next_period(current_period)
-
-                        if len(MEMORY_HISTORY) >= 6:
                             decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
                             t_type = decision["target_type"]
                             t_val = decision["target_val"]
                             t_conf = decision["target_conf"]
-                            pred_color = decision["color"]
-                            pred_size = decision["size"]
-                            reason = decision["reason"]
-                            consensus_tag = decision["consensus_tag"]
-                            violet_alert = decision["violet_alert"]
-                            jackpot_tip = decision.get("jackpot_tip")
-                            signal_grade = decision["signal_grade"]
-                            pattern_name = decision.get("pattern_name", "")
-
-                            v_flag = " [🟣 VIOLET ALERT]" if violet_alert else ""
-                            j_flag = f" [🎰 TIP: {jackpot_tip}]" if jackpot_tip else ""
-                            p_flag = f" [🧩 {pattern_name}]" if pattern_name else ""
-                            print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag}{p_flag} | {signal_grade}", flush=True)
-
                             if t_type == "SKIP" or t_val == "SKIP":
                                 CONSECUTIVE_SKIPS += 1
                                 MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
                                 save_cache()
                                 send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
-                                print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Level {CURRENT_LOSS_STREAK + 1} recovery preserved.", flush=True)
+                                print(f"⏸️ [STARTUP SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk on startup.", flush=True)
                             else:
                                 CONSECUTIVE_SKIPS = 0
-                                # Save & Dispatch ONE final decision to User DM
                                 MEMORY_PREDICTIONS[next_target_period] = {
-                                    "target_type": t_type,
-                                    "target_val": t_val,
-                                    "color": pred_color,
-                                    "size": pred_size,
-                                    "conf": t_conf,
-                                    "reason": reason,
-                                    "consensus": consensus_tag,
-                                    "violet_alert": violet_alert,
-                                    "jackpot_tip": jackpot_tip,
+                                    "target_type": t_type, "target_val": t_val,
+                                    "color": decision["color"], "size": decision["size"],
+                                    "conf": t_conf, "reason": decision["reason"],
+                                    "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
+                                    "jackpot_tip": decision.get("jackpot_tip"),
                                     "predicted_num": decision.get("predicted_num"),
                                     "opposite_nums": decision.get("opposite_nums"),
-                                    "grade": signal_grade,
-                                    "pattern_name": pattern_name
+                                    "grade": decision["signal_grade"],
+                                    "pattern_name": decision.get("pattern_name", "")
                                 }
                                 save_cache()
-                                send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"))
+                                send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""), decision.get("opposite_nums"), decision.get("predicted_num"))
+                        except Exception as e:
+                            print(f"[STARTUP PREDICTION ERROR] {e}", flush=True)
+                    time.sleep(1.0)
+                    continue
+
+                if current_period != last_processed_period:
+                    last_processed_period = current_period
+                    v_tag = "+VIOLET" if has_violet else ""
+                    print(f"\n[ROUND COMPLETE] Season ID: {current_period} | Result: {actual_color}{v_tag} | {actual_size} ({num})", flush=True)
+
+                    # A. Evaluate Previous Prediction Result (check recent items so no result is ever missed)
+                    evaluated_any = False
+                    evaluated_pred_for_round = None
+                    for itm in reversed(items[:5]):
+                        p_chk = str(itm.get("issueNumber", ""))
+                        if p_chk in MEMORY_PREDICTIONS:
+                            p_num = int(itm.get("number", 0))
+                            p_raw = str(itm.get("color", ""))
+                            if p_num == 0:
+                                p_col = "RED"
+                            elif p_num == 5:
+                                p_col = "GREEN"
+                            else:
+                                p_col = "RED" if "red" in p_raw.lower() else "GREEN"
+                            pred = MEMORY_PREDICTIONS[p_chk]
+                            send_user_result(p_chk, p_num, p_col, pred)
+                            if p_chk == current_period:
+                                evaluated_pred_for_round = pred
+                            del MEMORY_PREDICTIONS[p_chk]
+                            evaluated_any = True
+
+                    if evaluated_any:
+                        save_cache()
+
+                    # Clean up any stale predictions older than 5 rounds
+                    try:
+                        cur_p_int = int(current_period)
+                        stale_keys = [k for k in list(MEMORY_PREDICTIONS.keys()) if int(k) < (cur_p_int - 5)]
+                        for k in stale_keys:
+                            del MEMORY_PREDICTIONS[k]
+                    except Exception:
+                        pass
+
+                    # B. Sync batch of draws into RAM memory
+                    new_added = False
+                    for item in reversed(items):
+                        p = str(item.get("issueNumber", ""))
+                        if not p:
+                            continue
+                        r_c = str(item.get("color", ""))
+                        n = int(item.get("number", 0))
+                        if save_to_memory(p, n, r_c, auto_save=False):
+                            new_added = True
+
+                    if new_added:
+                        try:
+                            MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
+                        except Exception:
+                            pass
+                        save_cache()
+
+                    # C. Background async logging to Storage Channel
+                    threading.Thread(
+                        target=log_round_to_storage_channel,
+                        args=(current_period, num, actual_color, has_violet, actual_size, evaluated_pred_for_round),
+                        daemon=True
+                    ).start()
+
+                    # D. Read in-memory history and trigger 16-Agent AI & Quant Council
+                    next_target_period = get_next_period(current_period)
+
+                    if len(MEMORY_HISTORY) >= 6:
+                        decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
+                        t_type = decision["target_type"]
+                        t_val = decision["target_val"]
+                        t_conf = decision["target_conf"]
+                        pred_color = decision["color"]
+                        pred_size = decision["size"]
+                        reason = decision["reason"]
+                        consensus_tag = decision["consensus_tag"]
+                        violet_alert = decision["violet_alert"]
+                        jackpot_tip = decision.get("jackpot_tip")
+                        signal_grade = decision["signal_grade"]
+                        pattern_name = decision.get("pattern_name", "")
+
+                        v_flag = " [🟣 VIOLET ALERT]" if violet_alert else ""
+                        j_flag = f" [🎰 TIP: {jackpot_tip}]" if jackpot_tip else ""
+                        p_flag = f" [🧩 {pattern_name}]" if pattern_name else ""
+                        print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag}{p_flag} | {signal_grade}", flush=True)
+
+                        if t_type == "SKIP" or t_val == "SKIP":
+                            CONSECUTIVE_SKIPS += 1
+                            MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
+                            save_cache()
+                            send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
+                            print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Level {CURRENT_LOSS_STREAK + 1} recovery preserved.", flush=True)
+                        else:
+                            CONSECUTIVE_SKIPS = 0
+                            # Save & Dispatch ONE final decision to User DM
+                            MEMORY_PREDICTIONS[next_target_period] = {
+                                "target_type": t_type,
+                                "target_val": t_val,
+                                "color": pred_color,
+                                "size": pred_size,
+                                "conf": t_conf,
+                                "reason": reason,
+                                "consensus": consensus_tag,
+                                "violet_alert": violet_alert,
+                                "jackpot_tip": jackpot_tip,
+                                "predicted_num": decision.get("predicted_num"),
+                                "opposite_nums": decision.get("opposite_nums"),
+                                "grade": signal_grade,
+                                "pattern_name": pattern_name
+                            }
+                            save_cache()
+                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"))
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
