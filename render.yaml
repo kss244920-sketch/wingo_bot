@@ -4,10 +4,12 @@ services:
     runtime: python
     plan: free
     region: singapore
+    branch: master
     buildCommand: pip install -r requirements.txt
     startCommand: python3 -u bot.py
     healthCheckPath: /
     autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: PORT
         value: 10000
