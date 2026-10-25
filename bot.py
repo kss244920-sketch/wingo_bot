@@ -2264,7 +2264,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 f"DECISION & CONFLUENCE DIRECTIVES:\n"
                 f"1. CONFLUENCE CONFIRMATION: If the visual shoe pattern and Quant Council agree on {w_size}, confirm with 85-95% confidence.\n"
                 f"2. DIRECTIONAL ARBITRATION: Provide your best assessment of whether BIG or SMALL has the statistical edge. Align with the strongest pattern.\n"
-                f"3. SELECTIVE SKIP: Only return 'SKIP' if there is extreme erratic chaos (Δ > 5.5) or purely indeterminate 50/50 chop without any structural pattern.\n"
+                f"3. MINIMAL SKIPS: WinGo 30S players demand actionable predictions. Only return 'SKIP' in the absolute rarest case of a pure 50/50 dead tie with zero edge. If there is even a slight lean towards BIG or SMALL, predict that direction with confidence.\n"
                 f"4. CAPITAL PRESERVATION: Return strictly valid JSON only:\n"
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
@@ -2437,8 +2437,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
         # 🛡️ RECOVERY CAPITAL PROTECTION & ADAPTIVE STRIKE:
-        # A. Violent Delta Chaos Guard:
-        if is_violent_chaos:
+        # A. Violent Delta Chaos Guard (Only if zero skips so far and weak margin):
+        if is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 10.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2463,8 +2463,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
             print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to opposing {last_s} dragon! Striking {rec_target} ({mult}X).", flush=True)
 
-        # C. Master AI Strong Divergence Guard (Only if AI has very high confidence >= 85% opposing):
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 85.0 and size_margin_pct < 15.0:
+        # C. Master AI Strong Divergence Guard (Only if consecutive_skips == 0 and AI has very high confidence >= 85% opposing):
+        elif consecutive_skips == 0 and ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 85.0 and size_margin_pct < 10.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2489,17 +2489,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     else:
         # 👑 LEVEL 1 (1X BASE PLAY): AI & Quant Harmonious Confluence
-        if POST_STOP_LOSS_COOLDOWN > 0:
+        if POST_STOP_LOSS_COOLDOWN > 0 and consecutive_skips == 0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
             print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market 1 round after stop-loss. SAFE SKIP.", flush=True)
-        elif is_post_dragon_transition:
-            arbiter_wants_skip = True
-            is_qualified_bet = False
-            final_summary = "Post-Dragon Break Transition: Filtering 50/50 toss until new trend emerges."
-            print(f"🛡️ [POST-DRAGON SHIELD] Post-dragon 50/50 break filtered. SAFE SKIP.", flush=True)
-        elif is_violent_chaos:
+        elif is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 12.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
@@ -2513,7 +2508,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 65.0:
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 60.0:
             # Tier 2: Supreme Concurrence (AI & Quants agree 100% on same direction!)
             target_val = ai_tgt
             target_pattern = f"Master AI & Quant Concurrence ({target_val})"
@@ -2522,7 +2517,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 80.0 and size_margin_pct < 15.0:
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0 and size_margin_pct < 15.0:
             # Tier 3: AI Directional Insight (High AI confidence when quant margin is narrow)
             target_val = ai_tgt
             target_pattern = f"Master AI Directional Lead ({target_val})"
@@ -2531,7 +2526,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI DIRECTIONAL LEAD] Qwen-27B leads with {target_val} ({ai_conf:.0f}%)", flush=True)
-        elif size_margin_pct >= 12.0 and w_size in ("BIG", "SMALL") and w_v >= 7 and (not ai_ok or ai_tgt == w_size or ai_conf < 75.0):
+        elif size_margin_pct >= 8.0 and w_size in ("BIG", "SMALL") and w_v >= 6 and (not ai_ok or ai_tgt == w_size or ai_conf < 75.0):
             # Tier 4: Quant Majority Consensus (Clear mathematical council lead)
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
@@ -2540,17 +2535,26 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"📊 [QUANT CONSENSUS] Council Lead: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
-        elif w_size in ("BIG", "SMALL") and w_v > l_v and size_margin_pct >= 8.0 and not (ai_ok and ai_tgt == "SKIP" and ai_conf >= 80.0):
-            # Tier 5: Active Trend Execution (Slight quant majority without strong AI veto)
+        elif w_size in ("BIG", "SMALL") and (w_v >= l_v or size_margin_pct >= 1.0) and not (ai_ok and ai_tgt == "SKIP" and ai_conf >= 85.0):
+            # Tier 5: Active Trend Execution (Any majority edge or council lead)
             target_val = w_size
             target_pattern = f"Active Trend Following ({target_val})"
             final_summary = f"Active Trend ({w_size} | {w_v}-{l_v})"
-            target_conf = max(80.0, calc_conf)
+            target_conf = max(78.0, calc_conf)
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"⚡ [ACTIVE TREND] Following Majority: {target_val} ({w_v} vs {l_v})", flush=True)
+        elif consecutive_skips >= 1 and w_size in ("BIG", "SMALL"):
+            # Tier 6A: ANTI-CONSECUTIVE SKIP LOCK (Maximum 1 skip allowed; force action if skipped previously!)
+            target_val = w_size
+            target_pattern = f"Council Edge Execution ({target_val})"
+            final_summary = f"Council Edge ({w_size} | {w_v}-{l_v}) [Anti-Skip Lock]"
+            target_conf = max(76.0, calc_conf)
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            print(f"⚡ [ANTI-SKIP LOCK] Previous round was SKIP. Forcing action on {target_val} ({w_v} vs {l_v})!", flush=True)
         else:
-            # Tier 6: Indeterminate 50/50 Flat Noise Filter -> Capital Protection SAFE SKIP
+            # Tier 6B: Truly indeterminate 50/50 Dead Flat Noise Filter -> Single SAFE SKIP
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = "Indeterminate 50/50 Noise: Capital preserved for high-edge round."
