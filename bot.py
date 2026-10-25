@@ -274,6 +274,9 @@ def load_cache():
         try:
             with open(CACHE_FILE, "r") as f:
                 MEMORY_HISTORY = json.load(f)
+                # Keep rolling ring-buffer of last 300 rounds for maximum performance & memory efficiency
+                if len(MEMORY_HISTORY) > 300:
+                    MEMORY_HISTORY = MEMORY_HISTORY[-300:]
                 for item in MEMORY_HISTORY:
                     num = int(item.get("num", 0))
                     if "size" not in item:
@@ -306,8 +309,11 @@ def load_cache():
             print(f"[STATE LOAD ERROR] {e}", flush=True)
 
 def save_cache():
+    global MEMORY_HISTORY
     if len(MEMORY_HISTORY) > 0:
         try:
+            if len(MEMORY_HISTORY) > 300:
+                MEMORY_HISTORY = MEMORY_HISTORY[-300:]
             tmp_file = f"{CACHE_FILE}.tmp"
             with open(tmp_file, "w") as f:
                 json.dump(MEMORY_HISTORY, f)
