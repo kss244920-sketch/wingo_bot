@@ -203,7 +203,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.4.2",
+                "version": "2.5.0",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
@@ -264,7 +264,7 @@ CYCLE_WINS = 0
 CYCLE_LOSSES = 0
 CONSECUTIVE_SKIPS = 0
 POST_STOP_LOSS_COOLDOWN = 0  # Cooldown rounds after Level 5 Stop-Loss hit
-MAX_MARTINGALE_LEVEL = 5  # Disciplined 5-Level Capital Protection (1X, 3X, 9X, 27X, 81X - 97%+ Accuracy)
+MAX_MARTINGALE_LEVEL = 3  # Disciplined 3-Level Ultra-Safe Capital Shield (1X, 3X, 8X - Zero Account Wipeout)
 
 # Direct VIP Channel Architecture (Zero Polling, Zero 409 Conflicts)
 IS_STANDBY_MODE = False
@@ -2459,7 +2459,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     detected_pattern_name = None
 
     if current_loss_streak > 0:
-        mult = 3 ** current_loss_streak
+        mult_map = [1, 3, 8]
+        mult = mult_map[min(current_loss_streak, len(mult_map)-1)]
         cur_lvl = current_loss_streak + 1
         rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
@@ -2530,7 +2531,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             print(f"🧠 [RECOVERY AI LEAD] Master AI leads recovery to {ai_tgt} ({ai_conf:.0f}%)! Striking {rec_target} ({mult}X).", flush=True)
 
         # D. Quant Council Dynamic Majority Pivot:
-        elif w_size in ("BIG", "SMALL") and w_size != rec_target and (w_v > l_v or size_margin_pct >= 1.0):
+        elif w_size in ("BIG", "SMALL") and w_size != rec_target and (w_v > l_v and size_margin_pct >= 6.0):
             rec_target = w_size
             CURRENT_CYCLE_TARGET = w_size
             target_val = rec_target
@@ -2602,7 +2603,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"📊 [QUANT CONSENSUS] Council Lead: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
-        elif w_size in ("BIG", "SMALL") and (w_v >= l_v or size_margin_pct >= 1.0) and not (ai_ok and ai_tgt == "SKIP" and ai_conf >= 85.0):
+        elif w_size in ("BIG", "SMALL") and (w_v > l_v or size_margin_pct >= 5.0) and not (ai_ok and ai_tgt == "SKIP" and ai_conf >= 85.0):
             # Tier 5: Active Trend Execution (Any majority edge or council lead)
             target_val = w_size
             target_pattern = f"Active Trend Following ({target_val})"
@@ -2770,7 +2771,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         number_line = ""
 
     level = CURRENT_LOSS_STREAK + 1
-    mult = 3 ** (level - 1)
+    mult_map = [1, 3, 8]
+    mult = mult_map[min(level - 1, len(mult_map)-1)]
 
     strategy_text = pattern_name or "Quant Consensus Edge"
     if level >= 2:
@@ -2863,7 +2865,8 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_CYCLE_TARGET = None  # Fresh target for next cycle
         POST_STOP_LOSS_COOLDOWN = 0
 
-        mult = 3 ** (win_level - 1)
+        mult_map = [1, 3, 8]
+        mult = mult_map[min(win_level - 1, len(mult_map)-1)]
         if win_level == 1:
             outcome_details = f"Level 1 Win Secured! ({mult}X Base Profit Restored)"
         else:
@@ -2903,7 +2906,8 @@ def send_user_result(period, actual_number, actual_color, pred):
             POST_STOP_LOSS_COOLDOWN = 1
         else:
             next_level = CURRENT_LOSS_STREAK + 1
-            mult = 3 ** (next_level - 1)
+            mult_map = [1, 3, 8]
+            mult = mult_map[min(next_level - 1, len(mult_map)-1)]
             outcome_details = f"Level {loss_level} Missed. Continuous Escalation to Level {next_level} ({mult}X) Recovery!"
 
         conclusion_text = f"Strategy: {strat_name}\n{outcome_details}"
@@ -2933,7 +2937,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
-    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.4.2-Production)")
+    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.5.0-Production)")
     print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
     print("🤖 Agent 2: GPT-20B (1-1 Zig-Zag Chop & Alternation Specialist)")
     print("🤖 Agent 3: Qwen-27B (2-2 Double-Step & Symmetry Specialist)")
@@ -2950,7 +2954,7 @@ def run_live_bot():
     print("🤖 Agent 14: Kolmogorov Algorithmic Complexity / Lempel-Ziv Quant")
     print("🤖 Agent 15: Exponentially-Decayed Beta-Binomial Bayesian Quant")
     print("🤖 Agent 16: GPT-120B (Supreme Arbiter & Risk Controller)")
-    print("🎯 Martingale Plan: 5-Level Capital Protection (97%+ Cycle Accuracy)")
+    print("🎯 Martingale Plan: 3-Level Ultra-Safe Capital Shield (1X, 3X, 8X - Anti-Ruin Protection)")
     print("🚫 Skip Policy: Zero Unnecessary Skips (Continuous VIP Stream)")
     print(f"📱 User Alerts (Direct): {USER_ALERT_CHAT_ID}")
     print(f"☁️ Cloud Storage Channel: {STORAGE_CHANNEL_ID}")
