@@ -30,7 +30,33 @@ MASTER_AI_MODELS = [
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
 
-HISTORY_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json"
+HISTORY_API_URLS = [
+    "https://draw.ar-lottery02.com/WinGo/WinGo_30S/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery.com/WinGo/WinGo_30S/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json"
+]
+HISTORY_API_URL = HISTORY_API_URLS[0]
+
+def fetch_live_draws():
+    """Fetches live draws with automatic multi-mirror failover to prevent Cloudflare 403 freeze."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.raxi4.com/"
+    }
+    for url in HISTORY_API_URLS:
+        try:
+            r = requests.get(url, headers=headers, timeout=4)
+            if r.status_code == 200:
+                data = r.json()
+                if data and isinstance(data.get("data"), dict):
+                    items = data["data"].get("list", [])
+                    if items:
+                        return items
+        except Exception:
+            continue
+    return []
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.join(BASE_DIR, "history_cache.json"))
 STATE_FILE = os.environ.get("STATE_FILE", os.path.join(BASE_DIR, "state_cache.json"))
@@ -524,18 +550,16 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
         dragon_conf = min(92.0, 75.0 + cur_len * 2.5)
         return last_val, dragon_conf, f"Dragon Trend ({last_val} x{cur_len})"
 
-    # 2. 1-1 Alternating Chop (Requires at least 4 trailing runs of length 1)
+    # 2. 1-1 Alternating Chop (Requires at least 2 trailing runs of length 1)
     chop_count = 0
     for r in reversed(runs):
         if r[1] == 1:
             chop_count += 1
         else:
             break
-    if chop_count == 4:
-        chop_conf = 84.0
+    if chop_count >= 2:
+        chop_conf = min(92.0, 78.0 + chop_count * 2.5)
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
-    elif chop_count >= 5:
-        return last_val, 50.0, f"Chop Exhaustion Zone ({chop_count}x -> Filtered)"
 
     # 3. 2-2 Double-Step Pattern Rotation (AA BB AA) - Strictly requires >= 3 alternating runs of 2
     if len(runs) >= 3 and runs[-1][1] == 2 and runs[-2][1] == 2 and runs[-3][1] == 2:
@@ -2349,13 +2373,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     is_2_2_rotation = (len(seq_runs) >= 3 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
     is_2_2 = is_2_2_rotation
 
-    # 4. True 1-1 Chop Alternation (requires strictly 4 alternating singletons; >= 5 is exhaustion zone)
-    is_chop_confirmed = (_chop_count == 4)
+    # 4. True 1-1 Chop Alternation
+    is_chop_confirmed = (_chop_count >= 3)
 
     roadmap_pattern_name = None
     roadmap_target_val = None
 
-    if s_streak == 3 and last_num not in (0, 5) and w_size == last_s and size_margin_pct >= 15.0:
+    if s_streak >= 3 and last_num not in (0, 5) and w_size == last_s and size_margin_pct >= 10.0:
         roadmap_target_val = last_s
         roadmap_pattern_name = f"Dragon Trend Momentum ({last_s} x{s_streak})"
     elif is_2_2_rotation:
@@ -2363,7 +2387,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         roadmap_pattern_name = f"2-2 Double-Step Rotation ({opp_s})"
     elif is_chop_confirmed:
         roadmap_target_val = opp_s
-        roadmap_pattern_name = f"1-1 Chop Swing (4x Alternation)"
+        roadmap_pattern_name = f"1-1 Chop Swing ({_chop_count}x Alternation)"
 
     # If genuine confirmed structural roadmap pattern exists, verify no sharp conflict with quants or master AI
     if roadmap_target_val in ("BIG", "SMALL"):
@@ -2449,33 +2473,47 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             final_summary = f"Recovery Capital Guard: Violent delta chaos (Δ={p_info.get('avg_delta', 4.5):.1f}). Level {cur_lvl} preserved."
             print(f"🛡️ [RECOVERY DELTA CHAOS] Erratic jump swings at Level {cur_lvl}! SAFE SKIP (Level Preserved).", flush=True)
 
-        # B. Opposing Dragon Momentum Alignment:
-        # If an opposing streak >= 3 is active, never freeze and skip indefinitely — adaptively ride the dragon!
-        elif s_streak >= 3 and last_s in ("BIG", "SMALL") and last_s != rec_target:
+        # B. Opposing Dragon Momentum Alignment (Streak >= 2):
+        # If an opposing streak >= 2 is active, never freeze or fight — adaptively ride the dragon!
+        elif s_streak >= 2 and last_s in ("BIG", "SMALL") and last_s != rec_target:
             rec_target = last_s
             CURRENT_CYCLE_TARGET = last_s
             target_val = rec_target
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            target_pattern = f"Recovery Dragon Momentum Alignment ({last_s} x{s_streak})"
+            target_pattern = f"Recovery Dragon Alignment ({last_s} x{s_streak})"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to running {last_s} dragon ({mult}X)"
             target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
             print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to opposing {last_s} dragon! Striking {rec_target} ({mult}X).", flush=True)
 
-        # C. Master AI Strong Divergence Guard (Only if consecutive_skips == 0 and AI has very high confidence >= 85% opposing):
-        elif consecutive_skips == 0 and ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 85.0 and size_margin_pct < 10.0:
-            arbiter_wants_skip = True
-            is_qualified_bet = False
-            target_type = "SKIP"
-            target_val = "SKIP"
-            target_conf = 50.0
-            signal_grade = "SKIP"
-            detected_pattern_name = f"Recovery AI Divergence Shield (L{cur_lvl})"
-            final_summary = f"Recovery Capital Guard: Master AI strongly favors {ai_tgt} ({ai_conf:.0f}%). Level {cur_lvl} preserved."
-            print(f"🧠 [RECOVERY AI GUARD] Master AI warns against recovery {rec_target} (AI: {ai_tgt} | {ai_conf:.0f}%)! SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
+        # C. 1-1 Chop Swing Alignment (Alternation >= 2):
+        elif s_alt >= 2 and opp_s in ("BIG", "SMALL") and opp_s != rec_target:
+            rec_target = opp_s
+            CURRENT_CYCLE_TARGET = opp_s
+            target_val = rec_target
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Chop Alignment ({opp_s} swing)"
+            final_summary = f"Level {cur_lvl} Recovery: Aligned to 1-1 chop swing on {opp_s} ({mult}X)"
+            target_conf = min(98.0, 86.0 + current_loss_streak * 2.0)
+            print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {rec_target} ({mult}X).", flush=True)
 
-        # D. High-Conviction Recovery Strike:
+        # D. Quant Council Decisive Fresh Edge:
+        elif w_size in ("BIG", "SMALL") and w_size != rec_target and size_margin_pct >= 12.0 and w_v >= 6:
+            rec_target = w_size
+            CURRENT_CYCLE_TARGET = w_size
+            target_val = rec_target
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Dynamic Council Pivot ({w_size})"
+            final_summary = f"Level {cur_lvl} Recovery: Pivoted to dominant {w_size} council edge ({mult}X)"
+            target_conf = min(98.0, 85.0 + current_loss_streak * 2.5)
+            print(f"🎯 [RECOVERY COUNCIL PIVOT] Board shifted to {w_size} ({size_margin_pct:.0f}% margin)! Striking {rec_target} ({mult}X).", flush=True)
+
+        # E. High-Conviction Recovery Strike:
         else:
             target_val = rec_target
             CURRENT_CYCLE_TARGET = rec_target
@@ -2879,19 +2917,14 @@ def run_live_bot():
 
     while True:
         try:
-            # 1. Fetch live historical draws from CDN
-            resp = requests.get(HISTORY_API_URL, headers=HEADERS, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                d_data = data.get("data")
-                items = d_data.get("list", []) if isinstance(d_data, dict) else []
-
-                if items:
-                    latest_item = items[0]
-                    current_period = str(latest_item.get("issueNumber", ""))
-                    if not current_period:
-                        time.sleep(1.0)
-                        continue
+            # 1. Fetch live historical draws from CDN with multi-mirror rotation (Prevents Cloudflare 403 freeze)
+            items = fetch_live_draws()
+            if items:
+                latest_item = items[0]
+                current_period = str(latest_item.get("issueNumber", ""))
+                if not current_period:
+                    time.sleep(1.0)
+                    continue
 
                     raw_color = str(latest_item.get("color", ""))
                     num = int(latest_item.get("number", 0))
