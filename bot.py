@@ -203,7 +203,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.4.1",
+                "version": "2.4.2",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
@@ -2503,8 +2503,34 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             target_conf = min(98.0, 86.0 + current_loss_streak * 2.0)
             print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {rec_target} ({mult}X).", flush=True)
 
-        # D. Quant Council Decisive Fresh Edge:
-        elif w_size in ("BIG", "SMALL") and w_size != rec_target and size_margin_pct >= 12.0 and w_v >= 6:
+        # B2. Confirmed Structural Roadmap Pivot:
+        elif roadmap_target_val in ("BIG", "SMALL") and roadmap_target_val != rec_target:
+            rec_target = roadmap_target_val
+            CURRENT_CYCLE_TARGET = roadmap_target_val
+            target_val = rec_target
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Roadmap Pivot ({roadmap_pattern_name})"
+            final_summary = f"Level {cur_lvl} Recovery: Aligned to {roadmap_pattern_name} ({mult}X)"
+            target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
+            print(f"🎴 [RECOVERY ROADMAP PIVOT] Re-aligning recovery to {roadmap_pattern_name}! Striking {rec_target} ({mult}X).", flush=True)
+
+        # B3. Master AI Neural Directional Lead:
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 70.0:
+            rec_target = ai_tgt
+            CURRENT_CYCLE_TARGET = ai_tgt
+            target_val = rec_target
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Master AI Lead ({ai_tgt})"
+            final_summary = f"Level {cur_lvl} Recovery: Master AI leads on {ai_tgt} ({ai_conf:.0f}%) ({mult}X)"
+            target_conf = max(ai_conf, 86.0 + current_loss_streak * 2.0)
+            print(f"🧠 [RECOVERY AI LEAD] Master AI leads recovery to {ai_tgt} ({ai_conf:.0f}%)! Striking {rec_target} ({mult}X).", flush=True)
+
+        # D. Quant Council Dynamic Majority Pivot:
+        elif w_size in ("BIG", "SMALL") and w_size != rec_target and (w_v > l_v or size_margin_pct >= 1.0):
             rec_target = w_size
             CURRENT_CYCLE_TARGET = w_size
             target_val = rec_target
@@ -2514,7 +2540,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             target_pattern = f"Recovery Dynamic Council Pivot ({w_size})"
             final_summary = f"Level {cur_lvl} Recovery: Pivoted to dominant {w_size} council edge ({mult}X)"
             target_conf = min(98.0, 85.0 + current_loss_streak * 2.5)
-            print(f"🎯 [RECOVERY COUNCIL PIVOT] Board shifted to {w_size} ({size_margin_pct:.0f}% margin)! Striking {rec_target} ({mult}X).", flush=True)
+            print(f"🎯 [RECOVERY COUNCIL PIVOT] Board shifted to {w_size} ({w_v} vs {l_v} votes, {size_margin_pct:.0f}% margin)! Striking {rec_target} ({mult}X).", flush=True)
 
         # E. High-Conviction Recovery Strike:
         else:
@@ -2907,7 +2933,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
-    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.4.1-Production)")
+    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.4.2-Production)")
     print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
     print("🤖 Agent 2: GPT-20B (1-1 Zig-Zag Chop & Alternation Specialist)")
     print("🤖 Agent 3: Qwen-27B (2-2 Double-Step & Symmetry Specialist)")
