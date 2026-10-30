@@ -2743,7 +2743,21 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
         has_ai_quant_concurrence = (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 65.0)
 
-        if (is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 14.0) or (ai_ok and ai_tgt == "SKIP" and consecutive_skips == 0):
+        # 🏰 LEVEL 3 CAPITAL FORTRESS SHIELD:
+        # At Level 3 (8X multiplier), ONLY strike when there is High Concurrence (AI + Quant) OR Confirmed Dragon/Chop/2-2 structure.
+        # If setup is merely average, take a SAFE SKIP to preserve the Level 3 bullet until the perfect sniper entry appears!
+        if cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or s_alt >= 3 or is_2_2) and consecutive_skips < 3:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Level {cur_lvl} Capital Fortress"
+            final_summary = f"Level {cur_lvl} Fortress: Waiting for high-conviction sniper entry. Level {cur_lvl} preserved."
+            print(f"🏰 [LEVEL {cur_lvl} CAPITAL FORTRESS] Safe Skip to preserve {mult}X bullet for high-conviction setup!", flush=True)
+
+        elif (is_violent_chaos and consecutive_skips < 3 and size_margin_pct < 14.0) or (ai_ok and ai_tgt == "SKIP" and consecutive_skips < 3):
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
