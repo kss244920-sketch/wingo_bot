@@ -93,7 +93,10 @@ PANEL_HTML = """<!DOCTYPE html>
 </head>
 <body>
     <div class="card">
-        <div class="header">PERIOD: <span id="period">LOADING...</span></div>
+        <div style="text-align:center; margin-bottom: 12px;">
+            <span style="background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e; border-radius: 20px; padding: 4px 14px; font-size: 11px; font-weight: 800; color: #4ade80; letter-spacing: 1.5px;">⚡ WINGO 1-MINUTE (1M) QUANT AI ⚡</span>
+        </div>
+        <div class="header">PERIOD: <span id="period">LOADING...</span> (1-MIN)</div>
         <div class="pred-box">
             <div id="pred" class="pred-val">...</div>
         </div>
@@ -170,6 +173,22 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
                 return
+
+        if self.path in ("/is_busy", "/busy"):
+            latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else None
+            settled_periods = {str(x.get("period")) for x in SETTLED_HISTORY}
+            target_val = MEMORY_PREDICTIONS.get(latest_p, {}).get("target_val") if latest_p else None
+            is_waiting = (latest_p is not None and str(latest_p) not in settled_periods and target_val not in (None, "SKIP", "WAITING"))
+            res = {
+                "busy": is_waiting,
+                "process": f"Waiting for draw of period {latest_p}" if is_waiting else "Idle",
+                "active_period": latest_p
+            }
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode("utf-8"))
+            return
 
         if self.path in ("/", "/panel"):
             self.send_response(200)
@@ -3271,7 +3290,7 @@ def run_live_bot():
     # Start Cloud Backup, Silent Pin & Disaster Recovery Daemon
     try:
         from audit_cloud_manager import start_backup_daemon
-        start_backup_daemon(interval_seconds=15 * 60)
+        start_backup_daemon(interval_seconds=3 * 3600)
         print("☁️ [BACKUP DAEMON] Auto Cloud Backup & Pin Daemon active! ✅", flush=True)
     except Exception as e:
         print(f"⚠️ [BACKUP DAEMON] Error: {e}", flush=True)
