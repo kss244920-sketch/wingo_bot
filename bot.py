@@ -84,6 +84,7 @@ PANEL_HTML = """<!DOCTYPE html>
         th { color: #6b7280; font-size: 12px; font-weight: 700; text-align: center; padding: 8px 4px; border-bottom: 1px solid #1f2937; }
         td { font-size: 13px; font-weight: 600; text-align: center; padding: 10px 4px; border-bottom: 1px solid #151e18; color: #d1d5db; }
         .win { color: #22c55e; font-weight: 800; }
+        .jackpot { color: #facc15; font-weight: 900; text-shadow: 0 0 12px rgba(250, 204, 21, 0.8), 0 0 20px rgba(250, 204, 21, 0.4); }
         .loss { color: #ef4444; font-weight: 800; }
         .skip { color: #f59e0b; font-weight: 700; }
         .footer { text-align: center; margin-top: 24px; color: #4b5563; font-size: 12px; letter-spacing: 1px; }
@@ -133,7 +134,7 @@ PANEL_HTML = """<!DOCTYPE html>
                 (data.history || []).forEach(row => {
                     const tr = document.createElement('tr');
                     const st = row.status || '';
-                    const stClass = st.includes('WIN') ? 'win' : (st.includes('LOSS') ? 'loss' : 'skip');
+                    const stClass = st.includes('JACKPOT') ? 'jackpot' : (st.includes('WIN') ? 'win' : (st.includes('LOSS') ? 'loss' : 'skip'));
                     tr.innerHTML = `
                         <td>${row.prd}</td>
                         <td>${row.pred}</td>
@@ -205,8 +206,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     if p_full in settled_map:
                         rec = settled_map[p_full]
                         p_pred = rec.get("target_val", sz)
-                        is_win = rec.get("is_win", False)
-                        status_str = rec.get("status", "WIN 🐯" if is_win else "LOSS 🔴")
+                        status_str = rec.get("status", "WIN 🟢" if rec.get("is_win") else "LOSS 🔴")
                     else:
                         pred_it = MEMORY_PREDICTIONS.get(p_full)
                         if pred_it and pred_it.get("target_val") not in (None, "SKIP", "WAITING"):
@@ -217,7 +217,17 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 is_win = (p_pred in it.get("color", ""))
                             else:
                                 is_win = True
-                            status_str = "WIN 🐯" if is_win else "LOSS 🔴"
+
+                            chk_nums = re.findall(r"\b\d\b", str(pred_it.get("jackpot_tip") or ""))
+                            if pred_it.get("predicted_num") is not None:
+                                chk_nums.append(str(pred_it.get("predicted_num")))
+                            chk_nums.extend(re.findall(r"\b\d\b", str(pred_it.get("expected_nums") or "")))
+                            if is_win and (str(num_val) in chk_nums):
+                                status_str = "WIN 🎯 JACKPOT"
+                            elif is_win:
+                                status_str = "WIN 🟢"
+                            else:
+                                status_str = "LOSS 🔴"
                         else:
                             p_pred = "--"
                             status_str = "PAST ⏳"
@@ -3025,21 +3035,6 @@ def send_user_result(period, actual_number, actual_color, pred):
         is_win = (target_val == actual_size)
         t_display = f"🐘 {to_bold('BIG [5-9]')}" if target_val == "BIG" else f"🐜 {to_bold('SMALL [0-4]')}"
 
-    # Record genuine authentic result into SETTLED_HISTORY
-    status_label = "WIN 🐯" if is_win else "LOSS 🔴"
-    SETTLED_HISTORY = [x for x in SETTLED_HISTORY if str(x.get("period")) != p_str]
-    SETTLED_HISTORY.append({
-        "period": p_str,
-        "target_val": str(target_val),
-        "actual_num": int(actual_number),
-        "actual_size": str(actual_size),
-        "actual_color": str(actual_color),
-        "is_win": bool(is_win),
-        "status": status_label
-    })
-    if len(SETTLED_HISTORY) > 100:
-        SETTLED_HISTORY = SETTLED_HISTORY[-100:]
-
     strat_name = pred.get("pattern_name") or ""
     if not strat_name and pred.get("reason"):
         clean_r = re.sub(r"\(Note:.*?\)", "", str(pred.get("reason", "")), flags=re.DOTALL).strip()
@@ -3071,22 +3066,29 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         tip_str = str(pred.get("jackpot_tip") or "")
         pred_num = pred.get("predicted_num")
+        exp_nums_str = str(pred.get("expected_nums") or "")
         tip_numbers = re.findall(r"\b\d\b", tip_str)
         if pred_num is not None:
             tip_numbers.append(str(pred_num))
+        tip_numbers.extend(re.findall(r"\b\d\b", exp_nums_str))
 
         is_jackpot = is_win and (str(actual_number) in tip_numbers)
 
         if is_jackpot:
+            status_label = "WIN 🎯 JACKPOT"
             result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }} 🎯 <b><u>JACKPOT 9X WIN!</u></b>"
             conclusion_text += f"\n🎯 <b>Jackpot Hit:</b> Number <code>{actual_number}</code> (9X Direct Payout Secured!)"
         elif actual_number in (0, 5) and (pred.get("violet_alert") or "violet" in tip_str.lower()):
+            status_label = "WIN 🟣 VIOLET"
             result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }} 🟣 <b><u>VIOLET BONUS!</u></b>"
             conclusion_text += f"\n🟣 <b>Violet Bonus Hit:</b> Number <code>{actual_number}</code> (4.5X Win!)"
         else:
+            status_label = "WIN 🟢"
             result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🟢 <b><u>WIN</u></b> 🟢 }}"
 
     else:
+        status_label = "LOSS 🔴"
+        is_jackpot = False
         loss_level = CURRENT_LOSS_STREAK + 1
         TOTAL_LOSSES += 1
         CURRENT_LOSS_STREAK += 1  # DO NOT RESET! KEEP CLIMBING UNTIL WIN!
@@ -3107,6 +3109,21 @@ def send_user_result(period, actual_number, actual_color, pred):
 
         conclusion_text = f"Strategy: {strat_name}\n{outcome_details}"
         result_tag = f"<b>Result➔</b> <code>{actual_size}</code> {{ 🔴 <b><u>LOSS</u></b> 🔴 }}"
+
+    # Save authentic record to SETTLED_HISTORY with Jackpot detection
+    SETTLED_HISTORY = [x for x in SETTLED_HISTORY if str(x.get("period")) != p_str]
+    SETTLED_HISTORY.append({
+        "period": p_str,
+        "target_val": str(target_val),
+        "actual_num": int(actual_number),
+        "actual_size": str(actual_size),
+        "actual_color": str(actual_color),
+        "is_win": bool(is_win),
+        "is_jackpot": bool(is_jackpot),
+        "status": status_label
+    })
+    if len(SETTLED_HISTORY) > 100:
+        SETTLED_HISTORY = SETTLED_HISTORY[-100:]
 
     msg = (
         f"<code>Win Go 30-SEC Prediction</code>\n"
