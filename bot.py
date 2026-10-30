@@ -35,9 +35,9 @@ MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
 
 HISTORY_API_URLS = [
-    "https://draw.ar-lottery02.com/WinGo/WinGo_30S/GetHistoryIssuePage.json",
-    "https://draw.ar-lottery.com/WinGo/WinGo_30S/GetHistoryIssuePage.json",
-    "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json"
+    "https://draw.ar-lottery02.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
 ]
 HISTORY_API_URL = HISTORY_API_URLS[0]
 
@@ -70,7 +70,7 @@ PANEL_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WinGo 30S Elite Predictor</title>
+    <title>WinGo 1M Elite Predictor</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         body { background-color: #0b0f0c; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
@@ -338,9 +338,10 @@ IS_STANDBY_MODE = False
 
 def get_next_period(current_period):
     """
-    WinGo 30S issueNumber structure:
-    YYYYMMDD + 10005 + 4-digit round index (0001 to 2880).
-    Properly handles midnight date rollover at round 2880!
+    WinGo issueNumber structure:
+    - WinGo 1M: YYYYMMDD + 10001 + 4-digit round index (0001 to 1440).
+    - WinGo 30S: YYYYMMDD + 10005 + 4-digit round index (0001 to 2880).
+    Properly handles midnight date rollover!
     """
     if len(current_period) >= 17:
         date_str = current_period[:8]
@@ -348,7 +349,8 @@ def get_next_period(current_period):
         round_str = current_period[13:]
         try:
             round_num = int(round_str)
-            if round_num >= 2880:
+            max_rounds = 1440 if mid_code == "10001" else 2880
+            if round_num >= max_rounds:
                 import datetime
                 dt = datetime.datetime.strptime(date_str, "%Y%m%d") + datetime.timedelta(days=1)
                 next_date = dt.strftime("%Y%m%d")
@@ -367,7 +369,9 @@ def load_cache():
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
-                MEMORY_HISTORY = json.load(f)
+                raw_hist = json.load(f)
+                # Filter to only keep 1M issues (10001) so old 30S data (10005) doesn't pollute
+                MEMORY_HISTORY = [it for it in raw_hist if "10001" in str(it.get("period", ""))]
                 # Keep rolling ring-buffer of last 300 rounds for maximum performance & memory efficiency
                 if len(MEMORY_HISTORY) > 300:
                     MEMORY_HISTORY = MEMORY_HISTORY[-300:]
@@ -502,7 +506,7 @@ def send_dashboard_reply(chat_id):
     pattern_name = pred_info.get("pattern_name", "Dynamic Roadmap")
 
     text = (
-        f"🎮 <b>WinGo 30S Elite Predictor &amp; Telemetry Engine</b>\n"
+        f"🎮 <b>WinGo 1M Elite Predictor &amp; Telemetry Engine</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ <b>Status:</b> 🟢 <b>100% HEALTHY &amp; LIVE ON RENDER</b>\n"
         f"🕒 <b>Server Time:</b> <code>{now_ist}</code>\n"
@@ -512,7 +516,7 @@ def send_dashboard_reply(chat_id):
         f"🧩 <b>Active Pattern:</b> <code>{pattern_name}</code>\n"
         f"💡 <b>Council Reasoning:</b> <i>{reason}</i>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📢 <i>Real-time VIP signals are automatically streamed to the alerts channel every 30 seconds!</i>"
+        f"📢 <i>Real-time VIP signals are automatically streamed to the alerts channel every 1 minute!</i>"
     )
 
     reply_markup = {
@@ -2444,7 +2448,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             db_summary_str = " | ".join(db_summary_parts) if db_summary_parts else "No direct database sequence lock"
 
             ai_prompt = (
-                f"You are the Supreme AI Quantitative Arbiter for WinGo 30S (BIG [5-9] vs SMALL [0-4]).\n"
+                f"You are the Supreme AI Quantitative Arbiter for WinGo 1M (BIG [5-9] vs SMALL [0-4]).\n"
                 f"Your mission is to SYNTHESIZE sequence patterns with the 32 Mathematical Quant Models for MAXIMUM ACCURACY.\n\n"
                 f"Shoe Sequence (last 15 draws, oldest->newest): [{seq_text}].\n"
                 f"Current State: Last={last_s}({last_num}) | Streak={last_s} x{s_streak} | Alternation Chop={s_alt}x | Volatility: Δ={p_info.get('avg_delta', 4.5):.1f} ({'High Volatility Chaos' if is_violent_chaos else 'Stable'})\n\n"
@@ -2456,7 +2460,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 f"DECISION & CONFLUENCE DIRECTIVES:\n"
                 f"1. CONFLUENCE CONFIRMATION: If the visual shoe pattern and Quant Council agree on {w_size}, confirm with 85-95% confidence.\n"
                 f"2. DIRECTIONAL ARBITRATION: Provide your best assessment of whether BIG or SMALL has the statistical edge. Align with the strongest pattern.\n"
-                f"3. MINIMAL SKIPS: WinGo 30S players demand actionable predictions. Only return 'SKIP' in the absolute rarest case of a pure 50/50 dead tie with zero edge. If there is even a slight lean towards BIG or SMALL, predict that direction with confidence.\n"
+                f"3. MINIMAL SKIPS: WinGo 1M players demand actionable predictions. Only return 'SKIP' in the absolute rarest case of a pure 50/50 dead tie with zero edge. If there is even a slight lean towards BIG or SMALL, predict that direction with confidence.\n"
                 f"4. CAPITAL PRESERVATION: Return strictly valid JSON only:\n"
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
@@ -3240,7 +3244,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
-    print("🚀 WinGo 30S 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.5.0-Production)")
+    print("🚀 WinGo 1M 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.5.0-Production)")
     print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
     print("🤖 Agent 2: GPT-20B (1-1 Zig-Zag Chop & Alternation Specialist)")
     print("🤖 Agent 3: Qwen-27B (2-2 Double-Step & Symmetry Specialist)")
