@@ -8,8 +8,7 @@ ENV PORT=8080
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY bot.py .
-COPY history_cache.json .
+COPY . .
 
 EXPOSE 8080
 
