@@ -3059,7 +3059,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         strategy_text += " [🟣 Violet 0/5 Alert]"
 
     msg = (
-        f"<code>Win Go 30-SEC Prediction</code>\n"
+        f"<code>Win Go 1-MIN Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
         f"<blockquote><b>Bet on ➔</b> {arrow} <code>{target_val}</code>{number_line}</blockquote>\n\n"
@@ -3220,7 +3220,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         SETTLED_HISTORY = SETTLED_HISTORY[-100:]
 
     msg = (
-        f"<code>Win Go 30-SEC Prediction</code>\n"
+        f"<code>Win Go 1-MIN Prediction</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📝 <b>Period:</b> <code>{period}</code>\n\n"
         f"<blockquote>{result_tag}</blockquote>\n\n"
