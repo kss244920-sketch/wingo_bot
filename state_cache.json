@@ -1,1 +1,1 @@
-{}
+{"current_loss_streak": 0, "current_cycle_target": null, "total_wins": 0, "total_losses": 0, "total_cycles": 0, "cycle_wins": 0, "cycle_losses": 0, "consecutive_skips": 0, "post_stop_loss_cooldown": 0, "memory_predictions": {}, "settled_history": [], "last_sent_signal_period": null, "last_sent_result_period": null}

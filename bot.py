@@ -2567,7 +2567,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
-            candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"]
+            candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "allam-2-7b"]
             for mdl in candidate_models:
                 try:
                     r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
@@ -2576,9 +2576,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                             {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper for WinGo 1-Minute. Return strictly valid JSON only."},
                             {"role": "user", "content": ai_prompt}
                         ],
-                        "max_tokens": 600,
+                        "max_tokens": 120,
                         "temperature": 0.05
-                    }, timeout=10.0)
+                    }, timeout=6.0)
                     if r_ai.status_code == 200:
                         msg_obj = r_ai.json().get("choices", [{}])[0].get("message", {})
                         raw_c = msg_obj.get("content", "") or msg_obj.get("reasoning", "")
@@ -2743,7 +2743,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
         has_ai_quant_concurrence = (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 65.0)
 
-        if (is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 12.0) or (ai_ok and ai_tgt == "SKIP" and ai_conf >= 70.0 and consecutive_skips == 0):
+        if (is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 14.0) or (ai_ok and ai_tgt == "SKIP" and consecutive_skips == 0):
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2751,8 +2751,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_conf = 50.0
             signal_grade = "SKIP"
             detected_pattern_name = f"Recovery Capital Shield (L{cur_lvl})"
-            final_summary = f"Recovery Capital Guard: Volatility/AI Noise Shield at Level {cur_lvl}. Level preserved."
-            print(f"🛡️ [RECOVERY CAPITAL SHIELD] AI advises SKIP / noise at Level {cur_lvl}! SAFE SKIP (Level Preserved).", flush=True)
+            final_summary = f"Recovery Capital Guard: AI advises SKIP on ambiguous setup ({ai_reason or 'Noise'}). Level {cur_lvl} preserved."
+            print(f"🛡️ [RECOVERY CAPITAL SHIELD] AI advises SKIP at Level {cur_lvl}! SAFE SKIP (Level Preserved).", flush=True)
 
         elif has_ai_quant_concurrence:
             # TIER 1 RECOVERY: Maximum confluence between Master AI & Quant Council
@@ -2857,12 +2857,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 is_qualified_bet = False
                 final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
                 print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market after stop-loss. SAFE SKIP.", flush=True)
-        elif is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 12.0:
+        elif is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 14.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
-        elif roadmap_target_val in ("BIG", "SMALL") and (not ai_ok or ai_tgt == roadmap_target_val or ai_conf < 80.0):
+        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips == 0:
+            # Master AI explicitly warns of 50/50 noise or chop break: SAFE SKIP
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"Master AI Noise Shield: {ai_reason or 'Edge below threshold (Ambiguous)'}"
+            print(f"🛡️ [AI NOISE SHIELD] Master AI advises SKIP. Capital preserved.", flush=True)
+        elif roadmap_target_val in ("BIG", "SMALL") and (not ai_ok or ai_tgt == roadmap_target_val or (ai_tgt != "SKIP" and ai_conf < 80.0)):
             # Tier 1: Confirmed Structural Roadmap (Dragon 3+, Confirmed Chop 4, Confirmed 2-2)
             target_val = roadmap_target_val
             target_pattern = roadmap_pattern_name
@@ -2880,8 +2886,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0 and size_margin_pct < 15.0:
-            # Tier 3: AI Directional Insight (High AI confidence when quant margin is narrow)
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0 and size_margin_pct >= 10.0:
+            # Tier 3: AI Directional Insight (High AI confidence with supporting quant edge)
             target_val = ai_tgt
             target_pattern = f"Master AI Directional Lead ({target_val})"
             final_summary = f"{ai_pat or ai_reason} (AI High Conviction {ai_conf:.0f}%)"
@@ -2889,8 +2895,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI DIRECTIONAL LEAD] Qwen-27B leads with {target_val} ({ai_conf:.0f}%)", flush=True)
-        elif size_margin_pct >= 10.0 and w_size in ("BIG", "SMALL") and w_v >= 7 and (not ai_ok or ai_tgt == w_size or ai_conf < 70.0):
-            # Tier 4: Quant Majority Consensus (Clear mathematical council lead)
+        elif size_margin_pct >= 18.0 and w_size in ("BIG", "SMALL") and w_v >= 8 and (not ai_ok or ai_tgt == w_size):
+            # Tier 4: Decisive Quant Majority Consensus (Requires >= 18% margin, >= 8 votes, and NO AI opposition)
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
@@ -2898,21 +2904,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"📊 [QUANT CONSENSUS] Council Lead: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
-        elif w_size in ("BIG", "SMALL") and size_margin_pct >= 8.0 and w_v >= 6 and not (ai_ok and ai_tgt == "SKIP"):
-            # Tier 5: Active Trend Execution (Sufficient edge with no AI veto)
-            target_val = w_size
-            target_pattern = f"Active Trend Following ({target_val})"
-            final_summary = f"Active Trend ({w_size} | {w_v}-{l_v})"
-            target_conf = max(78.0, calc_conf)
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            print(f"⚡ [ACTIVE TREND] Following Majority: {target_val} ({w_v} vs {l_v})", flush=True)
         else:
             # Safe Capital Preservation Skip on Low Conviction Noise
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = "Indeterminate Market Setup: Preserving bankroll for high-conviction sniper strike."
-            print(f"🛡️ [CAPITAL SHIELD] Low edge noise filtered. SAFE SKIP.", flush=True)
+            final_summary = f"Ambiguous Market Setup: Preserving capital on narrow edge ({size_margin_pct:.0f}% margin)."
+            print(f"🛡️ [CAPITAL SHIELD] Low edge noise filtered (Margin: {size_margin_pct:.0f}%). SAFE SKIP.", flush=True)
 
         if not arbiter_wants_skip and is_qualified_bet:
             CURRENT_CYCLE_TARGET = target_val
