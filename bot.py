@@ -2756,10 +2756,25 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
         has_ai_quant_concurrence = (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
 
+        # 🐉 POST-DRAGON BREAK TRANSITION SHIELD (ABSOLUTE RULE):
+        # A streak >= 3 just broke into the opposite outcome (s_streak == 1).
+        # In this immediate next round, the market is 50/50 between a 2-cluster (BB) and a 1-cut (BS).
+        # Quants suffer premature mean-reversion trap here. UNCONDITIONAL SAFE SKIP PRESERVES CAPITAL!
+        if is_post_dragon_transition and consecutive_skips < 3:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Post-Dragon Break Shield (L{cur_lvl})"
+            final_summary = f"Post-Dragon Transition Shield: Streak of {prev_dragon_len} broken. Waiting for 2-cluster confirmation. Capital preserved."
+            print(f"🛡️ [POST-DRAGON BREAK SHIELD] Dragon of {prev_dragon_len} broke! Skipping Level {cur_lvl} to avoid 1-cut trap!", flush=True)
+
         # 🏰 LEVEL 3 CAPITAL FORTRESS SHIELD:
         # At Level 3 (8X multiplier), ONLY strike when there is High Concurrence (AI + Quant) OR Confirmed Dragon streak >= 3 OR Confirmed 2-2.
         # If setup is not certified 85%+, take a SAFE SKIP to preserve the Level 3 bullet!
-        if cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or is_2_2) and consecutive_skips < 5:
+        elif cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or is_2_2) and consecutive_skips < 5:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2898,6 +2913,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 is_qualified_bet = False
                 final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
                 print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market after stop-loss. SAFE SKIP.", flush=True)
+        elif is_post_dragon_transition and consecutive_skips < 3:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            final_summary = f"Post-Dragon Transition: Dragon of {prev_dragon_len} broke. Preserving base capital."
+            print(f"🛡️ [POST-DRAGON BREAK] Dragon of {prev_dragon_len} broke. SAFE SKIP on Level 1.", flush=True)
         elif is_choppy_regime and consecutive_skips < 3 and s_streak < 3:
             arbiter_wants_skip = True
             is_qualified_bet = False
