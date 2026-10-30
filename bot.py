@@ -276,8 +276,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                             else:
                                 status_str = "LOSS 🔴"
                         else:
-                            p_pred = sz
-                            status_str = "WIN 🟢"
+                            p_pred = "--"
+                            status_str = "SYNCED ⚪"
 
                     history_rows.append({
                         "prd": p_str,
@@ -372,6 +372,8 @@ CYCLE_LOSSES = 0
 CONSECUTIVE_SKIPS = 0
 POST_STOP_LOSS_COOLDOWN = 0  # Cooldown rounds after Level 5 Stop-Loss hit
 MAX_MARTINGALE_LEVEL = 3  # Disciplined 3-Level Ultra-Safe Capital Shield (1X, 3X, 8X - Zero Account Wipeout)
+LAST_SENT_SIGNAL_PERIOD = None
+LAST_SENT_RESULT_PERIOD = None
 
 # Direct VIP Channel Architecture (Zero Polling, Zero 409 Conflicts)
 IS_STANDBY_MODE = False
@@ -405,7 +407,7 @@ def get_next_period(current_period):
         return current_period
 
 def load_cache():
-    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY
+    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY, LAST_SENT_SIGNAL_PERIOD, LAST_SENT_RESULT_PERIOD
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -445,6 +447,8 @@ def load_cache():
                 saved_settled = st.get("settled_history", [])
                 if isinstance(saved_settled, list):
                     SETTLED_HISTORY = saved_settled[-100:]
+                LAST_SENT_SIGNAL_PERIOD = st.get("last_sent_signal_period", None)
+                LAST_SENT_RESULT_PERIOD = st.get("last_sent_result_period", None)
                 print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Target: {CURRENT_CYCLE_TARGET} | Skips: {CONSECUTIVE_SKIPS} | Cooldown: {POST_STOP_LOSS_COOLDOWN} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Settled: {len(SETTLED_HISTORY)} | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
         except Exception as e:
             print(f"[STATE LOAD ERROR] {e}", flush=True)
@@ -475,7 +479,9 @@ def save_cache():
             "consecutive_skips": CONSECUTIVE_SKIPS,
             "post_stop_loss_cooldown": POST_STOP_LOSS_COOLDOWN,
             "memory_predictions": MEMORY_PREDICTIONS,
-            "settled_history": SETTLED_HISTORY[-100:]
+            "settled_history": SETTLED_HISTORY[-100:],
+            "last_sent_signal_period": LAST_SENT_SIGNAL_PERIOD,
+            "last_sent_result_period": LAST_SENT_RESULT_PERIOD
         }
         with open(tmp_st, "w") as f:
             json.dump(st, f)
@@ -758,14 +764,14 @@ def detect_sequence_pattern(seq, item_type="COLOR"):
         dragon_conf = min(92.0, 75.0 + cur_len * 2.5)
         return last_val, dragon_conf, f"Dragon Trend ({last_val} x{cur_len})"
 
-    # 2. 1-1 Alternating Chop (Requires at least 2 trailing runs of length 1)
+    # 2. 1-1 Alternating Chop (Requires at least 4 trailing runs of length 1)
     chop_count = 0
     for r in reversed(runs):
         if r[1] == 1:
             chop_count += 1
         else:
             break
-    if chop_count >= 2:
+    if chop_count >= 4:
         chop_conf = min(92.0, 78.0 + chop_count * 2.5)
         return opp_val, chop_conf, f"1-1 Chop ({chop_count}x Alternation)"
 
@@ -885,7 +891,7 @@ def detect_market_patterns(history_items):
             "quants": {}, "pred_size": "BIG", "pred_size_conf": 75.0
         }
 
-    colors = [it.get("color", "") for it in history_items]
+    colors = [("RED" if "red" in str(it.get("color", "")).lower() or int(it.get("num", 1)) == 0 else "GREEN") for it in history_items]
     nums = [int(it.get("num", 0)) for it in history_items]
     sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
     last_c = colors[-1]
@@ -2159,27 +2165,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     global POST_STOP_LOSS_COOLDOWN, GROQ_COOLDOWN_UNTIL
     if consecutive_skips >= 1:
         POST_STOP_LOSS_COOLDOWN = 0
-    elif POST_STOP_LOSS_COOLDOWN > 0:
-        rounds_left = POST_STOP_LOSS_COOLDOWN
-        POST_STOP_LOSS_COOLDOWN -= 1
-        save_cache()
-        print(f"🛡️ [STOP-LOSS COOLDOWN ACTIVE] Forcing SAFE SKIP to let market stabilize ({rounds_left} rounds remaining).", flush=True)
-        return {
-            "target_type": "SKIP",
-            "target_val": "SKIP",
-            "target_conf": 50.0,
-            "color": "RED",
-            "size": "SKIP",
-            "reason": f"Post Stop-Loss Capital Shield: Market cooling down ({rounds_left} rounds left).",
-            "consensus_tag": "🛡️ Post Stop-Loss Capital Guard",
-            "violet_alert": False,
-            "jackpot_tip": None,
-            "predicted_num": None,
-            "expected_nums": None,
-            "opposite_nums": None,
-            "signal_grade": "SKIP",
-            "pattern_name": "Capital Shield Cooldown"
-        }
 
     sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
     nums = [int(it.get("num", 0)) for it in history_items]
@@ -2488,8 +2473,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             db_summary_str = " | ".join(db_summary_parts) if db_summary_parts else "No direct database sequence lock"
 
             ai_prompt = (
-                f"You are the Supreme AI Quantitative Arbiter for WinGo 1M (BIG [5-9] vs SMALL [0-4]).\n"
-                f"Your mission is to SYNTHESIZE sequence patterns with the 32 Mathematical Quant Models for MAXIMUM ACCURACY.\n\n"
+                f"You are the Supreme Quantitative CIO and Risk Arbiter for WinGo 1M (BIG [5-9] vs SMALL [0-4]).\n"
+                f"Your mission is to SYNTHESIZE sequence patterns with 32 Mathematical Quant Models for MAXIMUM ACCURACY.\n\n"
                 f"Shoe Sequence (last 15 draws, oldest->newest): [{seq_text}].\n"
                 f"Current State: Last={last_s}({last_num}) | Streak={last_s} x{s_streak} | Alternation Chop={s_alt}x | Volatility: Δ={p_info.get('avg_delta', 4.5):.1f} ({'High Volatility Chaos' if is_violent_chaos else 'Stable'})\n\n"
                 f"Quantitative Intelligence Brief:\n"
@@ -2497,15 +2482,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 f"- Cloud Historical DB (3,800+ rounds): {db_summary_str}\n"
                 f"- Multi-Window Probabilities: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%)\n"
                 f"- Dominant Roadmap Flow: [{s_pattern_desc}]\n\n"
-                f"DECISION & CONFLUENCE DIRECTIVES:\n"
-                f"1. CONFLUENCE CONFIRMATION: If the visual shoe pattern and Quant Council agree on {w_size}, confirm with 85-95% confidence.\n"
-                f"2. DIRECTIONAL ARBITRATION: Provide your best assessment of whether BIG or SMALL has the statistical edge. Align with the strongest pattern.\n"
-                f"3. MINIMAL SKIPS: WinGo 1M players demand actionable predictions. Only return 'SKIP' in the absolute rarest case of a pure 50/50 dead tie with zero edge. If there is even a slight lean towards BIG or SMALL, predict that direction with confidence.\n"
-                f"4. CAPITAL PRESERVATION: Return strictly valid JSON only:\n"
+                f"DECISION & CAPITAL PRESERVATION DIRECTIVES:\n"
+                f"1. CONFLUENCE CONFIRMATION: If visual shoe pattern and Quant Council agree on {w_size}, confirm with 85-95% confidence.\n"
+                f"2. ZERO-RISK CAPITAL DEFENSE: If edge is below 7% or if the sequence is in an ambiguous transition (such as chop-to-streak break or 50/50 chop), return 'SKIP'. Real money is at stake. Never force a bet on low-conviction noise.\n"
+                f"3. DIRECTIONAL ACCURACY: Only predict BIG or SMALL when there is a clear pattern (Dragon Streak, Confirmed 1-1, or Confirmed 2-2).\n"
+                f"4. OUTPUT FORMAT: Return strictly valid JSON only:\n"
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
-            candidate_models = ["allam-2-7b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+            candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"]
             for mdl in candidate_models:
                 try:
                     r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
@@ -2587,8 +2572,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     is_2_2_rotation = (len(seq_runs) >= 3 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
     is_2_2 = is_2_2_rotation
 
-    # 4. True 1-1 Chop Alternation
-    is_chop_confirmed = (_chop_count >= 3)
+    # 4. True 1-1 Chop Alternation (Requires at least 4 single-step runs)
+    is_chop_confirmed = (_chop_count >= 4)
 
     roadmap_pattern_name = None
     roadmap_target_val = None
@@ -2673,106 +2658,128 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         mult_map = [1, 3, 8]
         mult = mult_map[min(current_loss_streak, len(mult_map)-1)]
         cur_lvl = current_loss_streak + 1
-        rec_target = CURRENT_CYCLE_TARGET if CURRENT_CYCLE_TARGET in ("BIG", "SMALL") else last_s
 
-        # 🛡️ RECOVERY CAPITAL PROTECTION & ADAPTIVE STRIKE:
-        # A. Violent Delta Chaos Guard (Only if zero skips so far and weak margin):
-        if is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 10.0:
+        # 🛡️ DYNAMIC AI-QUANT HIGH-PRECISION RECOVERY ENGINE
+        # Rule 1: Never gamble recovery capital (3X / 8X) on 50/50 noise!
+        # If market is chaotic or edge is below 14%, and AI has no high conviction, TAKE A SAFE SKIP.
+        # Safe Skip PRESERVES the current recovery level so no money is lost on ambiguity.
+
+        has_ai_quant_concurrence = (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 65.0)
+
+        if (is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 12.0) or (ai_ok and ai_tgt == "SKIP" and ai_conf >= 70.0 and consecutive_skips == 0):
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
             target_val = "SKIP"
             target_conf = 50.0
             signal_grade = "SKIP"
-            detected_pattern_name = f"Recovery Chaos Shield (L{cur_lvl})"
-            final_summary = f"Recovery Capital Guard: Violent delta chaos (Δ={p_info.get('avg_delta', 4.5):.1f}). Level {cur_lvl} preserved."
-            print(f"🛡️ [RECOVERY DELTA CHAOS] Erratic jump swings at Level {cur_lvl}! SAFE SKIP (Level Preserved).", flush=True)
+            detected_pattern_name = f"Recovery Capital Shield (L{cur_lvl})"
+            final_summary = f"Recovery Capital Guard: Volatility/AI Noise Shield at Level {cur_lvl}. Level preserved."
+            print(f"🛡️ [RECOVERY CAPITAL SHIELD] AI advises SKIP / noise at Level {cur_lvl}! SAFE SKIP (Level Preserved).", flush=True)
 
-        # B. Opposing Dragon Momentum Alignment (Streak >= 2):
-        # If an opposing streak >= 2 is active, never freeze or fight — adaptively ride the dragon!
-        elif s_streak >= 2 and last_s in ("BIG", "SMALL") and last_s != rec_target:
-            rec_target = last_s
+        elif has_ai_quant_concurrence:
+            # TIER 1 RECOVERY: Maximum confluence between Master AI & Quant Council
+            target_val = ai_tgt
+            CURRENT_CYCLE_TARGET = ai_tgt
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Concurrence Strike ({ai_tgt})"
+            final_summary = f"Level {cur_lvl} Recovery: AI & Quant Concurrence on {ai_tgt} ({ai_conf:.0f}%) ({mult}X)"
+            target_conf = min(98.0, max(ai_conf, calc_conf))
+            print(f"🎯 [RECOVERY CONCURRENCE] AI & Quants align on {target_val}! Striking recovery ({mult}X).", flush=True)
+
+        elif s_streak >= 2 and last_s in ("BIG", "SMALL"):
+            # TIER 2 RECOVERY: Active Dragon Momentum - Ride the running dragon
+            target_val = last_s
             CURRENT_CYCLE_TARGET = last_s
-            target_val = rec_target
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
             target_pattern = f"Recovery Dragon Alignment ({last_s} x{s_streak})"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to running {last_s} dragon ({mult}X)"
             target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
-            print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to opposing {last_s} dragon! Striking {rec_target} ({mult}X).", flush=True)
+            print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to running {last_s} dragon! Striking {target_val} ({mult}X).", flush=True)
 
-        # C. 1-1 Chop Swing Alignment (Alternation >= 2):
-        elif s_alt >= 2 and opp_s in ("BIG", "SMALL") and opp_s != rec_target:
-            rec_target = opp_s
+        elif s_alt >= 3 and opp_s in ("BIG", "SMALL"):
+            # TIER 3 RECOVERY: 1-1 Chop Swing - Ride the alternation swing
+            target_val = opp_s
             CURRENT_CYCLE_TARGET = opp_s
-            target_val = rec_target
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
             target_pattern = f"Recovery Chop Alignment ({opp_s} swing)"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to 1-1 chop swing on {opp_s} ({mult}X)"
             target_conf = min(98.0, 86.0 + current_loss_streak * 2.0)
-            print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {rec_target} ({mult}X).", flush=True)
+            print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {target_val} ({mult}X).", flush=True)
 
-        # B2. Confirmed Structural Roadmap Pivot:
-        elif roadmap_target_val in ("BIG", "SMALL") and roadmap_target_val != rec_target:
-            rec_target = roadmap_target_val
+        elif roadmap_target_val in ("BIG", "SMALL"):
+            # TIER 4 RECOVERY: Confirmed structural roadmap (2-2 or double-step)
+            target_val = roadmap_target_val
             CURRENT_CYCLE_TARGET = roadmap_target_val
-            target_val = rec_target
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
             target_pattern = f"Recovery Roadmap Pivot ({roadmap_pattern_name})"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to {roadmap_pattern_name} ({mult}X)"
             target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
-            print(f"🎴 [RECOVERY ROADMAP PIVOT] Re-aligning recovery to {roadmap_pattern_name}! Striking {rec_target} ({mult}X).", flush=True)
+            print(f"🎴 [RECOVERY ROADMAP PIVOT] Re-aligning recovery to {roadmap_pattern_name}! Striking {target_val} ({mult}X).", flush=True)
 
-        # B3. Master AI Neural Directional Lead:
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt != rec_target and ai_conf >= 70.0:
-            rec_target = ai_tgt
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0:
+            # TIER 5 RECOVERY: Master AI Directional Insight
+            target_val = ai_tgt
             CURRENT_CYCLE_TARGET = ai_tgt
-            target_val = rec_target
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
             target_pattern = f"Recovery Master AI Lead ({ai_tgt})"
             final_summary = f"Level {cur_lvl} Recovery: Master AI leads on {ai_tgt} ({ai_conf:.0f}%) ({mult}X)"
             target_conf = max(ai_conf, 86.0 + current_loss_streak * 2.0)
-            print(f"🧠 [RECOVERY AI LEAD] Master AI leads recovery to {ai_tgt} ({ai_conf:.0f}%)! Striking {rec_target} ({mult}X).", flush=True)
+            print(f"🧠 [RECOVERY AI LEAD] Master AI leads recovery to {ai_tgt} ({ai_conf:.0f}%)! Striking {target_val} ({mult}X).", flush=True)
 
-        # D. Quant Council Dynamic Majority Pivot:
-        elif w_size in ("BIG", "SMALL") and w_size != rec_target and (w_v > l_v and size_margin_pct >= 6.0):
-            rec_target = w_size
+        elif w_size in ("BIG", "SMALL") and size_margin_pct >= 14.0 and w_v >= 7:
+            # TIER 6 RECOVERY: Decisive Quant Council majority
+            target_val = w_size
             CURRENT_CYCLE_TARGET = w_size
-            target_val = rec_target
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            target_pattern = f"Recovery Dynamic Council Pivot ({w_size})"
-            final_summary = f"Level {cur_lvl} Recovery: Pivoted to dominant {w_size} council edge ({mult}X)"
+            target_pattern = f"Recovery Decisive Council Edge ({w_size})"
+            final_summary = f"Level {cur_lvl} Recovery: Decisive {w_size} council edge ({mult}X)"
             target_conf = min(98.0, 85.0 + current_loss_streak * 2.5)
-            print(f"🎯 [RECOVERY COUNCIL PIVOT] Board shifted to {w_size} ({w_v} vs {l_v} votes, {size_margin_pct:.0f}% margin)! Striking {rec_target} ({mult}X).", flush=True)
+            print(f"🎯 [RECOVERY COUNCIL PIVOT] Board shifted to {w_size} ({w_v} vs {l_v} votes, {size_margin_pct:.0f}% margin)! Striking {target_val} ({mult}X).", flush=True)
 
-        # E. High-Conviction Recovery Strike:
         else:
-            target_val = rec_target
-            CURRENT_CYCLE_TARGET = rec_target
-            target_type = "SIZE"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            target_pattern = f"Level {cur_lvl} High-Conviction Martingale Recovery ({rec_target})"
-            final_summary = f"Level {cur_lvl} Recovery: Striking {rec_target} ({mult}X)"
-            target_conf = min(98.0, 85.0 + current_loss_streak * 3.0)
-            print(f"🎯 [L{cur_lvl} RECOVERY STRIKE] Clean conditions aligned: Striking recovery {rec_target} ({mult}X)!", flush=True)
+            # TIER 7: Noise Filter - When setup is ambiguous, DO NOT gamble 3X/8X!
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            detected_pattern_name = f"Low Edge Capital Guard (L{cur_lvl})"
+            final_summary = f"Recovery Capital Guard: Low conviction noise (Margin: {size_margin_pct:.0f}%). Level {cur_lvl} preserved."
+            print(f"🛡️ [RECOVERY LOW-EDGE GUARD] Market setup is ambiguous (Margin: {size_margin_pct:.0f}%). SAFE SKIP to preserve Level {cur_lvl} capital!", flush=True)
 
     else:
         # 👑 LEVEL 1 (1X BASE PLAY): AI & Quant Harmonious Confluence
         if POST_STOP_LOSS_COOLDOWN > 0 and consecutive_skips == 0:
-            arbiter_wants_skip = True
-            is_qualified_bet = False
-            final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
-            print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market 1 round after stop-loss. SAFE SKIP.", flush=True)
+            # Smart Rebound: If Master AI & Quants have high confluence (>= 85%), execute & win!
+            if ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 85.0 and size_margin_pct >= 18.0 and ai_tgt == w_size:
+                POST_STOP_LOSS_COOLDOWN = 0
+                target_val = ai_tgt
+                target_pattern = f"Post Stop-Loss Sniper Strike ({target_val})"
+                final_summary = f"{ai_pat or ai_reason} (High-Conviction Rebound)"
+                target_conf = max(ai_conf, calc_conf)
+                is_qualified_bet = True
+                arbiter_wants_skip = False
+                print(f"🎯 [SNIPER REBOUND] Post stop-loss high-conviction confluence ({target_val} | {target_conf:.0f}%). Striking win!", flush=True)
+            else:
+                POST_STOP_LOSS_COOLDOWN = max(0, POST_STOP_LOSS_COOLDOWN - 1)
+                arbiter_wants_skip = True
+                is_qualified_bet = False
+                final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
+                print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market after stop-loss. SAFE SKIP.", flush=True)
         elif is_violent_chaos and consecutive_skips == 0 and size_margin_pct < 12.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -2805,7 +2812,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI DIRECTIONAL LEAD] Qwen-27B leads with {target_val} ({ai_conf:.0f}%)", flush=True)
-        elif size_margin_pct >= 8.0 and w_size in ("BIG", "SMALL") and w_v >= 6 and (not ai_ok or ai_tgt == w_size or ai_conf < 75.0):
+        elif size_margin_pct >= 10.0 and w_size in ("BIG", "SMALL") and w_v >= 7 and (not ai_ok or ai_tgt == w_size or ai_conf < 70.0):
             # Tier 4: Quant Majority Consensus (Clear mathematical council lead)
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
@@ -2814,8 +2821,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"📊 [QUANT CONSENSUS] Council Lead: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
-        elif w_size in ("BIG", "SMALL") and (w_v > l_v or size_margin_pct >= 5.0) and not (ai_ok and ai_tgt == "SKIP" and ai_conf >= 85.0):
-            # Tier 5: Active Trend Execution (Any majority edge or council lead)
+        elif w_size in ("BIG", "SMALL") and size_margin_pct >= 8.0 and w_v >= 6 and not (ai_ok and ai_tgt == "SKIP"):
+            # Tier 5: Active Trend Execution (Sufficient edge with no AI veto)
             target_val = w_size
             target_pattern = f"Active Trend Following ({target_val})"
             final_summary = f"Active Trend ({w_size} | {w_v}-{l_v})"
@@ -2823,21 +2830,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"⚡ [ACTIVE TREND] Following Majority: {target_val} ({w_v} vs {l_v})", flush=True)
-        elif consecutive_skips >= 1 and w_size in ("BIG", "SMALL"):
-            # Tier 6A: ANTI-CONSECUTIVE SKIP LOCK (Maximum 1 skip allowed; force action if skipped previously!)
-            target_val = w_size
-            target_pattern = f"Council Edge Execution ({target_val})"
-            final_summary = f"Council Edge ({w_size} | {w_v}-{l_v}) [Anti-Skip Lock]"
-            target_conf = max(76.0, calc_conf)
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            print(f"⚡ [ANTI-SKIP LOCK] Previous round was SKIP. Forcing action on {target_val} ({w_v} vs {l_v})!", flush=True)
         else:
-            # Tier 6B: Truly indeterminate 50/50 Dead Flat Noise Filter -> Single SAFE SKIP
+            # Safe Capital Preservation Skip on Low Conviction Noise
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = "Indeterminate 50/50 Noise: Capital preserved for high-edge round."
-            print(f"🛡️ [CAPITAL SHIELD] Indeterminate 50/50 noise filtered. SAFE SKIP.", flush=True)
+            final_summary = "Indeterminate Market Setup: Preserving bankroll for high-conviction sniper strike."
+            print(f"🛡️ [CAPITAL SHIELD] Low edge noise filtered. SAFE SKIP.", flush=True)
 
         if not arbiter_wants_skip and is_qualified_bet:
             CURRENT_CYCLE_TARGET = target_val
@@ -2850,21 +2848,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     jackpot_tip = None
     predicted_single_num = None
     expected_nums_tip = None
-
-    # 🚨 HARD ANTI-CONSECUTIVE SKIP ENFORCEMENT:
-    # Under NO circumstance is the bot allowed to produce 2 skips in a row!
-    # If the previous round was a SKIP, immediately override any skip filter and force an actionable bet on dominant size!
-    if consecutive_skips >= 1 and (not is_qualified_bet or arbiter_wants_skip):
-        arbiter_wants_skip = False
-        is_qualified_bet = True
-        target_val = w_size if w_size in ("BIG", "SMALL") else "BIG"
-        target_type = "SIZE"
-        target_conf = max(78.0, calc_conf)
-        signal_grade = f"LEVEL_{current_loss_streak + 1}"
-        CURRENT_CYCLE_TARGET = target_val
-        detected_pattern_name = f"Anti-Skip Direct Strike ({target_val})"
-        final_summary = f"Anti-Skip Force Strike: {target_val} ({w_v} vs {l_v})"
-        print(f"⚡ [ANTI-CONSECUTIVE SKIP HARD LOCK] Previous round was SKIP. Forcing action on {target_val} ({w_v}-{l_v})!", flush=True)
 
     if not is_qualified_bet or arbiter_wants_skip:
         target_type = "SKIP"
@@ -2960,10 +2943,10 @@ def seed_settled_history_if_needed():
 
         try:
             pred = ask_12_ai_council(hist_slice, current_loss_streak=loss_streak, consecutive_skips=skips, fast_deterministic=True)
+            t_val = pred.get("target_val", "SKIP")
         except Exception:
-            pred = {"target_val": actual_sz, "target_type": "SIZE"}
+            t_val = "SKIP"
 
-        t_val = pred.get("target_val", actual_sz)
         if t_val == "SKIP":
             skips += 1
             seeded.append({
@@ -2979,22 +2962,7 @@ def seed_settled_history_if_needed():
         else:
             skips = 0
             is_win = (t_val == actual_sz)
-            tip_str = str(pred.get("jackpot_tip") or "")
-            pred_num = pred.get("predicted_num")
-            exp_nums_str = str(pred.get("expected_nums") or "")
-            tip_numbers = re.findall(r"\b\d\b", tip_str)
-            if pred_num is not None:
-                tip_numbers.append(str(pred_num))
-            tip_numbers.extend(re.findall(r"\b\d\b", exp_nums_str))
-            is_jackpot = is_win and (str(actual_num) in tip_numbers)
-
-            if is_jackpot:
-                st_label = "WIN 🎯 JACKPOT"
-            elif is_win:
-                st_label = "WIN 🟢"
-            else:
-                st_label = "LOSS 🔴"
-
+            st_label = "WIN 🟢" if is_win else "LOSS 🔴"
             if is_win:
                 loss_streak = 0
             else:
@@ -3007,7 +2975,7 @@ def seed_settled_history_if_needed():
                 "actual_size": actual_sz,
                 "actual_color": actual_c,
                 "is_win": is_win,
-                "is_jackpot": is_jackpot,
+                "is_jackpot": False,
                 "status": st_label
             })
 
@@ -3038,12 +3006,22 @@ def to_bold(text):
 # ====================================================
 # 🚀 USER SIGNALS (HIGH-VISIBILITY BOLD VIP CARDS)
 # ====================================================
+LAST_SENT_SIGNAL_PERIOD = None
+LAST_SENT_RESULT_PERIOD = None
+
 def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None, predicted_num=None):
+    global LAST_SENT_SIGNAL_PERIOD
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
     if IS_STANDBY_MODE:
         print(f"⏸️ [STANDBY SILENT] Period: ...{short_period} | Secondary instance silent (duplicate prevention active).", flush=True)
         return
+
+    # Strict Duplicate Guard: Never send identical period prediction twice!
+    if str(target_period) == str(LAST_SENT_SIGNAL_PERIOD):
+        print(f"🚫 [DUPLICATE SIGNAL SUPPRESSED] Period: ...{short_period} already sent to channel. Skipping duplicate.", flush=True)
+        return
+    LAST_SENT_SIGNAL_PERIOD = str(target_period)
 
     # User requirement: Screenshot 4 for SKIP
     if target_type == "SKIP" or target_val == "SKIP":
@@ -3123,7 +3101,11 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
 # 🎯 RESULT EVALUATION (PROMINENT BOLD WIN & LOSS CARDS)
 # ====================================================
 def send_user_result(period, actual_number, actual_color, pred):
-    global CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY
+    global CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY, LAST_SENT_RESULT_PERIOD
+    if str(period) == str(LAST_SENT_RESULT_PERIOD):
+        print(f"🚫 [DUPLICATE RESULT SUPPRESSED] Period: ...{str(period)[-4:]} already evaluated and broadcasted.", flush=True)
+        return
+    LAST_SENT_RESULT_PERIOD = str(period)
     actual_size = "BIG" if actual_number >= 5 else "SMALL"
     p_str = str(period)
 
@@ -3365,40 +3347,7 @@ def run_live_bot():
                         pass
                     seed_settled_history_if_needed()
                     save_cache()
-                    print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Generating immediate startup prediction...", flush=True)
-
-                    # Immediate startup prediction (Zero startup delay!)
-                    next_target_period = get_next_period(current_period)
-                    if len(MEMORY_HISTORY) >= 6 and next_target_period not in MEMORY_PREDICTIONS:
-                        try:
-                            decision = ask_12_ai_council(MEMORY_HISTORY, CURRENT_LOSS_STREAK, CONSECUTIVE_SKIPS)
-                            t_type = decision["target_type"]
-                            t_val = decision["target_val"]
-                            t_conf = decision["target_conf"]
-                            if t_type == "SKIP" or t_val == "SKIP":
-                                CONSECUTIVE_SKIPS += 1
-                                MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
-                                save_cache()
-                                send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
-                                print(f"⏸️ [STARTUP SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk on startup.", flush=True)
-                            else:
-                                CONSECUTIVE_SKIPS = 0
-                                MEMORY_PREDICTIONS[next_target_period] = {
-                                    "target_type": t_type, "target_val": t_val,
-                                    "color": decision["color"], "size": decision["size"],
-                                    "conf": t_conf, "reason": decision["reason"],
-                                    "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
-                                    "jackpot_tip": decision.get("jackpot_tip"),
-                                    "predicted_num": decision.get("predicted_num"),
-                                    "expected_nums": decision.get("expected_nums"),
-                                    "opposite_nums": decision.get("opposite_nums"),
-                                    "grade": decision["signal_grade"],
-                                    "pattern_name": decision.get("pattern_name", "")
-                                }
-                                save_cache()
-                                send_user_signal(next_target_period, t_type, t_val, t_conf, decision["reason"], decision["consensus_tag"], decision["violet_alert"], decision["signal_grade"], decision.get("jackpot_tip"), decision.get("pattern_name", ""), decision.get("opposite_nums"), decision.get("predicted_num"))
-                        except Exception as e:
-                            print(f"[STARTUP PREDICTION ERROR] {e}", flush=True)
+                    print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Waiting for next official draw to begin fresh cycle with full 60s window (Zero duplicate guarantee)...", flush=True)
                     time.sleep(1.0)
                     continue
 
