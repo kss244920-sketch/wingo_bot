@@ -33,6 +33,7 @@ MASTER_AI_MODELS = [
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
+RESTART_PENDING = False
 
 HISTORY_API_URLS = [
     "https://draw.ar-lottery02.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
@@ -173,6 +174,26 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
                 return
+
+        if self.path in ("/prepare_restart", "/prepare-restart"):
+            global RESTART_PENDING
+            RESTART_PENDING = True
+            latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else None
+            settled_periods = {str(x.get("period")) for x in SETTLED_HISTORY}
+            target_val = MEMORY_PREDICTIONS.get(latest_p, {}).get("target_val") if latest_p else None
+            is_waiting = (latest_p is not None and str(latest_p) not in settled_periods and target_val not in (None, "SKIP", "WAITING"))
+            res = {
+                "acknowledged": True,
+                "restart_pending": True,
+                "busy": is_waiting,
+                "process": f"Waiting for draw of period {latest_p}" if is_waiting else "Ready for reboot",
+                "active_period": latest_p
+            }
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode("utf-8"))
+            return
 
         if self.path in ("/is_busy", "/busy"):
             latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else None
@@ -3445,6 +3466,11 @@ def run_live_bot():
                     ).start()
 
                     # D. Read in-memory history and trigger 16-Agent AI & Quant Council
+                    if RESTART_PENDING:
+                        print(f"🛑 [RESTART PAUSE] Period {current_period} settled. Pausing new predictions for scheduled container reboot.", flush=True)
+                        time.sleep(2.0)
+                        continue
+
                     next_target_period = get_next_period(current_period)
 
                     if len(MEMORY_HISTORY) >= 6:
