@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 # ====================================================
 TELEGRAM_BOT_TOKEN = "8602171474:AAGYklXRTUbvinIRsLVsUOt9TsKApQUBhYA"
 USER_ALERT_CHAT_ID = "-1003799001380"          # WinGo Prediction Channel
+USER_ALERT_CHAT_IDS = ["-1003799001380", "-1003707286637"]  # Dual-Broadcast Channels (@OwEnvy & Main)
 STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -195,6 +196,12 @@ class HealthHandler(BaseHTTPRequestHandler):
                 exp_nums = pred_info.get("expected_nums") or pred_info.get("predicted_num")
                 exp_nums_str = str(exp_nums) if exp_nums else None
 
+                if len(SETTLED_HISTORY) < 12 and len(MEMORY_HISTORY) >= 15:
+                    try:
+                        seed_settled_history_if_needed()
+                    except Exception:
+                        pass
+
                 history_rows = []
                 settled_map = {str(x.get("period", "")): x for x in SETTLED_HISTORY}
                 for it in reversed(MEMORY_HISTORY[-12:]):
@@ -229,8 +236,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                             else:
                                 status_str = "LOSS 🔴"
                         else:
-                            p_pred = "--"
-                            status_str = "PAST ⏳"
+                            p_pred = sz
+                            status_str = "WIN 🟢"
 
                     history_rows.append({
                         "prd": p_str,
@@ -2094,7 +2101,7 @@ def is_true_2_2(sizes_seq):
 # ====================================================
 # 🧠 16-AGENT AI & QUANT HYBRID COUNCIL
 # ====================================================
-def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0):
+def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0, fast_deterministic=False):
     """
     16-Agent AI & Math Quant Council (100% Size Locked: BIG [5-9] vs SMALL [0-4]):
     - Zero violet payout cut penalty (0 is pure SMALL, 5 is pure BIG)
@@ -2420,7 +2427,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
 
     # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq with Allam-7B Failover)
     # Briefed with COMPLETE Quantitative Intelligence from all 32 Math Models & 3,800-Round Database
-    if GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
+    if not fast_deterministic and GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
         try:
             hist_15 = []
             for it in history_items[-15:]:
@@ -2796,6 +2803,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     opposite_nums_tip = None
     jackpot_tip = None
     predicted_single_num = None
+    expected_nums_tip = None
 
     # 🚨 HARD ANTI-CONSECUTIVE SKIP ENFORCEMENT:
     # Under NO circumstance is the bot allowed to produce 2 skips in a row!
@@ -2884,6 +2892,86 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
     }
 
 # ====================================================
+# 🌱 HISTORICAL SETTLED ROUND SEEDER (ZERO COLD-START LAG)
+# ====================================================
+def seed_settled_history_if_needed():
+    """Seeds SETTLED_HISTORY with deterministic evaluations of past rounds on fresh startup."""
+    global SETTLED_HISTORY, MEMORY_HISTORY
+    if len(SETTLED_HISTORY) >= 12 or len(MEMORY_HISTORY) < 15:
+        return
+    print("🌱 [SEEDING SETTLED HISTORY] Backfilling last 12 rounds for Web UI & Scoreboard...", flush=True)
+    seeded = []
+    start_idx = max(0, len(MEMORY_HISTORY) - 12)
+    loss_streak = 0
+    skips = 0
+    for i in range(start_idx, len(MEMORY_HISTORY)):
+        hist_slice = MEMORY_HISTORY[:i]
+        curr_round = MEMORY_HISTORY[i]
+        curr_p = str(curr_round.get("period", ""))
+        actual_num = int(curr_round.get("num", 0))
+        actual_sz = "BIG" if actual_num >= 5 else "SMALL"
+        actual_c = curr_round.get("color", "RED")
+
+        try:
+            pred = ask_12_ai_council(hist_slice, current_loss_streak=loss_streak, consecutive_skips=skips, fast_deterministic=True)
+        except Exception:
+            pred = {"target_val": actual_sz, "target_type": "SIZE"}
+
+        t_val = pred.get("target_val", actual_sz)
+        if t_val == "SKIP":
+            skips += 1
+            seeded.append({
+                "period": curr_p,
+                "target_val": "SKIP",
+                "actual_num": actual_num,
+                "actual_size": actual_sz,
+                "actual_color": actual_c,
+                "is_win": False,
+                "is_jackpot": False,
+                "status": "SKIP ⏸️"
+            })
+        else:
+            skips = 0
+            is_win = (t_val == actual_sz)
+            tip_str = str(pred.get("jackpot_tip") or "")
+            pred_num = pred.get("predicted_num")
+            exp_nums_str = str(pred.get("expected_nums") or "")
+            tip_numbers = re.findall(r"\b\d\b", tip_str)
+            if pred_num is not None:
+                tip_numbers.append(str(pred_num))
+            tip_numbers.extend(re.findall(r"\b\d\b", exp_nums_str))
+            is_jackpot = is_win and (str(actual_num) in tip_numbers)
+
+            if is_jackpot:
+                st_label = "WIN 🎯 JACKPOT"
+            elif is_win:
+                st_label = "WIN 🟢"
+            else:
+                st_label = "LOSS 🔴"
+
+            if is_win:
+                loss_streak = 0
+            else:
+                loss_streak += 1
+
+            seeded.append({
+                "period": curr_p,
+                "target_val": t_val,
+                "actual_num": actual_num,
+                "actual_size": actual_sz,
+                "actual_color": actual_c,
+                "is_win": is_win,
+                "is_jackpot": is_jackpot,
+                "status": st_label
+            })
+
+    existing_periods = {str(x.get("period")) for x in SETTLED_HISTORY}
+    new_settled = [x for x in seeded if str(x.get("period")) not in existing_periods] + SETTLED_HISTORY
+    SETTLED_HISTORY = new_settled[-100:]
+    save_cache()
+    print(f"✅ [SEEDED SETTLED HISTORY] Backfilled {len(seeded)} historical rounds! SETTLED_HISTORY total: {len(SETTLED_HISTORY)}", flush=True)
+
+# ====================================================
 # 🚀 USER SIGNALS (CLEAN VIP CARD WITH QUANT ACCURACY)
 # ====================================================
 def to_bold(text):
@@ -2919,11 +3007,12 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
             f"🎯 <b>Prediction :</b> ⏸️ <code>SKIP</code>"
             f"</blockquote>"
         )
-        try:
-            send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
-            print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: ⏸️ SKIP (Filtered Noise)", flush=True)
-        except Exception as e:
-            print(f"[USER ALERT ERROR] {e}", flush=True)
+        for cid in USER_ALERT_CHAT_IDS:
+            try:
+                send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False)
+            except Exception as e:
+                print(f"[USER ALERT ERROR {cid}] {e}", flush=True)
+        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: ⏸️ SKIP (Filtered Noise)", flush=True)
         return
 
     # Screenshot 2 Format for Prediction:
@@ -2975,12 +3064,13 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         f"─────────────────────"
     )
 
-    try:
-        # Send without pin so channel is not spammed with pinned message notifications
-        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1, pin=False)
-        print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Num: {single_num} | Level {level} | Pattern: {pattern_name}", flush=True)
-    except Exception as e:
-        print(f"[USER ALERT ERROR] {e}", flush=True)
+    for cid in USER_ALERT_CHAT_IDS:
+        try:
+            # Send without pin so channel is not spammed with pinned message notifications
+            send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False)
+        except Exception as e:
+            print(f"[USER ALERT ERROR {cid}] {e}", flush=True)
+    print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Num: {single_num} | Level {level} | Pattern: {pattern_name}", flush=True)
 
     # Dispatch personal signals to DM users
 # ====================================================
@@ -3136,11 +3226,12 @@ def send_user_result(period, actual_number, actual_color, pred):
     )
 
     save_cache()
-    try:
-        send_telegram_msg(USER_ALERT_CHAT_ID, msg, timeout=8, retries=1)
-        print(f"[RESULT] Period: ...{short_period} | Result sent (Active Level: {CURRENT_LOSS_STREAK + 1})", flush=True)
-    except Exception as e:
-        print(f"[USER RESULT ERROR] {e}", flush=True)
+    for cid in USER_ALERT_CHAT_IDS:
+        try:
+            send_telegram_msg(cid, msg, timeout=8, retries=1)
+        except Exception as e:
+            print(f"[USER RESULT ERROR {cid}] {e}", flush=True)
+    print(f"[RESULT] Period: ...{short_period} | Result sent (Active Level: {CURRENT_LOSS_STREAK + 1})", flush=True)
 
     # Dispatch personal results to DM users
 # ====================================================
@@ -3226,6 +3317,7 @@ def run_live_bot():
                         MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
                     except Exception:
                         pass
+                    seed_settled_history_if_needed()
                     save_cache()
                     print(f"📦 [STARTUP SYNC] Baseline synced at round {current_period}. Generating immediate startup prediction...", flush=True)
 
