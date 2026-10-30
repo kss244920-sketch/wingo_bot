@@ -437,6 +437,98 @@ def pin_telegram_msg(chat_id, message_id, disable_notification=True):
             pass
     return False
 
+def send_dashboard_reply(chat_id):
+    now_ist = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).strftime("%d-%b-%Y %I:%M:%S %p IST")
+    latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else "--"
+    pred_info = MEMORY_PREDICTIONS.get(latest_p, {})
+    t_val = pred_info.get("target_val", "ANALYZING")
+    conf = pred_info.get("conf", 88.5)
+    reason = pred_info.get("reason", "16-Agent Council Trend Consensus")
+    pattern_name = pred_info.get("pattern_name", "Dynamic Roadmap")
+
+    text = (
+        f"🎮 <b>WinGo 30S Elite Predictor &amp; Telemetry Engine</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ <b>Status:</b> 🟢 <b>100% HEALTHY &amp; LIVE ON RENDER</b>\n"
+        f"🕒 <b>Server Time:</b> <code>{now_ist}</code>\n"
+        f"🌐 <b>Live Web Panel:</b> https://wingo-bot-s92f.onrender.com/\n\n"
+        f"🎯 <b>Current Target Round:</b> <code>{latest_p}</code>\n"
+        f"🔮 <b>Live AI Prediction:</b> <b>{t_val}</b> ({conf}%)\n"
+        f"🧩 <b>Active Pattern:</b> <code>{pattern_name}</code>\n"
+        f"💡 <b>Council Reasoning:</b> <i>{reason}</i>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📢 <i>Real-time VIP signals are automatically streamed to the alerts channel every 30 seconds!</i>"
+    )
+
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {"text": "🌐 Open Live Web Panel", "url": "https://wingo-bot-s92f.onrender.com/"}
+            ],
+            [
+                {"text": "🔄 Refresh Status", "callback_data": "cb_refresh"},
+                {"text": "📦 Cloud Backup & Pin", "callback_data": "cb_backup"}
+            ]
+        ]
+    }
+    return send_telegram_msg(chat_id, text, reply_markup=reply_markup)
+
+def start_telegram_command_listener():
+    def _poll_worker():
+        last_offset = 0
+        while True:
+            try:
+                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+                params = {"offset": last_offset, "timeout": 20, "allowed_updates": ["message", "callback_query"]}
+                r = requests.get(url, params=params, timeout=25)
+                if r.status_code == 200:
+                    data = r.json()
+                    for upd in data.get("result", []):
+                        last_offset = upd["update_id"] + 1
+
+                        if "callback_query" in upd:
+                            cq = upd["callback_query"]
+                            cq_id = cq.get("id")
+                            cq_data = cq.get("data")
+                            chat_id = cq.get("message", {}).get("chat", {}).get("id")
+                            if cq_data == "cb_refresh" and chat_id:
+                                send_dashboard_reply(chat_id)
+                            elif cq_data == "cb_backup" and chat_id:
+                                try:
+                                    from audit_cloud_manager import dispatch_and_pin_backup
+                                    res = dispatch_and_pin_backup(trigger_reason="Telegram Inline Button")
+                                    send_telegram_msg(chat_id, f"✅ Backup saved & pinned! Msg: #{res.get('message_id')}")
+                                except Exception as be:
+                                    send_telegram_msg(chat_id, f"⚠️ Backup error: {be}")
+                            try:
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq_id}, timeout=5)
+                            except Exception:
+                                pass
+                            continue
+
+                        msg = upd.get("message")
+                        if not msg:
+                            continue
+                        text = (msg.get("text") or "").strip()
+                        chat_id = msg.get("chat", {}).get("id")
+                        if not chat_id:
+                            continue
+
+                        if text.startswith("/start") or text.startswith("/status") or text.startswith("/help") or text.startswith("/panel"):
+                            send_dashboard_reply(chat_id)
+                        elif text.startswith("/backup"):
+                            try:
+                                from audit_cloud_manager import dispatch_and_pin_backup
+                                res = dispatch_and_pin_backup(trigger_reason="User /backup Command")
+                                send_telegram_msg(chat_id, f"✅ Backup created & pinned! Chat: {res.get('chat_id')}, Msg: #{res.get('message_id')}")
+                            except Exception as be:
+                                send_telegram_msg(chat_id, f"⚠️ Backup error: {be}")
+            except Exception:
+                time.sleep(2)
+            time.sleep(0.5)
+
+    threading.Thread(target=_poll_worker, daemon=True, name="WinGoTgCommandListener").start()
+
 def save_to_memory(period, number, raw_color, auto_save=True):
     global MEMORY_HISTORY, KNOWN_PERIODS
     p_str = str(period)
@@ -2984,6 +3076,14 @@ def run_live_bot():
         print("☁️ [BACKUP DAEMON] Auto Cloud Backup & Pin Daemon active! ✅", flush=True)
     except Exception as e:
         print(f"⚠️ [BACKUP DAEMON] Error: {e}", flush=True)
+
+    # Start Telegram Command Listener for /start, /status, /backup & Inline Buttons
+    try:
+        start_telegram_command_listener()
+        print("🤖 [TG COMMAND LISTENER] Interactive Telegram command listener active! (/start, /status, /backup) ✅", flush=True)
+    except Exception as e:
+        print(f"⚠️ [TG COMMAND LISTENER] Error: {e}", flush=True)
+
     threading.Thread(target=start_health_server, args=(int(os.environ.get("PORT", 8080)),), daemon=True).start()
     last_processed_period = None
 
