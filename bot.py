@@ -21,7 +21,7 @@ TELEGRAM_BOT_TOKEN = "8602171474:AAGYklXRTUbvinIRsLVsUOt9TsKApQUBhYA"
 USER_ALERT_CHAT_ID = "-1003799001380"          # WinGo Prediction Channel
 STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # High-Intensity Deep Reasoning Master AI Brain (27B Parameter Pattern Specialist)
 MASTER_AI_MODELS = [
