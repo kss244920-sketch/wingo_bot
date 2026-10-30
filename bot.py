@@ -85,6 +85,7 @@ PANEL_HTML = """<!DOCTYPE html>
         td { font-size: 13px; font-weight: 600; text-align: center; padding: 10px 4px; border-bottom: 1px solid #151e18; color: #d1d5db; }
         .win { color: #22c55e; font-weight: 800; }
         .loss { color: #ef4444; font-weight: 800; }
+        .skip { color: #f59e0b; font-weight: 700; }
         .footer { text-align: center; margin-top: 24px; color: #4b5563; font-size: 12px; letter-spacing: 1px; }
     </style>
 </head>
@@ -131,11 +132,13 @@ PANEL_HTML = """<!DOCTYPE html>
                 tbody.innerHTML = '';
                 (data.history || []).forEach(row => {
                     const tr = document.createElement('tr');
+                    const st = row.status || '';
+                    const stClass = st.includes('WIN') ? 'win' : (st.includes('LOSS') ? 'loss' : 'skip');
                     tr.innerHTML = `
                         <td>${row.prd}</td>
                         <td>${row.pred}</td>
                         <td>${row.num}</td>
-                        <td class="${row.status.includes('WIN') ? 'win' : 'loss'}">${row.status}</td>
+                        <td class="${stClass}">${st}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -192,27 +195,36 @@ class HealthHandler(BaseHTTPRequestHandler):
                 exp_nums_str = str(exp_nums) if exp_nums else None
 
                 history_rows = []
+                settled_map = {str(x.get("period", "")): x for x in SETTLED_HISTORY}
                 for it in reversed(MEMORY_HISTORY[-12:]):
-                    p_str = str(it.get("period", ""))[-3:]
+                    p_full = str(it.get("period", ""))
+                    p_str = p_full[-3:] if len(p_full) >= 3 else p_full
                     num_val = it.get("num", 0)
-                    sz = it.get("size", "")
-                    col = it.get("color", "")
-                    pred_it = MEMORY_PREDICTIONS.get(it.get("period"))
-                    if pred_it:
-                        p_target = pred_it.get("target_val", sz)
-                        if pred_it.get("target_type") == "SIZE":
-                            is_win = (pred_it.get("target_val") == sz)
-                        elif pred_it.get("target_type") == "COLOR":
-                            is_win = (pred_it.get("target_val") in col)
-                        else:
-                            is_win = True
+                    sz = it.get("size", "BIG" if num_val >= 5 else "SMALL")
+
+                    if p_full in settled_map:
+                        rec = settled_map[p_full]
+                        p_pred = rec.get("target_val", sz)
+                        is_win = rec.get("is_win", False)
+                        status_str = rec.get("status", "WIN 🐯" if is_win else "LOSS 🔴")
                     else:
-                        p_target = sz
-                        is_win = True
-                    status_str = "WIN 🐯" if is_win else "LOSS 💔"
+                        pred_it = MEMORY_PREDICTIONS.get(p_full)
+                        if pred_it and pred_it.get("target_val") not in (None, "SKIP", "WAITING"):
+                            p_pred = pred_it.get("target_val")
+                            if pred_it.get("target_type") == "SIZE":
+                                is_win = (p_pred == sz)
+                            elif pred_it.get("target_type") == "COLOR":
+                                is_win = (p_pred in it.get("color", ""))
+                            else:
+                                is_win = True
+                            status_str = "WIN 🐯" if is_win else "LOSS 🔴"
+                        else:
+                            p_pred = "--"
+                            status_str = "PAST ⏳"
+
                     history_rows.append({
                         "prd": p_str,
-                        "pred": p_target if p_target != "SKIP" else sz,
+                        "pred": p_pred,
                         "num": num_val,
                         "status": status_str
                     })
@@ -291,6 +303,7 @@ HEADERS = {
 MEMORY_HISTORY = []      # List of {"period": ..., "num": ..., "color": ..., "size": ..., "has_violet": ...}
 KNOWN_PERIODS = set()    # O(1) set to prevent duplicates
 MEMORY_PREDICTIONS = {}  # {target_period: {"color": ..., "size": ..., "conf": ..., "reason": ..., "consensus": ..., "violet_alert": ..., "grade": ...}}
+SETTLED_HISTORY = []     # Rolling authentic record of completed rounds: [{"period": ..., "target_val": ..., "actual_num": ..., "is_win": ..., "status": ...}]
 
 CURRENT_LOSS_STREAK = 0  # 0 = Level 1, 1 = Level 2, 2 = Level 3, 3 = Level 4, 4 = Level 5
 CURRENT_CYCLE_TARGET = None  # Disciplined Anti-Whipsaw Target for active cycle
@@ -333,7 +346,7 @@ def get_next_period(current_period):
         return current_period
 
 def load_cache():
-    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_COOLDOWN
+    global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -368,7 +381,10 @@ def load_cache():
                 saved_preds = st.get("memory_predictions", {})
                 if isinstance(saved_preds, dict):
                     MEMORY_PREDICTIONS.update(saved_preds)
-                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Target: {CURRENT_CYCLE_TARGET} | Skips: {CONSECUTIVE_SKIPS} | Cooldown: {POST_STOP_LOSS_COOLDOWN} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
+                saved_settled = st.get("settled_history", [])
+                if isinstance(saved_settled, list):
+                    SETTLED_HISTORY = saved_settled[-100:]
+                print(f"📊 [STATE RESTORED] Level {CURRENT_LOSS_STREAK + 1} | Target: {CURRENT_CYCLE_TARGET} | Skips: {CONSECUTIVE_SKIPS} | Cooldown: {POST_STOP_LOSS_COOLDOWN} | Cycles: {CYCLE_WINS}W - {CYCLE_LOSSES}L | Settled: {len(SETTLED_HISTORY)} | Pending: {list(MEMORY_PREDICTIONS.keys())}", flush=True)
         except Exception as e:
             print(f"[STATE LOAD ERROR] {e}", flush=True)
 
@@ -397,7 +413,8 @@ def save_cache():
             "cycle_losses": CYCLE_LOSSES,
             "consecutive_skips": CONSECUTIVE_SKIPS,
             "post_stop_loss_cooldown": POST_STOP_LOSS_COOLDOWN,
-            "memory_predictions": MEMORY_PREDICTIONS
+            "memory_predictions": MEMORY_PREDICTIONS,
+            "settled_history": SETTLED_HISTORY[-100:]
         }
         with open(tmp_st, "w") as f:
             json.dump(st, f)
@@ -2960,9 +2977,25 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
 # 🎯 RESULT EVALUATION (PROMINENT BOLD WIN & LOSS CARDS)
 # ====================================================
 def send_user_result(period, actual_number, actual_color, pred):
-    global CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL, POST_STOP_LOSS_COOLDOWN
+    global CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MAX_MARTINGALE_LEVEL, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY
+    actual_size = "BIG" if actual_number >= 5 else "SMALL"
+    p_str = str(period)
+
     if not pred or pred.get("target_type") == "SKIP" or pred.get("target_val") == "SKIP":
+        SETTLED_HISTORY = [x for x in SETTLED_HISTORY if str(x.get("period")) != p_str]
+        SETTLED_HISTORY.append({
+            "period": p_str,
+            "target_val": "SKIP",
+            "actual_num": int(actual_number),
+            "actual_size": actual_size,
+            "actual_color": str(actual_color),
+            "is_win": False,
+            "status": "SKIP ⏸️"
+        })
+        if len(SETTLED_HISTORY) > 100:
+            SETTLED_HISTORY = SETTLED_HISTORY[-100:]
         return
+
     short_period = period[-4:] if len(period) >= 4 else period
 
     if IS_STANDBY_MODE:
@@ -2979,7 +3012,6 @@ def send_user_result(period, actual_number, actual_color, pred):
     else:
         c_display = f"🟢 {bold_c_name} ({actual_number})"
 
-    actual_size = "BIG" if actual_number >= 5 else "SMALL"
     bold_size_name = to_bold("BIG") if actual_size == "BIG" else to_bold("SMALL")
     s_display = f"🐘 {bold_size_name} ({actual_number})" if actual_size == "BIG" else f"🐜 {bold_size_name} ({actual_number})"
 
@@ -2992,6 +3024,21 @@ def send_user_result(period, actual_number, actual_color, pred):
     else:
         is_win = (target_val == actual_size)
         t_display = f"🐘 {to_bold('BIG [5-9]')}" if target_val == "BIG" else f"🐜 {to_bold('SMALL [0-4]')}"
+
+    # Record genuine authentic result into SETTLED_HISTORY
+    status_label = "WIN 🐯" if is_win else "LOSS 🔴"
+    SETTLED_HISTORY = [x for x in SETTLED_HISTORY if str(x.get("period")) != p_str]
+    SETTLED_HISTORY.append({
+        "period": p_str,
+        "target_val": str(target_val),
+        "actual_num": int(actual_number),
+        "actual_size": str(actual_size),
+        "actual_color": str(actual_color),
+        "is_win": bool(is_win),
+        "status": status_label
+    })
+    if len(SETTLED_HISTORY) > 100:
+        SETTLED_HISTORY = SETTLED_HISTORY[-100:]
 
     strat_name = pred.get("pattern_name") or ""
     if not strat_name and pred.get("reason"):
