@@ -139,6 +139,22 @@ PANEL_HTML = """<!DOCTYPE html>
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/backup_and_pin":
+            try:
+                from audit_cloud_manager import dispatch_and_pin_backup
+                res = dispatch_and_pin_backup(trigger_reason="3-Hour Scheduled Restart Checkpoint")
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(res).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+                return
+
         if self.path in ("/", "/panel"):
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
@@ -2961,6 +2977,13 @@ def run_live_bot():
     print("=" * 65, flush=True)
 
     load_cache()
+    # Start Cloud Backup, Silent Pin & Disaster Recovery Daemon
+    try:
+        from audit_cloud_manager import start_backup_daemon
+        start_backup_daemon(interval_seconds=15 * 60)
+        print("☁️ [BACKUP DAEMON] Auto Cloud Backup & Pin Daemon active! ✅", flush=True)
+    except Exception as e:
+        print(f"⚠️ [BACKUP DAEMON] Error: {e}", flush=True)
     threading.Thread(target=start_health_server, args=(int(os.environ.get("PORT", 8080)),), daemon=True).start()
     last_processed_period = None
 
