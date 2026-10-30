@@ -25,7 +25,10 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_3VugqyUWuk3hhxEvTzj0WGdyb3FYd
 
 # High-Intensity Deep Reasoning Master AI Brain (27B Parameter Pattern Specialist)
 MASTER_AI_MODELS = [
-    "qwen/qwen3.8-27b",         # 27B deep pattern specialist (Ultra-fast 0.35s direct JSON reasoning model)
+    "openai/gpt-oss-120b",
+    "allam-2-7b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
 ]
 MODEL_MASTER_AI = MASTER_AI_MODELS[0]
 GROQ_COOLDOWN_UNTIL = 0
@@ -76,7 +79,7 @@ PANEL_HTML = """<!DOCTYPE html>
         .pred-val { font-size: 52px; font-weight: 900; letter-spacing: 2px; color: #22c55e; text-shadow: 0 0 20px rgba(34, 197, 94, 0.8), 0 0 40px rgba(34, 197, 94, 0.4); }
         .pred-val.skip { color: #f59e0b; text-shadow: 0 0 20px rgba(245, 158, 11, 0.7); font-size: 44px; }
         .pred-val.red { color: #ef4444; text-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
-        .hedge-box { border: 2px dashed #eab308; border-radius: 10px; padding: 12px; margin: 18px 0; text-align: center; color: #fef08a; font-weight: 800; font-size: 14px; letter-spacing: 1.2px; background: rgba(234, 179, 8, 0.05); }
+        .expected-box { border: 1px solid rgba(52, 211, 153, 0.5); border-radius: 12px; padding: 10px 14px; margin: 16px 0; text-align: center; color: #6ee7b7; font-weight: 800; font-size: 14px; letter-spacing: 1.2px; background: rgba(16, 185, 129, 0.08); box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); display: none; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th { color: #6b7280; font-size: 12px; font-weight: 700; text-align: center; padding: 8px 4px; border-bottom: 1px solid #1f2937; }
         td { font-size: 13px; font-weight: 600; text-align: center; padding: 10px 4px; border-bottom: 1px solid #151e18; color: #d1d5db; }
@@ -91,7 +94,7 @@ PANEL_HTML = """<!DOCTYPE html>
         <div class="pred-box">
             <div id="pred" class="pred-val">...</div>
         </div>
-        <div id="hedge-box" class="hedge-box">OPPOSITE NUMS: <span id="opp-nums">--</span></div>
+        <div id="expected-box" class="expected-box">🎯 POTENTIAL NUMBERS: <span id="exp-nums">--</span></div>
         <table>
             <thead>
                 <tr>
@@ -114,7 +117,15 @@ PANEL_HTML = """<!DOCTYPE html>
                 const predEl = document.getElementById('pred');
                 predEl.innerText = data.prediction || 'WAITING';
                 predEl.className = 'pred-val ' + (data.prediction_class || '');
-                document.getElementById('opp-nums').innerText = data.opposite_nums || 'N/A';
+                
+                const expBox = document.getElementById('expected-box');
+                const expNums = document.getElementById('exp-nums');
+                if (data.expected_nums && data.expected_nums !== 'N/A' && data.expected_nums !== '--' && data.expected_nums !== 'None' && data.expected_nums !== 'null') {
+                    expNums.innerText = data.expected_nums;
+                    expBox.style.display = 'block';
+                } else {
+                    expBox.style.display = 'none';
+                }
                 
                 const tbody = document.getElementById('history-rows');
                 tbody.innerHTML = '';
@@ -177,7 +188,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 elif t_val == "RED":
                     pred_cls = "red"
 
-                opp_nums = pred_info.get("opposite_nums", "N/A")
+                exp_nums = pred_info.get("expected_nums") or pred_info.get("predicted_num")
+                exp_nums_str = str(exp_nums) if exp_nums else None
 
                 history_rows = []
                 for it in reversed(MEMORY_HISTORY[-12:]):
@@ -185,14 +197,18 @@ class HealthHandler(BaseHTTPRequestHandler):
                     num_val = it.get("num", 0)
                     sz = it.get("size", "")
                     col = it.get("color", "")
-                    pred_it = MEMORY_PREDICTIONS.get(it.get("period"), {})
-                    p_target = pred_it.get("target_val", sz)
-                    is_win = True
+                    pred_it = MEMORY_PREDICTIONS.get(it.get("period"))
                     if pred_it:
+                        p_target = pred_it.get("target_val", sz)
                         if pred_it.get("target_type") == "SIZE":
                             is_win = (pred_it.get("target_val") == sz)
                         elif pred_it.get("target_type") == "COLOR":
                             is_win = (pred_it.get("target_val") in col)
+                        else:
+                            is_win = True
+                    else:
+                        p_target = sz
+                        is_win = True
                     status_str = "WIN 🐯" if is_win else "LOSS 💔"
                     history_rows.append({
                         "prd": p_str,
@@ -203,9 +219,14 @@ class HealthHandler(BaseHTTPRequestHandler):
 
                 resp = {
                     "period": latest_p,
+                    "target_type": pred_info.get("target_type", "SIZE"),
                     "prediction": t_val,
+                    "confidence": float(pred_info.get("conf", 85.0 if t_val in ("BIG", "SMALL") else 50.0)),
+                    "strategy": str(pred_info.get("consensus", "Quant Consensus")),
+                    "grade": str(pred_info.get("grade", "LEVEL_1")),
+                    "reason": str(pred_info.get("reason", "")),
                     "prediction_class": pred_cls,
-                    "opposite_nums": opp_nums,
+                    "expected_nums": exp_nums_str,
                     "history": history_rows
                 }
                 self.wfile.write(json.dumps(resp).encode("utf-8"))
@@ -2075,6 +2096,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
             "consensus_tag": "🛡️ Post Stop-Loss Capital Guard",
             "violet_alert": False,
             "jackpot_tip": None,
+            "predicted_num": None,
+            "expected_nums": None,
             "opposite_nums": None,
             "signal_grade": "SKIP",
             "pattern_name": "Capital Shield Cooldown"
@@ -2404,7 +2427,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
-            candidate_models = ["qwen/qwen3.8-27b", "allam-2-7b"]
+            candidate_models = ["openai/gpt-oss-120b", "allam-2-7b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
             for mdl in candidate_models:
                 try:
                     r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
@@ -2413,9 +2436,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                             {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper. Return strictly valid JSON only."},
                             {"role": "user", "content": ai_prompt}
                         ],
-                        "max_tokens": 120,
+                        "max_tokens": 160,
                         "temperature": 0.05
-                    }, timeout=2.8)
+                    }, timeout=3.2)
                     if r_ai.status_code == 200:
                         raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
                         m = re.search(r'\{[^{}]*\}', raw_c)
@@ -2433,12 +2456,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
                                 ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
                                 ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
                                 ai_ok = True
-                                mdl_label = "Qwen-27B" if "qwen" in mdl else "Allam-7B"
+                                mdl_label = "GPT-120B" if "120b" in mdl else ("Allam-7B" if "allam" in mdl else ("GPT-20B" if "20b" in mdl else "Qwen-27B"))
                                 print(f"🧠 [MASTER AI] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
                                 break
                     elif r_ai.status_code == 429:
-                        GROQ_COOLDOWN_UNTIL = time.time() + 15.0
-                        break
+                        print(f"⚠️ [GROQ 429 RATE LIMIT] {mdl} rate limited, falling over to next model...", flush=True)
+                        continue
                 except Exception:
                     continue
         except Exception as e:
@@ -2787,7 +2810,23 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         jackpot_tip = None
         predicted_single_num = None
 
-        # 🎯 STRICT USER RULE: ONLY give number when there is TOO MUCH HIGH PROBABILITY!
+        expected_nums_tip = None
+        # Potential Numbers Calculation:
+        # Check transition frequency from last_num into candidate numbers
+        if cand_transitions >= 4:
+            sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
+            top_cand = sorted_cands[0]
+            top_ratio = num_next_counts[top_cand] / cand_transitions if cand_transitions > 0 else 0
+            # If top candidate has high potential (>= 35% concentration among target size)
+            if top_ratio >= 0.35 and num_next_counts[top_cand] >= 2:
+                runner_up = sorted_cands[1] if len(sorted_cands) > 1 else None
+                runner_ratio = num_next_counts[runner_up] / cand_transitions if (runner_up is not None and cand_transitions > 0) else 0
+                if runner_up is not None and runner_ratio >= 0.25 and num_next_counts[runner_up] >= 2:
+                    expected_nums_tip = f"{top_cand}, {runner_up}"
+                else:
+                    expected_nums_tip = f"{top_cand}"
+
+        # 🎯 STRICT USER RULE: ONLY give single jackpot sure-shot when there is TOO MUCH HIGH PROBABILITY!
         # Do NOT give a number on each bet! Base rate is 20%. Must exceed >= 40% (2x edge) on solid sample.
         if current_loss_streak == 0 and w_v >= 10 and cand_transitions >= 12 and not is_post_dragon_transition:
             sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
@@ -2811,6 +2850,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0)
         "violet_alert": False,
         "jackpot_tip": jackpot_tip,
         "predicted_num": predicted_single_num,
+        "expected_nums": expected_nums_tip,
         "opposite_nums": opposite_nums_tip,
         "signal_grade": signal_grade,
         "pattern_name": detected_pattern_name
@@ -3148,6 +3188,7 @@ def run_live_bot():
                                     "consensus": decision["consensus_tag"], "violet_alert": decision["violet_alert"],
                                     "jackpot_tip": decision.get("jackpot_tip"),
                                     "predicted_num": decision.get("predicted_num"),
+                                    "expected_nums": decision.get("expected_nums"),
                                     "opposite_nums": decision.get("opposite_nums"),
                                     "grade": decision["signal_grade"],
                                     "pattern_name": decision.get("pattern_name", "")
@@ -3264,6 +3305,7 @@ def run_live_bot():
                                 "violet_alert": violet_alert,
                                 "jackpot_tip": jackpot_tip,
                                 "predicted_num": decision.get("predicted_num"),
+                                "expected_nums": decision.get("expected_nums"),
                                 "opposite_nums": decision.get("opposite_nums"),
                                 "grade": signal_grade,
                                 "pattern_name": pattern_name
