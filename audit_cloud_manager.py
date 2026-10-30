@@ -110,7 +110,7 @@ def auto_restore_latest() -> bool:
     if not token:
         return False
     
-    targets = [get_target_channel(), DEFAULT_AUDIT_CHANNEL, STORAGE_CHANNEL_ID]
+    targets = [get_target_channel(), DEFAULT_AUDIT_CHANNEL, FALLBACK_OWNER_ID]
     for ch in targets:
         try:
             r = requests.get(f"https://api.telegram.org/bot{token}/getChat", params={"chat_id": ch}, timeout=15).json()
