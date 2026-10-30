@@ -2484,20 +2484,21 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
-            candidate_models = ["openai/gpt-oss-120b", "allam-2-7b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
+            candidate_models = ["allam-2-7b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
             for mdl in candidate_models:
                 try:
                     r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
                         "model": mdl,
                         "messages": [
-                            {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper. Return strictly valid JSON only."},
+                            {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper for WinGo 1-Minute. Return strictly valid JSON only."},
                             {"role": "user", "content": ai_prompt}
                         ],
-                        "max_tokens": 160,
+                        "max_tokens": 600,
                         "temperature": 0.05
-                    }, timeout=3.2)
+                    }, timeout=10.0)
                     if r_ai.status_code == 200:
-                        raw_c = r_ai.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                        msg_obj = r_ai.json().get("choices", [{}])[0].get("message", {})
+                        raw_c = msg_obj.get("content", "") or msg_obj.get("reasoning", "")
                         m = re.search(r'\{[^{}]*\}', raw_c)
                         if m:
                             res_json = json.loads(m.group(0))
@@ -2514,12 +2515,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                                 ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
                                 ai_ok = True
                                 mdl_label = "GPT-120B" if "120b" in mdl else ("Allam-7B" if "allam" in mdl else ("GPT-20B" if "20b" in mdl else "Qwen-27B"))
-                                print(f"🧠 [MASTER AI] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
+                                print(f"🧠 [MASTER AI 1M] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
                                 break
                     elif r_ai.status_code == 429:
                         print(f"⚠️ [GROQ 429 RATE LIMIT] {mdl} rate limited, falling over to next model...", flush=True)
                         continue
-                except Exception:
+                except Exception as e:
+                    print(f"⚠️ [GROQ CALL EXCEPTION] {mdl}: {e}", flush=True)
                     continue
         except Exception as e:
             print(f"[MASTER AI ERROR] {e}", flush=True)
