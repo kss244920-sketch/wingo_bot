@@ -42,6 +42,21 @@ HISTORY_API_URLS = [
 ]
 HISTORY_API_URL = HISTORY_API_URLS[0]
 
+# ====================================================
+# ☁️ TURSO CLOUD SQLITE PERSISTENCE
+# ====================================================
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "libsql://1-owmarco.aws-ap-south-1.turso.io")
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTMzNzA5NjQsImlkIjoiMDFhMThkM2QtMDQwMS03ODkyLTljY2YtNGQxMjViODQwMmRhIiwia2lkIjoiV3ZrOXBrR1dPdkdaTFEwdmJiSHpaTzFwVHVvRXVMb0RfNjFWejgwSy1XcyIsInJpZCI6ImViMjlkMzdlLTdhZWMtNGM3Ny1iNWJlLTU2ZjJkYmJiMmI2MyJ9.EWy-SZ2NtLCNxpHDp8Y9Ln2h6m3lzUExbNVPGciCRxCKBDP7T-TUZEx-zI8adakMDfYu1E9Al_a1IQOGyHt-Ag")
+
+def get_turso():
+    if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
+        try:
+            from turso_client import TursoConnection
+            return TursoConnection(TURSO_DATABASE_URL, TURSO_AUTH_TOKEN)
+        except Exception:
+            return None
+    return None
+
 def fetch_live_draws():
     """Fetches live draws with automatic multi-mirror failover to prevent Cloudflare 403 freeze."""
     headers = {
@@ -408,13 +423,54 @@ def get_next_period(current_period):
 
 def load_cache():
     global MEMORY_HISTORY, KNOWN_PERIODS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, CONSECUTIVE_SKIPS, POST_STOP_LOSS_COOLDOWN, SETTLED_HISTORY, LAST_SENT_SIGNAL_PERIOD, LAST_SENT_RESULT_PERIOD
-    if os.path.exists(CACHE_FILE):
+    
+    # 1. Primary: Load historical rounds & state from Turso Cloud (Zero Data Loss)
+    t_conn = get_turso()
+    if t_conn:
+        try:
+            with t_conn as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT period, num, color, has_violet, size FROM wingo_draws WHERE period LIKE '%10001%' ORDER BY CAST(period AS INTEGER) DESC LIMIT 500")
+                rows = cur.fetchall()
+                if rows:
+                    cloud_hist = []
+                    for r in reversed(rows):
+                        cloud_hist.append({
+                            "period": str(r["period"]),
+                            "num": int(r["num"]),
+                            "color": str(r["color"]),
+                            "has_violet": bool(r["has_violet"]),
+                            "size": str(r["size"])
+                        })
+                        KNOWN_PERIODS.add(str(r["period"]))
+                    MEMORY_HISTORY = cloud_hist
+                    print(f"☁️ [TURSO CLOUD] Loaded {len(MEMORY_HISTORY)} historical rounds from Turso Cloud! 🚀", flush=True)
+
+                cur.execute("SELECT key, value FROM wingo_state WHERE key = 'bot_state'")
+                st_row = cur.fetchone()
+                if st_row and st_row.get("value"):
+                    st = json.loads(st_row["value"])
+                    CURRENT_LOSS_STREAK = st.get("current_loss_streak", 0)
+                    CURRENT_CYCLE_TARGET = st.get("current_cycle_target", None)
+                    TOTAL_WINS = st.get("total_wins", 0)
+                    TOTAL_LOSSES = st.get("total_losses", 0)
+                    TOTAL_CYCLES = st.get("total_cycles", 0)
+                    CYCLE_WINS = st.get("cycle_wins", 0)
+                    CYCLE_LOSSES = st.get("cycle_losses", 0)
+                    CONSECUTIVE_SKIPS = st.get("consecutive_skips", 0)
+                    POST_STOP_LOSS_COOLDOWN = st.get("post_stop_loss_cooldown", 0)
+                    saved_settled = st.get("settled_history", [])
+                    if isinstance(saved_settled, list) and saved_settled:
+                        SETTLED_HISTORY = saved_settled[-100:]
+                    print(f"☁️ [TURSO CLOUD STATE] Restored Level {CURRENT_LOSS_STREAK + 1} | Target: {CURRENT_CYCLE_TARGET} from Cloud!", flush=True)
+        except Exception as e:
+            print(f"⚠️ [TURSO LOAD ERROR] {e}", flush=True)
+
+    if not MEMORY_HISTORY and os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
                 raw_hist = json.load(f)
-                # Filter to only keep 1M issues (10001) so old 30S data (10005) doesn't pollute
                 MEMORY_HISTORY = [it for it in raw_hist if "10001" in str(it.get("period", ""))]
-                # Keep rolling ring-buffer of last 300 rounds for maximum performance & memory efficiency
                 if len(MEMORY_HISTORY) > 300:
                     MEMORY_HISTORY = MEMORY_HISTORY[-300:]
                 for item in MEMORY_HISTORY:
@@ -428,7 +484,7 @@ def load_cache():
         except Exception as e:
             print(f"[CACHE LOAD ERROR] {e}", flush=True)
 
-    if os.path.exists(STATE_FILE):
+    if not CURRENT_CYCLE_TARGET and os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
                 st = json.load(f)
@@ -457,8 +513,8 @@ def save_cache():
     global MEMORY_HISTORY
     if len(MEMORY_HISTORY) > 0:
         try:
-            if len(MEMORY_HISTORY) > 300:
-                MEMORY_HISTORY = MEMORY_HISTORY[-300:]
+            if len(MEMORY_HISTORY) > 500:
+                MEMORY_HISTORY = MEMORY_HISTORY[-500:]
             tmp_file = f"{CACHE_FILE}.tmp"
             with open(tmp_file, "w") as f:
                 json.dump(MEMORY_HISTORY, f)
@@ -486,6 +542,27 @@ def save_cache():
         with open(tmp_st, "w") as f:
             json.dump(st, f)
         os.replace(tmp_st, STATE_FILE)
+
+        # Background async state & draws sync to Turso Cloud
+        def _turso_save_state(st_dict, recent_draws):
+            t_conn = get_turso()
+            if t_conn:
+                try:
+                    with t_conn as conn:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "INSERT INTO wingo_state (key, value) VALUES ('bot_state', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                            (json.dumps(st_dict),)
+                        )
+                        for d in recent_draws:
+                            cur.execute(
+                                "INSERT OR IGNORE INTO wingo_draws (period, num, color, has_violet, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                                (str(d.get("period", "")), int(d.get("num", 0)), str(d.get("color", "")), 1 if d.get("has_violet") else 0, str(d.get("size", "")), time.time())
+                            )
+                except Exception:
+                    pass
+        recent = MEMORY_HISTORY[-20:] if len(MEMORY_HISTORY) > 0 else []
+        threading.Thread(target=_turso_save_state, args=(st, recent), daemon=True).start()
     except Exception:
         pass
 
