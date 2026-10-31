@@ -2743,6 +2743,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     arbiter_wants_skip = False
     final_summary = ""
     detected_pattern_name = None
+    has_ai_quant_concurrence = bool(ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
 
     if current_loss_streak > 0:
         mult_map = [1, 3, 8]
