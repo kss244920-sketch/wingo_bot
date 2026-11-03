@@ -2790,7 +2790,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
     tot_synced = len(history_items)
     cur_stage_str = f"Level {current_loss_streak + 1} ({3**current_loss_streak}X)"
-    recent_20_detailed = ", ".join([f"{it.get('size','')[0]}({it.get('num',0)})" for it in history_items[-20:]])
+    recent_20_detailed = ", ".join([f"{(it.get('size') or ('BIG' if int(it.get('num', it.get('number', 0))) >= 5 else 'SMALL'))[0]}({it.get('num', it.get('number', 0))})" for it in history_items[-20:]])
 
     # ====================================================
     # 🎯 5. RECOVERY LOCK & VIP LEVEL 1 COUNCILS
@@ -2822,8 +2822,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         # 🐉 POST-DRAGON BREAK TRANSITION SHIELD (ABSOLUTE RULE):
         # A streak >= 3 just broke into the opposite outcome (s_streak == 1).
         # In this immediate next round, the market is 50/50 between a 2-cluster (BB) and a 1-cut (BS).
-        # Quants suffer premature mean-reversion trap here. UNCONDITIONAL SAFE SKIP PRESERVES CAPITAL!
-        if is_post_dragon_transition and consecutive_skips < 3:
+        # Safe Skip 1 round only to confirm direction.
+        if is_post_dragon_transition and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2835,9 +2835,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🛡️ [POST-DRAGON BREAK SHIELD] Dragon of {prev_dragon_len} broke! Skipping Level {cur_lvl} to avoid 1-cut trap!", flush=True)
 
         # 🏰 LEVEL 3 CAPITAL FORTRESS SHIELD:
-        # At Level 3 (8X multiplier), ONLY strike when there is High Concurrence (AI + Quant) OR Confirmed Dragon streak >= 3 OR Confirmed 2-2.
-        # If setup is not certified 85%+, take a SAFE SKIP to preserve the Level 3 bullet!
-        elif cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or is_2_2) and consecutive_skips < 5:
+        elif cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or is_2_2) and consecutive_skips < 2:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2849,9 +2847,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🏰 [LEVEL {cur_lvl} CAPITAL FORTRESS] Safe Skip to preserve {mult}X bullet for high-conviction setup!", flush=True)
 
         # 🛡️ LEVEL 2 POST-BREAK TRANSITION SHIELD (3X PRESERVATION):
-        # Level 1 just lost because the market broke pattern. NEVER bet blindly on the immediate post-loss transition round!
-        # If setup is not confirmed dragon (streak >= 2), confirmed chop (alt >= 4), 2-2, or solid AI concurrence, SAFE SKIP!
-        elif cur_lvl == 2 and not (has_ai_quant_concurrence or s_streak >= 2 or s_alt >= 4 or is_2_2) and consecutive_skips < 4:
+        elif cur_lvl == 2 and not (has_ai_quant_concurrence or s_streak >= 2 or s_alt >= 4 or is_2_2) and consecutive_skips < 2:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2862,7 +2858,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = f"Level 2 Transition Shield: Settling market after regime change. Level 2 preserved."
             print(f"🛡️ [LEVEL 2 TRANSITION SHIELD] Post-break ambiguity filtered. SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
-        elif (is_violent_chaos and consecutive_skips < 4 and size_margin_pct < 18.0) or (ai_ok and ai_tgt == "SKIP" and consecutive_skips < 4):
+        elif (is_violent_chaos and consecutive_skips < 2 and size_margin_pct < 14.0) or (ai_ok and ai_tgt == "SKIP" and consecutive_skips < 2):
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2875,14 +2871,14 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
         elif has_ai_quant_concurrence:
             # TIER 1 RECOVERY: Maximum confluence between Master AI & Quant Council
-            target_val = ai_tgt
-            CURRENT_CYCLE_TARGET = ai_tgt
+            target_val = ai_tgt if (ai_ok and ai_tgt in ("BIG", "SMALL")) else w_size
+            CURRENT_CYCLE_TARGET = target_val
             target_type = "SIZE"
             is_qualified_bet = True
             arbiter_wants_skip = False
-            target_pattern = f"Recovery Concurrence Strike ({ai_tgt})"
-            final_summary = f"Level {cur_lvl} Recovery: AI & Quant Concurrence on {ai_tgt} ({ai_conf:.0f}%) ({mult}X)"
-            target_conf = min(98.0, max(ai_conf, calc_conf))
+            target_pattern = f"Recovery Concurrence Strike ({target_val})"
+            final_summary = f"Level {cur_lvl} Recovery: {'AI & Quant' if ai_ok else 'Quant Council'} on {target_val} ({mult}X)"
+            target_conf = min(98.0, max(ai_conf if ai_ok else 50.0, calc_conf))
             print(f"🎯 [RECOVERY CONCURRENCE] AI & Quants align on {target_val}! Striking recovery ({mult}X).", flush=True)
 
         elif s_streak >= 2 and last_s in ("BIG", "SMALL"):
@@ -2976,22 +2972,22 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 is_qualified_bet = False
                 final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
                 print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market after stop-loss. SAFE SKIP.", flush=True)
-        elif is_post_dragon_transition and consecutive_skips < 3:
+        elif is_post_dragon_transition and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Post-Dragon Transition: Dragon of {prev_dragon_len} broke. Preserving base capital."
             print(f"🛡️ [POST-DRAGON BREAK] Dragon of {prev_dragon_len} broke. SAFE SKIP on Level 1.", flush=True)
-        elif is_choppy_regime and consecutive_skips < 3 and s_streak < 3:
+        elif is_choppy_regime and consecutive_skips < 1 and s_streak < 3:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Chaotic Noise Regime: Erratic ping-pong swings ({recent_runs} runs in 16 rounds). Preserving capital."
             print(f"🛡️ [REGIME NOISE SHIELD] Erratic ping-pong swings ({recent_runs} runs). SAFE SKIP.", flush=True)
-        elif is_violent_chaos and consecutive_skips < 3 and size_margin_pct < 18.0:
+        elif is_violent_chaos and consecutive_skips < 1 and size_margin_pct < 12.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
-        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 4:
+        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 2:
             # Master AI explicitly warns of 50/50 noise or chop break: SAFE SKIP
             arbiter_wants_skip = True
             is_qualified_bet = False
@@ -3008,13 +3004,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
         elif has_ai_quant_concurrence:
             # Tier 2: Supreme Concurrence (AI & Quants agree 100% on same direction with solid consensus!)
-            target_val = ai_tgt
-            target_pattern = f"Master AI & Quant Concurrence ({target_val})"
-            final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)"
-            target_conf = max(ai_conf, calc_conf)
+            target_val = ai_tgt if (ai_ok and ai_tgt in ("BIG", "SMALL")) else w_size
+            target_pattern = f"Master AI & Quant Concurrence ({target_val})" if ai_ok else f"Quant Solid Majority ({target_val})"
+            final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)" if ai_ok else f"Quant Solid Consensus ({target_val})"
+            target_conf = max(ai_conf if ai_ok else 50.0, calc_conf)
             is_qualified_bet = True
             arbiter_wants_skip = False
-            print(f"🧠 [AI-QUANT CONCURRENCE] Qwen-27B & Quant Council align on {target_val} ({target_conf:.0f}%)", flush=True)
+            print(f"🧠 [AI-QUANT CONCURRENCE] Council aligns on {target_val} ({target_conf:.0f}%)", flush=True)
         elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 80.0 and size_margin_pct >= 15.0:
             # Tier 3: AI Directional Insight (High AI confidence with supporting quant edge)
             target_val = ai_tgt
@@ -3023,9 +3019,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_conf = ai_conf
             is_qualified_bet = True
             arbiter_wants_skip = False
-            print(f"🧠 [AI DIRECTIONAL LEAD] Qwen-27B leads with {target_val} ({ai_conf:.0f}%)", flush=True)
+            print(f"🧠 [AI DIRECTIONAL LEAD] Master AI leads with {target_val} ({ai_conf:.0f}%)", flush=True)
         elif has_solid_quant_consensus and (not ai_ok or ai_tgt == w_size):
-            # Tier 4: Decisive Quant Majority Consensus (Requires solid quorum, >= 20% margin, >= 7 votes)
+            # Tier 4: Decisive Quant Majority Consensus (Requires solid quorum, >= 18% margin)
             target_val = w_size
             target_pattern = f"Quant Consensus Edge ({target_val})"
             final_summary = f"Quant Consensus ({w_size} | {size_margin_pct:.0f}%)"
@@ -3033,11 +3029,20 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"📊 [QUANT CONSENSUS] Council Lead: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
+        elif w_size in ("BIG", "SMALL") and w_v > l_v and size_margin_pct >= 8.0:
+            # Tier 5: Quant Majority Edge (Plays consistent high-probability edge instead of constant skips)
+            target_val = w_size
+            target_pattern = f"Quant Majority Edge ({target_val})"
+            final_summary = f"Council Majority: {w_size} lead ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)"
+            target_conf = max(80.0, calc_conf)
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            print(f"📊 [QUANT MAJORITY] Council Edge: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
         else:
-            # Safe Capital Preservation Skip on Low Conviction Noise
+            # Safe Capital Preservation Skip only on extreme deadlocks (margin < 8%)
             arbiter_wants_skip = True
             is_qualified_bet = False
-            final_summary = f"Ambiguous Market Setup: Preserving capital on narrow edge ({size_margin_pct:.0f}% margin)."
+            final_summary = f"Deadlock Noise: 50/50 split ({size_margin_pct:.0f}% margin). Preserving capital."
             print(f"🛡️ [CAPITAL SHIELD] Low edge noise filtered (Margin: {size_margin_pct:.0f}%). SAFE SKIP.", flush=True)
 
         if not arbiter_wants_skip and is_qualified_bet:
@@ -3106,6 +3111,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
         opposite_nums_tip = None
 
+    if target_type == "SIZE" and target_val not in ("BIG", "SMALL"):
+        if w_size in ("BIG", "SMALL"):
+            target_val = w_size
+        else:
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+
     return {
         "target_type": target_type,
         "target_val": target_val,
@@ -3146,7 +3160,9 @@ def seed_settled_history_if_needed():
 
         try:
             pred = ask_12_ai_council(hist_slice, current_loss_streak=loss_streak, consecutive_skips=skips, fast_deterministic=True)
-            t_val = pred.get("target_val", "SKIP")
+            t_val = pred.get("target_val") if pred else "SKIP"
+            if t_val not in ("BIG", "SMALL"):
+                t_val = "SKIP"
         except Exception:
             t_val = "SKIP"
 
@@ -3227,7 +3243,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     LAST_SENT_SIGNAL_PERIOD = str(target_period)
 
     # User requirement: Screenshot 4 for SKIP
-    if target_type == "SKIP" or target_val == "SKIP":
+    if target_type == "SKIP" or target_val in ("SKIP", "None", None, "") or target_val not in ("BIG", "SMALL"):
         msg = (
             f"<blockquote>"
             f"⏳ <b>Period :</b> <code>...{short_period}</code>\n"
@@ -3312,7 +3328,8 @@ def send_user_result(period, actual_number, actual_color, pred):
     actual_size = "BIG" if actual_number >= 5 else "SMALL"
     p_str = str(period)
 
-    if not pred or pred.get("target_type") == "SKIP" or pred.get("target_val") == "SKIP":
+    target_val = pred.get("target_val") if pred else None
+    if not pred or pred.get("target_type") == "SKIP" or target_val in ("SKIP", "None", None, "") or target_val not in ("BIG", "SMALL"):
         SETTLED_HISTORY = [x for x in SETTLED_HISTORY if str(x.get("period")) != p_str]
         SETTLED_HISTORY.append({
             "period": p_str,
@@ -3644,7 +3661,7 @@ def run_live_bot():
                         p_flag = f" [🧩 {pattern_name}]" if pattern_name else ""
                         print(f"🏛️ Council Verdict: BestBet={t_type}:{t_val} ({t_conf:.1f}%) | Color={pred_color} | Size={pred_size} | {consensus_tag}{v_flag}{j_flag}{p_flag} | {signal_grade}", flush=True)
 
-                        if t_type == "SKIP" or t_val == "SKIP":
+                        if t_type == "SKIP" or t_val in ("SKIP", "None", None, "") or t_val not in ("BIG", "SMALL"):
                             CONSECUTIVE_SKIPS += 1
                             MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
                             save_cache()
