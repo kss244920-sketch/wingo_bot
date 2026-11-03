@@ -27,13 +27,14 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# High-Intensity Multi-Provider Neural Arbiter Models (GitHub Models Priority + Auto-Failover)
+# High-Intensity Multi-Provider Neural Arbiter Models (GitHub Copilot GPT-4o Priority + Auto-Failover)
 AI_PROVIDERS = [
     {
-        "name": "GitHub Models",
-        "url": "https://models.github.ai/inference/chat/completions",
+        "name": "GitHub Copilot GPT-4o",
+        "url": "https://api.githubcopilot.com/chat/completions",
         "token": GITHUB_TOKEN,
-        "models": ["openai/gpt-4o-mini", "meta/llama-3.3-70b-instruct", "deepseek/deepseek-r1", "gpt-4o-mini"]
+        "models": ["gpt-4o", "gpt-4o-mini"],
+        "extra_headers": {"User-Agent": "GitHubCopilotChat/0.22.4"}
     },
     {
         "name": "Groq Cloud",
@@ -2600,6 +2601,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                     "Authorization": f"Bearer {p_token}",
                     "Content-Type": "application/json"
                 }
+                if "extra_headers" in provider:
+                    p_headers.update(provider["extra_headers"])
 
                 for mdl in provider.get("models", []):
                     try:
@@ -2611,7 +2614,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                             ],
                             "max_tokens": 120,
                             "temperature": 0.05
-                        }, timeout=5.0)
+                        }, timeout=6.0)
 
                         if r_ai.status_code == 200:
                             try:
@@ -2629,7 +2632,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                                     elif raw_p in ("SKIP", "WAIT", "NONE", "PASS"):
                                         ai_tgt = "SKIP"
                                     if ai_tgt:
-                                        ai_conf = float(res_json.get("confidence", 80.0 if ai_tgt != "SKIP" else 55.0))
+                                        raw_conf = res_json.get("confidence")
+                                        ai_conf = float(raw_conf) if raw_conf and float(raw_conf) > 0 else (85.0 if ai_tgt != "SKIP" else 50.0)
                                         ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
                                         ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
                                         ai_ok = True
