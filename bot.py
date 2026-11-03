@@ -23,15 +23,32 @@ USER_ALERT_CHAT_IDS = ["-1003799001380", "-1003707286637"]  # Dual-Broadcast Cha
 STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# High-Intensity Deep Reasoning Master AI Brain (27B Parameter Pattern Specialist)
-MASTER_AI_MODELS = [
-    "openai/gpt-oss-120b",
-    "allam-2-7b",
-    "openai/gpt-oss-20b",
-    "qwen/qwen3.8-27b",
+# High-Intensity Multi-Provider Neural Arbiter Models (GitHub Models Priority + Auto-Failover)
+AI_PROVIDERS = [
+    {
+        "name": "GitHub Models",
+        "url": "https://models.github.ai/inference/chat/completions",
+        "token": GITHUB_TOKEN,
+        "models": ["openai/gpt-4o-mini", "meta/llama-3.3-70b-instruct", "deepseek/deepseek-r1", "gpt-4o-mini"]
+    },
+    {
+        "name": "Groq Cloud",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "token": GROQ_API_KEY,
+        "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    },
+    {
+        "name": "OpenRouter Free",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "token": OPENROUTER_API_KEY,
+        "models": ["meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-r1:free"]
+    }
 ]
-MODEL_MASTER_AI = MASTER_AI_MODELS[0]
+AI_COOLDOWN_UNTIL = 0
 GROQ_COOLDOWN_UNTIL = 0
 RESTART_PENDING = False
 
@@ -2535,9 +2552,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     ai_reason = ""
     ai_ok = False
 
-    # 🧠 Master AI Neural Pattern Reasoner (Qwen-27B Deep Brain on Groq with Allam-7B Failover)
-    # Briefed with COMPLETE Quantitative Intelligence from all 32 Math Models & 3,800-Round Database
-    if not fast_deterministic and GROQ_API_KEY and time.time() >= GROQ_COOLDOWN_UNTIL:
+    # 🧠 Master AI Neural Pattern Reasoner (GitHub Models Priority with Groq & Multi-Provider Failover)
+    # Briefed with COMPLETE Quantitative Intelligence from all 34 Math Models & 3,800-Round Database
+    if not fast_deterministic and time.time() >= AI_COOLDOWN_UNTIL:
         try:
             hist_15 = []
             for it in history_items[-15:]:
@@ -2571,50 +2588,89 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
-            candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "allam-2-7b"]
-            for mdl in candidate_models:
-                try:
-                    r_ai = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json={
-                        "model": mdl,
-                        "messages": [
-                            {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper for WinGo 1-Minute. Return strictly valid JSON only."},
-                            {"role": "user", "content": ai_prompt}
-                        ],
-                        "max_tokens": 120,
-                        "temperature": 0.05
-                    }, timeout=6.0)
-                    if r_ai.status_code == 200:
-                        msg_obj = r_ai.json().get("choices", [{}])[0].get("message", {})
-                        raw_c = msg_obj.get("content", "") or msg_obj.get("reasoning", "")
-                        m = re.search(r'\{[^{}]*\}', raw_c)
-                        if m:
-                            res_json = json.loads(m.group(0))
-                            raw_p = str(res_json.get("prediction", "")).upper()
-                            if raw_p in ("BIG", "HIGH"):
-                                ai_tgt = "BIG"
-                            elif raw_p in ("SMALL", "LOW"):
-                                ai_tgt = "SMALL"
-                            elif raw_p in ("SKIP", "WAIT", "NONE", "PASS"):
-                                ai_tgt = "SKIP"
-                            if ai_tgt:
-                                ai_conf = float(res_json.get("confidence", 80.0 if ai_tgt != "SKIP" else 55.0))
-                                ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
-                                ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
-                                ai_ok = True
-                                mdl_label = "GPT-120B" if "120b" in mdl else ("Allam-7B" if "allam" in mdl else ("GPT-20B" if "20b" in mdl else "Qwen-27B"))
-                                print(f"🧠 [MASTER AI 1M] {mdl_label} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
-                                break
-                    elif r_ai.status_code == 429:
-                        print(f"⚠️ [GROQ 429 RATE LIMIT] {mdl} rate limited, falling over to next model...", flush=True)
-                        continue
-                except Exception as e:
-                    print(f"⚠️ [GROQ CALL EXCEPTION] {mdl}: {e}", flush=True)
+            for provider in AI_PROVIDERS:
+                if ai_ok:
+                    break
+                p_token = provider.get("token")
+                if not p_token:
                     continue
+                p_url = provider.get("url")
+                p_name = provider.get("name")
+                p_headers = {
+                    "Authorization": f"Bearer {p_token}",
+                    "Content-Type": "application/json"
+                }
+
+                for mdl in provider.get("models", []):
+                    try:
+                        r_ai = requests.post(p_url, headers=p_headers, json={
+                            "model": mdl,
+                            "messages": [
+                                {"role": "system", "content": "You are an ultra-disciplined quantitative CIO and pattern sniper for WinGo 1-Minute. Return strictly valid JSON only."},
+                                {"role": "user", "content": ai_prompt}
+                            ],
+                            "max_tokens": 120,
+                            "temperature": 0.05
+                        }, timeout=5.0)
+
+                        if r_ai.status_code == 200:
+                            try:
+                                r_json = r_ai.json()
+                                msg_obj = r_json.get("choices", [{}])[0].get("message", {})
+                                raw_c = msg_obj.get("content", "") or msg_obj.get("reasoning", "")
+                                m = re.search(r'\{[^{}]*\}', raw_c)
+                                if m:
+                                    res_json = json.loads(m.group(0))
+                                    raw_p = str(res_json.get("prediction", "")).upper()
+                                    if raw_p in ("BIG", "HIGH"):
+                                        ai_tgt = "BIG"
+                                    elif raw_p in ("SMALL", "LOW"):
+                                        ai_tgt = "SMALL"
+                                    elif raw_p in ("SKIP", "WAIT", "NONE", "PASS"):
+                                        ai_tgt = "SKIP"
+                                    if ai_tgt:
+                                        ai_conf = float(res_json.get("confidence", 80.0 if ai_tgt != "SKIP" else 55.0))
+                                        ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
+                                        ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
+                                        ai_ok = True
+                                        print(f"🧠 [MASTER AI 1M] [{p_name}] {mdl} Neural Verdict: {ai_tgt} ({ai_conf:.0f}%) | {ai_pat}: {ai_reason}", flush=True)
+                                        break
+                            except Exception:
+                                continue
+                        elif r_ai.status_code == 429:
+                            print(f"⚠️ [{p_name} 429 RATE LIMIT] {mdl} rate limited, falling over to next model...", flush=True)
+                            continue
+                    except Exception as e:
+                        continue
         except Exception as e:
             print(f"[MASTER AI ERROR] {e}", flush=True)
 
     ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0) else None
-    all_specialists = [{"name": "Agent AI (Master Qwen-27B Neural Brain)", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}"}] + quant_specialists
+    all_specialists = [{"name": f"Agent AI ({'Active Neural' if ai_ok else 'Math Council'})", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}" if ai_ok else "34-Quant Consensus"}] + quant_specialists
+
+    # 🔗 TRUE CONVERGENCE BRIDGE: Incorporate AI into Council Voting Tally
+    if ai_vote_val in ("BIG", "SMALL"):
+        ai_weight = 5.5
+        if ai_vote_val == "BIG":
+            big_weight += ai_weight
+            big_votes += 1
+        elif ai_vote_val == "SMALL":
+            small_weight += ai_weight
+            small_votes += 1
+        total_active_weight = big_weight + small_weight
+        active_votes = big_votes + small_votes
+        if big_weight > small_weight:
+            w_size = "BIG"
+            w_v, l_v = big_votes, small_votes
+            w_weight = big_weight
+        elif small_weight > big_weight:
+            w_size = "SMALL"
+            w_v, l_v = small_votes, big_votes
+            w_weight = small_weight
+        size_edge = abs(big_weight - small_weight)
+        size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
+        calc_conf = min(97.5, max(80.0, round(78.0 + (size_margin_pct * 0.25) + (w_v * 0.4), 1)))
+        has_solid_quant_consensus = (active_votes >= 10 and w_v >= 7 and (w_v / max(1, active_votes) >= 0.60) and size_margin_pct >= 20.0)
 
     streak_surv = p_info.get("streak_survival_rate", 0.50)
 
@@ -2743,7 +2799,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     arbiter_wants_skip = False
     final_summary = ""
     detected_pattern_name = None
-    has_ai_quant_concurrence = bool(ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
+    has_ai_quant_concurrence = bool(
+        (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
+        or (not ai_ok and has_solid_quant_consensus and size_margin_pct >= 20.0)
+    )
 
     if current_loss_streak > 0:
         mult_map = [1, 3, 8]
@@ -2755,7 +2814,10 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         # If market is chaotic or edge is below 14%, and AI has no high conviction, TAKE A SAFE SKIP.
         # Safe Skip PRESERVES the current recovery level so no money is lost on ambiguity.
 
-        has_ai_quant_concurrence = (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
+        has_ai_quant_concurrence = bool(
+            (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
+            or (not ai_ok and has_solid_quant_consensus and size_margin_pct >= 20.0)
+        )
 
         # 🐉 POST-DRAGON BREAK TRANSITION SHIELD (ABSOLUTE RULE):
         # A streak >= 3 just broke into the opposite outcome (s_streak == 1).
