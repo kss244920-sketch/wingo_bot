@@ -2705,8 +2705,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     # 2. Dragon Trend (Streak >= 3)
     is_dragon_confirmed = (s_streak >= 3)
 
-    # 3. 2-2 Double-Step Pair Rotation: AA BB AA -> rotate to opp_s (strictly requires >= 3 runs of 2)
-    is_2_2_rotation = (len(seq_runs) >= 3 and seq_runs[-1][1] == 2 and seq_runs[-2][1] == 2 and seq_runs[-3][1] == 2)
+    # 3. 2-2 Double-Step Pair Rotation: AA BB -> rotate to opp_s
+    is_2_2_rotation = is_true_2_2(sizes)
     is_2_2 = is_2_2_rotation
 
     # 4. True 1-1 Chop Alternation (Requires at least 4 single-step runs)
@@ -2847,7 +2847,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🏰 [LEVEL {cur_lvl} CAPITAL FORTRESS] Safe Skip to preserve {mult}X bullet for high-conviction setup!", flush=True)
 
         # 🛡️ LEVEL 2 POST-BREAK TRANSITION SHIELD (3X PRESERVATION):
-        elif cur_lvl == 2 and not (has_ai_quant_concurrence or s_streak >= 2 or s_alt >= 4 or is_2_2) and consecutive_skips < 2:
+        elif cur_lvl == 2 and not (has_ai_quant_concurrence or s_streak >= 3 or s_alt >= 4 or is_2_2) and consecutive_skips < 2:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2881,32 +2881,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_conf = min(98.0, max(ai_conf if ai_ok else 50.0, calc_conf))
             print(f"🎯 [RECOVERY CONCURRENCE] AI & Quants align on {target_val}! Striking recovery ({mult}X).", flush=True)
 
-        elif s_streak >= 2 and last_s in ("BIG", "SMALL"):
-            # TIER 2 RECOVERY: Active Dragon Momentum - Ride the running dragon
-            target_val = last_s
-            CURRENT_CYCLE_TARGET = last_s
-            target_type = "SIZE"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            target_pattern = f"Recovery Dragon Alignment ({last_s} x{s_streak})"
-            final_summary = f"Level {cur_lvl} Recovery: Aligned to running {last_s} dragon ({mult}X)"
-            target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
-            print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to running {last_s} dragon! Striking {target_val} ({mult}X).", flush=True)
-
-        elif s_alt >= 4 and opp_s in ("BIG", "SMALL"):
-            # TIER 3 RECOVERY: Confirmed 1-1 Chop Swing (Requires >= 4 alternations, not 3!)
-            target_val = opp_s
-            CURRENT_CYCLE_TARGET = opp_s
-            target_type = "SIZE"
-            is_qualified_bet = True
-            arbiter_wants_skip = False
-            target_pattern = f"Recovery Chop Alignment ({opp_s} swing)"
-            final_summary = f"Level {cur_lvl} Recovery: Aligned to 1-1 chop swing on {opp_s} ({mult}X)"
-            target_conf = min(98.0, 86.0 + current_loss_streak * 2.0)
-            print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {target_val} ({mult}X).", flush=True)
-
         elif roadmap_target_val in ("BIG", "SMALL"):
-            # TIER 4 RECOVERY: Confirmed structural roadmap (2-2 or double-step)
+            # TIER 2 RECOVERY: Confirmed Structural Roadmap (1-1 Chop, 2-2 Double-step, or Dragon)
             target_val = roadmap_target_val
             CURRENT_CYCLE_TARGET = roadmap_target_val
             target_type = "SIZE"
@@ -2916,6 +2892,30 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = f"Level {cur_lvl} Recovery: Aligned to {roadmap_pattern_name} ({mult}X)"
             target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
             print(f"🎴 [RECOVERY ROADMAP PIVOT] Re-aligning recovery to {roadmap_pattern_name}! Striking {target_val} ({mult}X).", flush=True)
+
+        elif s_streak >= 3 and last_s in ("BIG", "SMALL"):
+            # TIER 3 RECOVERY: True Dragon Momentum (Streak >= 3, NOT 2!)
+            target_val = last_s
+            CURRENT_CYCLE_TARGET = last_s
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Dragon Alignment ({last_s} x{s_streak})"
+            final_summary = f"Level {cur_lvl} Recovery: Aligned to running {last_s} dragon ({mult}X)"
+            target_conf = min(98.0, 90.0 + current_loss_streak * 2.0)
+            print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to running {last_s} dragon! Striking {target_val} ({mult}X).", flush=True)
+
+        elif s_alt >= 4 and opp_s in ("BIG", "SMALL"):
+            # TIER 4 RECOVERY: Confirmed 1-1 Chop Swing
+            target_val = opp_s
+            CURRENT_CYCLE_TARGET = opp_s
+            target_type = "SIZE"
+            is_qualified_bet = True
+            arbiter_wants_skip = False
+            target_pattern = f"Recovery Chop Alignment ({opp_s} swing)"
+            final_summary = f"Level {cur_lvl} Recovery: Aligned to 1-1 chop swing on {opp_s} ({mult}X)"
+            target_conf = min(98.0, 86.0 + current_loss_streak * 2.0)
+            print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {target_val} ({mult}X).", flush=True)
 
         elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 80.0 and size_margin_pct >= 15.0:
             # TIER 5 RECOVERY: Master AI Directional Insight (Requires >= 80% conf & >= 15% margin)
@@ -2977,7 +2977,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             is_qualified_bet = False
             final_summary = f"Post-Dragon Transition: Dragon of {prev_dragon_len} broke. Preserving base capital."
             print(f"🛡️ [POST-DRAGON BREAK] Dragon of {prev_dragon_len} broke. SAFE SKIP on Level 1.", flush=True)
-        elif is_choppy_regime and consecutive_skips < 1 and s_streak < 3:
+        elif is_choppy_regime and not is_chop_confirmed and not is_2_2_rotation and consecutive_skips < 1 and s_streak < 3:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Chaotic Noise Regime: Erratic ping-pong swings ({recent_runs} runs in 16 rounds). Preserving capital."
