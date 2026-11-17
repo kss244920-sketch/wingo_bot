@@ -360,14 +360,17 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.5.1",
+                "version": "2.5.2",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
                 "consecutive_skips": CONSECUTIVE_SKIPS,
                 "pending_predictions": list(MEMORY_PREDICTIONS.keys()),
                 "last_sent_signal": LAST_SENT_SIGNAL_PERIOD,
-                "last_sent_result": LAST_SENT_RESULT_PERIOD
+                "last_sent_result": LAST_SENT_RESULT_PERIOD,
+                "loop_cycles": LOOP_CYCLES,
+                "last_processed_period": LAST_PROCESSED_PERIOD,
+                "last_loop_error": LAST_LOOP_ERROR
             }
             self.wfile.write(json.dumps(response_data).encode("utf-8"))
         except Exception:
@@ -429,6 +432,9 @@ POST_STOP_LOSS_COOLDOWN = 0  # Cooldown rounds after Level 5 Stop-Loss hit
 MAX_MARTINGALE_LEVEL = 3  # Disciplined 3-Level Ultra-Safe Capital Shield (1X, 3X, 8X - Zero Account Wipeout)
 LAST_SENT_SIGNAL_PERIOD = None
 LAST_SENT_RESULT_PERIOD = None
+LOOP_CYCLES = 0
+LAST_PROCESSED_PERIOD = None
+LAST_LOOP_ERROR = None
 
 # Direct VIP Channel Architecture (Zero Polling, Zero 409 Conflicts)
 IS_STANDBY_MODE = False
@@ -3605,7 +3611,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 # 🔄 MAIN REAL-TIME LOOP
 # ====================================================
 def run_live_bot():
-    global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
+    global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS, LOOP_CYCLES, LAST_PROCESSED_PERIOD, LAST_LOOP_ERROR
     print("=" * 65)
     print("🚀 WinGo 1M Quantitative Statistical Ensemble & AI Supervisor ACTIVE (v2.5.0)")
     print("📊 Real Mathematical Engine: Markov N-Gram, Bayesian Laplace, EWMA, Baccarat Roads")
@@ -3636,6 +3642,8 @@ def run_live_bot():
 
     while True:
         try:
+            LOOP_CYCLES += 1
+            LAST_PROCESSED_PERIOD = last_processed_period
             # 1. Fetch live historical draws from CDN with multi-mirror rotation (Prevents Cloudflare 403 freeze)
             items = fetch_live_draws()
             if items:
@@ -3799,6 +3807,7 @@ def run_live_bot():
                             send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"), is_high_stake=decision.get("is_high_stake", False))
 
         except Exception as e:
+            LAST_LOOP_ERROR = f"{type(e).__name__}: {e}"
             print(f"[LOOP ERROR] {e}", flush=True)
 
         time.sleep(1.0)
