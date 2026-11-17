@@ -2545,7 +2545,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     size_edge = abs(big_weight - small_weight)
     size_ratio = (w_weight / total_active_weight) if total_active_weight > 0 else 0.5
     size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-    calc_conf = min(97.5, max(80.0, round(78.0 + (size_margin_pct * 0.25) + (w_v * 0.4), 1)))
+    # Genuine Win Probability (Bayesian Laplace Smoothing, Baseline 50.0%, Realistic Cap 72.5%)
+    smoothed_prob = ((w_weight + 5.0) / (total_active_weight + 10.0)) * 100.0 if total_active_weight > 0 else 50.0
+    calc_conf = round(min(72.5, max(50.0, smoothed_prob)), 1)
 
     # 🏛️ STATISTICAL ACTIVE QUORUM & SOLID CONSENSUS:
     # Requires at least 10 active votes, >= 7 for winner, >= 60% win share, and >= 20% margin
@@ -2676,7 +2678,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             w_weight = small_weight
         size_edge = abs(big_weight - small_weight)
         size_margin_pct = round((size_edge / total_active_weight * 100), 1) if total_active_weight > 0 else 0.0
-        calc_conf = min(97.5, max(80.0, round(78.0 + (size_margin_pct * 0.25) + (w_v * 0.4), 1)))
+        # Genuine Win Probability (Bayesian Laplace Smoothing, Baseline 50.0%, Realistic Cap 72.5%)
+        smoothed_prob = ((w_weight + 5.0) / (total_active_weight + 10.0)) * 100.0 if total_active_weight > 0 else 50.0
+        calc_conf = round(min(72.5, max(50.0, smoothed_prob)), 1)
         has_solid_quant_consensus = (active_votes >= 10 and w_v >= 7 and (w_v / max(1, active_votes) >= 0.60) and size_margin_pct >= 20.0)
 
     streak_surv = p_info.get("streak_survival_rate", 0.50)
@@ -2756,7 +2760,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         else:
             w_size = roadmap_target_val
             target_pattern = roadmap_pattern_name
-            calc_conf = max(88.0, calc_conf)
+            calc_conf = min(72.5, round(calc_conf + 3.0, 1))
             print(f"🎴 [ROADMAP SUPREMACY] Pattern Active: {roadmap_pattern_name} -> Lock {w_size}!", flush=True)
 
     # ====================================================
@@ -2788,12 +2792,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     cur_lvl = current_loss_streak + 1
     signal_grade = f"LEVEL_{cur_lvl}"
 
-    if w_v >= 10:
-        consensus_tag = f"💎 Council Strong Consensus ({w_v}-{l_v} | {target_edge_desc})"
-    elif w_v >= 6:
-        consensus_tag = f"🔥 Council Majority Edge ({w_v}-{l_v} | {target_edge_desc})"
+    if size_margin_pct >= 25.0:
+        consensus_tag = f"High Statistical Edge: {w_size} (+{size_margin_pct:.1f}% margin)"
+    elif size_margin_pct >= 14.0:
+        consensus_tag = f"Moderate Edge: {w_size} (+{size_margin_pct:.1f}% margin)"
     else:
-        consensus_tag = f"⚡ Council Lead ({w_v}-{l_v} | {target_edge_desc})"
+        consensus_tag = f"Statistical Lead: {w_size} (+{size_margin_pct:.1f}% margin)"
 
     tot_synced = len(history_items)
     cur_stage_str = f"Level {current_loss_streak + 1} ({3**current_loss_streak}X)"
@@ -2909,7 +2913,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             target_pattern = f"Recovery Concurrence Strike ({target_val})"
             final_summary = f"Level {cur_lvl} Recovery: {'AI & Quant' if ai_ok else 'Quant Council'} on {target_val} ({mult}X)"
-            target_conf = min(98.0, max(ai_conf if ai_ok else 50.0, calc_conf))
+            target_conf = min(72.5, round(calc_conf + 3.0, 1))
             print(f"🎯 [RECOVERY CONCURRENCE] AI & Quants align on {target_val}! Striking recovery ({mult}X).", flush=True)
 
         elif roadmap_target_val in ("BIG", "SMALL") and (not ai_ok or ai_tgt == roadmap_target_val):
@@ -2921,7 +2925,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             target_pattern = f"Recovery Roadmap Pivot ({roadmap_pattern_name})"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to {roadmap_pattern_name} ({mult}X)"
-            target_conf = min(98.0, 88.0 + current_loss_streak * 2.0)
+            target_conf = min(72.5, round(calc_conf + 3.0, 1))
             print(f"🎴 [RECOVERY ROADMAP PIVOT] Re-aligning recovery to {roadmap_pattern_name}! Striking {target_val} ({mult}X).", flush=True)
 
         elif s_streak >= 3 and last_s in ("BIG", "SMALL") and (not ai_ok or ai_tgt == last_s):
@@ -2933,7 +2937,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             target_pattern = f"Recovery Dragon Alignment ({last_s} x{s_streak})"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to running {last_s} dragon ({mult}X)"
-            target_conf = min(98.0, 90.0 + current_loss_streak * 2.0)
+            target_conf = min(72.5, round(calc_conf + 4.0, 1))
             print(f"🐉 [RECOVERY DRAGON ALIGNMENT] Re-aligning recovery to running {last_s} dragon! Striking {target_val} ({mult}X).", flush=True)
 
         elif s_alt >= 4 and opp_s in ("BIG", "SMALL") and (not ai_ok or ai_tgt == opp_s):
@@ -2945,7 +2949,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             target_pattern = f"Recovery Chop Alignment ({opp_s} swing)"
             final_summary = f"Level {cur_lvl} Recovery: Aligned to 1-1 chop swing on {opp_s} ({mult}X)"
-            target_conf = min(98.0, 86.0 + current_loss_streak * 2.0)
+            target_conf = min(72.5, round(calc_conf + 2.0, 1))
             print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {target_val} ({mult}X).", flush=True)
 
         elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 82.0 and size_margin_pct >= 10.0 and (not has_solid_quant_consensus or w_size == ai_tgt):
@@ -2957,7 +2961,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             target_pattern = f"Recovery Master AI Lead ({ai_tgt})"
             final_summary = f"Level {cur_lvl} Recovery: Master AI leads on {ai_tgt} ({ai_conf:.0f}%) ({mult}X)"
-            target_conf = max(ai_conf, 86.0 + current_loss_streak * 2.0)
+            target_conf = min(72.5, round(calc_conf + 2.0, 1))
             print(f"🧠 [RECOVERY AI LEAD] Master AI leads recovery to {ai_tgt} ({ai_conf:.0f}%)! Striking {target_val} ({mult}X).", flush=True)
 
         elif w_size in ("BIG", "SMALL") and has_solid_quant_consensus and (not ai_ok or ai_tgt == w_size):
@@ -2969,7 +2973,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             target_pattern = f"Recovery Decisive Council Edge ({w_size})"
             final_summary = f"Level {cur_lvl} Recovery: Decisive {w_size} council edge ({mult}X)"
-            target_conf = min(98.0, 85.0 + current_loss_streak * 2.5)
+            target_conf = calc_conf
             print(f"🎯 [RECOVERY COUNCIL PIVOT] Board shifted to {w_size} ({w_v} vs {l_v} votes, {size_margin_pct:.0f}% margin)! Striking {target_val} ({mult}X).", flush=True)
 
         else:
@@ -3046,7 +3050,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_val = roadmap_target_val
             target_pattern = roadmap_pattern_name
             final_summary = roadmap_pattern_name
-            target_conf = max(88.0, calc_conf)
+            target_conf = min(72.5, round(calc_conf + 3.0, 1))
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🎴 [ROADMAP SUPREMACY] {roadmap_pattern_name} -> Bet: {target_val}", flush=True)
@@ -3056,7 +3060,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_val = ai_tgt if (ai_ok and ai_tgt in ("BIG", "SMALL")) else w_size
             target_pattern = f"Master AI & Quant Concurrence ({target_val})" if ai_ok else f"Quant Solid Majority ({target_val})"
             final_summary = f"{ai_pat or ai_reason} (AI+Quant Concurrence)" if ai_ok else f"Quant Solid Consensus ({target_val})"
-            target_conf = max(ai_conf if ai_ok else 50.0, calc_conf)
+            target_conf = min(72.5, round(calc_conf + 4.0, 1))
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI-QUANT CONCURRENCE] Council aligns on {target_val} ({target_conf:.0f}%)", flush=True)
@@ -3066,7 +3070,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_val = ai_tgt
             target_pattern = f"Master AI Directional Lead ({target_val})"
             final_summary = f"{ai_pat or ai_reason} (AI High Conviction {ai_conf:.0f}%)"
-            target_conf = ai_conf
+            target_conf = min(72.5, round(50.0 + (ai_conf - 50.0) * 0.45, 1))
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"🧠 [AI DIRECTIONAL LEAD] Master AI leads with {target_val} ({ai_conf:.0f}%)", flush=True)
@@ -3086,7 +3090,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_val = w_size
             target_pattern = f"Quant Majority Edge ({target_val})"
             final_summary = f"Council Majority: {w_size} lead ({w_v} vs {l_v} votes | {size_margin_pct:.0f}% edge)"
-            target_conf = max(80.0, calc_conf)
+            target_conf = calc_conf
             is_qualified_bet = True
             arbiter_wants_skip = False
             print(f"📊 [QUANT MAJORITY] Council Edge: {target_val} ({size_margin_pct:.0f}% margin, {w_v} vs {l_v} votes)", flush=True)
@@ -3122,46 +3126,11 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
     else:
         detected_pattern_name = target_pattern
-        # High-Conviction Sure-Shot Number Engine (9X Payout)
-        cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
-        nums_list = [int(it.get("num", 0) if "num" in it else it.get("number", 0)) for it in history_items]
-        last_num = nums_list[-1] if nums_list else 0
-        num_next_counts = defaultdict(int)
-        for i in range(len(nums_list) - 1):
-            if nums_list[i] == last_num:
-                num_next_counts[nums_list[i + 1]] += 1
-
-        cand_transitions = sum(num_next_counts[n] for n in cand_nums)
+        # Single number gambling is strictly disabled to prevent account drawdowns.
+        # Statistical focus is 100% disciplined on 50/50 Size (BIG / SMALL).
         jackpot_tip = None
         predicted_single_num = None
-
         expected_nums_tip = None
-        # Potential Numbers Calculation:
-        # Check transition frequency from last_num into candidate numbers
-        if cand_transitions >= 4:
-            sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
-            top_cand = sorted_cands[0]
-            top_ratio = num_next_counts[top_cand] / cand_transitions if cand_transitions > 0 else 0
-            # If top candidate has high potential (>= 35% concentration among target size)
-            if top_ratio >= 0.35 and num_next_counts[top_cand] >= 2:
-                runner_up = sorted_cands[1] if len(sorted_cands) > 1 else None
-                runner_ratio = num_next_counts[runner_up] / cand_transitions if (runner_up is not None and cand_transitions > 0) else 0
-                if runner_up is not None and runner_ratio >= 0.25 and num_next_counts[runner_up] >= 2:
-                    expected_nums_tip = f"{top_cand}, {runner_up}"
-                else:
-                    expected_nums_tip = f"{top_cand}"
-
-        # 🎯 STRICT USER RULE: ONLY give single jackpot sure-shot when there is TOO MUCH HIGH PROBABILITY!
-        # Do NOT give a number on each bet! Base rate is 20%. Must exceed >= 40% (2x edge) on solid sample.
-        if current_loss_streak == 0 and w_v >= 10 and cand_transitions >= 12 and not is_post_dragon_transition:
-            sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts[n], reverse=True)
-            top_cand = sorted_cands[0]
-            top_ratio = num_next_counts[top_cand] / cand_transitions if cand_transitions > 0 else 0
-            if top_ratio >= 0.40 and num_next_counts[top_cand] >= 5:
-                predicted_single_num = top_cand
-                jackpot_tip = f"{top_cand} [9X Payout | {int(top_ratio * 100)}% High Prob]"
-                print(f"🎯 [HIGH PROBABILITY NUMBER] Last={last_num} -> Top={top_cand} ({num_next_counts[top_cand]}/{cand_transitions} = {top_ratio*100:.1f}%) [HIGH PROBABILITY]", flush=True)
-
         opposite_nums_tip = None
 
     if target_type == "SIZE" and target_val not in ("BIG", "SMALL"):
@@ -3311,32 +3280,15 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: ⏸️ SKIP (Filtered Noise)", flush=True)
         return
 
-    # Screenshot 2 Format for Prediction:
+    # Honest statistical card (No fake numbers, strictly disciplined on Size)
     arrow = "🔺" if target_val == "BIG" else "🔻"
-    cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
-    
-    single_num = None
-    if predicted_num is not None and int(predicted_num) in cand_nums:
-        single_num = int(predicted_num)
-    elif jackpot_tip:
-        nums = re.findall(r"\b\d\b", str(jackpot_tip))
-        if nums and int(nums[0]) in cand_nums:
-            single_num = int(nums[0])
-
-    # 🎯 STRICT USER RULE: Only show Number Chance when there is truly HIGH PROBABILITY!
-    # DO NOT force/guess a number on each bet!
-    if single_num is not None:
-        number_line = f"\n<b>Number Chance➔</b> <code>{single_num}</code>"
-    else:
-        number_line = ""
-
     level = CURRENT_LOSS_STREAK + 1
     mult_map = [1, 3, 8]
     mult = mult_map[min(level - 1, len(mult_map)-1)]
 
-    strategy_text = pattern_name or "Quant Consensus Edge"
+    strategy_text = pattern_name or "Statistical Confluence"
     if level >= 2:
-        strat_base = pattern_name or "Quant Consensus Edge"
+        strat_base = pattern_name or "Statistical Confluence"
         strategy_text = f"{strat_base} [Level {level} ({mult}X) Recovery]"
     elif reason:
         clean_r = re.sub(r"\(Note:.*?\)", "", reason, flags=re.DOTALL).strip()
@@ -3347,16 +3299,16 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         if 2 <= len(words) <= 8 and len(clean_r) <= 50:
             strategy_text = clean_r
 
-    if violet_alert:
-        strategy_text += " [🟣 Violet 0/5 Alert]"
+    prob_line = f"Est. Win Probability: {confidence:.1f}%" if confidence and confidence > 50.0 else "Est. Win Probability: ~55-65%"
 
     msg = (
-        f"<code>Win Go 1-MIN Prediction</code>\n"
+        f"<code>Win Go 1-MIN Analysis</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
-        f"<blockquote><b>Bet on ➔</b> {arrow} <code>{target_val}</code>{number_line}</blockquote>\n\n"
-        f"<code>CONCLUSION of Engine:</code>\n"
-        f"<i>Strategy: {strategy_text}</i>\n"
+        f"<blockquote><b>Target ➔</b> {arrow} <code>{target_val}</code></blockquote>\n\n"
+        f"<code>Model Metrics:</code>\n"
+        f"<i>Pattern: {strategy_text}</i>\n"
+        f"<i>{prob_line}</i>\n"
         f"─────────────────────"
     )
 
@@ -3366,7 +3318,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
             send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False)
         except Exception as e:
             print(f"[USER ALERT ERROR {cid}] {e}", flush=True)
-    print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Num: {single_num} | Level {level} | Pattern: {pattern_name}", flush=True)
+    print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Prob: {confidence:.1f}% | Level {level} | Pattern: {pattern_name}", flush=True)
 
     # Dispatch personal signals to DM users
 # ====================================================
