@@ -10,9 +10,13 @@ import html
 import datetime
 import cmath
 import zlib
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import base64
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+
+_SAVE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="TursoSaver")
+STATE_LOCK = threading.Lock()
 
 # ====================================================
 # ⚙️ CONFIGURATION & API KEYS
@@ -59,6 +63,7 @@ AI_PROVIDERS = [
 AI_COOLDOWN_UNTIL = 0
 GROQ_COOLDOWN_UNTIL = 0
 RESTART_PENDING = False
+RESTART_PENDING_UNTIL = 0
 
 HISTORY_API_URLS = [
     "https://draw.ar-lottery02.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
@@ -216,9 +221,10 @@ class HealthHandler(BaseHTTPRequestHandler):
                 return
 
         if self.path in ("/prepare_restart", "/prepare-restart"):
-            global RESTART_PENDING
+            global RESTART_PENDING, RESTART_PENDING_UNTIL
             RESTART_PENDING = True
-            latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else None
+            RESTART_PENDING_UNTIL = time.time() + 90.0
+            latest_p = max(MEMORY_PREDICTIONS.keys(), key=lambda x: int(x)) if MEMORY_PREDICTIONS else None
             settled_periods = {str(x.get("period")) for x in SETTLED_HISTORY}
             target_val = MEMORY_PREDICTIONS.get(latest_p, {}).get("target_val") if latest_p else None
             is_waiting = (latest_p is not None and str(latest_p) not in settled_periods and target_val not in (None, "SKIP", "WAITING"))
@@ -236,7 +242,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             return
 
         if self.path in ("/is_busy", "/busy"):
-            latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else None
+            latest_p = max(MEMORY_PREDICTIONS.keys(), key=lambda x: int(x)) if MEMORY_PREDICTIONS else None
             settled_periods = {str(x.get("period")) for x in SETTLED_HISTORY}
             target_val = MEMORY_PREDICTIONS.get(latest_p, {}).get("target_val") if latest_p else None
             is_waiting = (latest_p is not None and str(latest_p) not in settled_periods and target_val not in (None, "SKIP", "WAITING"))
@@ -330,7 +336,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     "period": latest_p,
                     "target_type": pred_info.get("target_type", "SIZE"),
                     "prediction": t_val,
-                    "confidence": float(pred_info.get("conf", 85.0 if t_val in ("BIG", "SMALL") else 50.0)),
+                    "confidence": float(pred_info.get("conf", 60.0 if t_val in ("BIG", "SMALL") else 50.0)),
                     "strategy": str(pred_info.get("consensus", "Quant Consensus")),
                     "grade": str(pred_info.get("grade", "LEVEL_1")),
                     "reason": str(pred_info.get("reason", "")),
@@ -382,8 +388,9 @@ def keep_alive_heartbeat(port=8080):
 
 def start_health_server(port=8080):
     try:
-        server = HTTPServer(("0.0.0.0", port), HealthHandler)
-        print(f"🌐 [HEALTH SERVER] Active on port {port}", flush=True)
+        server = ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
+        server.daemon_threads = True
+        print(f"🌐 [HEALTH SERVER] Active on port {port} (Multi-Threaded)", flush=True)
         threading.Thread(target=keep_alive_heartbeat, args=(port,), daemon=True).start()
         server.serve_forever()
     except Exception as e:
@@ -455,6 +462,8 @@ def load_cache():
         try:
             with t_conn as conn:
                 cur = conn.cursor()
+                cur.execute("CREATE TABLE IF NOT EXISTS wingo_state (key TEXT PRIMARY KEY, value TEXT)")
+                cur.execute("CREATE TABLE IF NOT EXISTS wingo_draws (period TEXT PRIMARY KEY, num INTEGER, color TEXT, has_violet INTEGER, size TEXT, created_at REAL)")
                 cur.execute("SELECT period, num, color, has_violet, size FROM wingo_draws WHERE period LIKE '%10001%' ORDER BY CAST(period AS INTEGER) DESC LIMIT 500")
                 rows = cur.fetchall()
                 if rows:
@@ -487,7 +496,12 @@ def load_cache():
                     saved_settled = st.get("settled_history", [])
                     if isinstance(saved_settled, list) and saved_settled:
                         SETTLED_HISTORY = saved_settled[-100:]
-                    print(f"☁️ [TURSO CLOUD STATE] Restored Level {CURRENT_LOSS_STREAK + 1} | Target: {CURRENT_CYCLE_TARGET} from Cloud!", flush=True)
+                    saved_preds = st.get("memory_predictions", {})
+                    if isinstance(saved_preds, dict):
+                        MEMORY_PREDICTIONS.update(saved_preds)
+                    LAST_SENT_SIGNAL_PERIOD = st.get("last_sent_signal_period", None)
+                    LAST_SENT_RESULT_PERIOD = st.get("last_sent_result_period", None)
+                    print(f"☁️ [TURSO CLOUD STATE] Restored Level {CURRENT_LOSS_STREAK + 1} | Target: {CURRENT_CYCLE_TARGET} | Pending: {len(MEMORY_PREDICTIONS)} from Cloud!", flush=True)
         except Exception as e:
             print(f"⚠️ [TURSO LOAD ERROR] {e}", flush=True)
 
@@ -536,62 +550,65 @@ def load_cache():
 
 def save_cache():
     global MEMORY_HISTORY
-    if len(MEMORY_HISTORY) > 0:
+    with STATE_LOCK:
+        if len(MEMORY_HISTORY) > 0:
+            try:
+                if len(MEMORY_HISTORY) > 500:
+                    MEMORY_HISTORY = MEMORY_HISTORY[-500:]
+                tmp_file = f"{CACHE_FILE}.tmp"
+                with open(tmp_file, "w") as f:
+                    json.dump(list(MEMORY_HISTORY), f)
+                os.replace(tmp_file, CACHE_FILE)
+            except Exception:
+                pass
+
         try:
-            if len(MEMORY_HISTORY) > 500:
-                MEMORY_HISTORY = MEMORY_HISTORY[-500:]
-            tmp_file = f"{CACHE_FILE}.tmp"
-            with open(tmp_file, "w") as f:
-                json.dump(MEMORY_HISTORY, f)
-            os.replace(tmp_file, CACHE_FILE)
+            tmp_st = f"{STATE_FILE}.tmp"
+            st = {
+                "current_loss_streak": CURRENT_LOSS_STREAK,
+                "current_cycle_target": CURRENT_CYCLE_TARGET,
+                "total_wins": TOTAL_WINS,
+                "total_losses": TOTAL_LOSSES,
+                "total_cycles": TOTAL_CYCLES,
+                "cycle_wins": CYCLE_WINS,
+                "cycle_losses": CYCLE_LOSSES,
+                "consecutive_skips": CONSECUTIVE_SKIPS,
+                "post_stop_loss_cooldown": POST_STOP_LOSS_COOLDOWN,
+                "memory_predictions": dict(MEMORY_PREDICTIONS),
+                "settled_history": list(SETTLED_HISTORY[-100:]),
+                "last_sent_signal_period": LAST_SENT_SIGNAL_PERIOD,
+                "last_sent_result_period": LAST_SENT_RESULT_PERIOD
+            }
+            with open(tmp_st, "w") as f:
+                json.dump(st, f)
+            os.replace(tmp_st, STATE_FILE)
+
+            # Background async state & draws sync to Turso Cloud
+            def _turso_save_state(st_dict, recent_draws):
+                t_conn = get_turso()
+                if t_conn:
+                    try:
+                        with t_conn as conn:
+                            cur = conn.cursor()
+                            cur.execute(
+                                "INSERT INTO wingo_state (key, value) VALUES ('bot_state', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                                (json.dumps(st_dict),)
+                            )
+                            for d in recent_draws:
+                                cur.execute(
+                                    "INSERT OR IGNORE INTO wingo_draws (period, num, color, has_violet, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                                    (str(d.get("period", "")), int(d.get("num", 0)), str(d.get("color", "")), 1 if d.get("has_violet") else 0, str(d.get("size", "")), time.time())
+                                )
+                    except Exception:
+                        pass
+            recent = list(MEMORY_HISTORY[-20:]) if len(MEMORY_HISTORY) > 0 else []
+            _SAVE_EXECUTOR.submit(_turso_save_state, st, recent)
         except Exception:
             pass
 
-    try:
-        tmp_st = f"{STATE_FILE}.tmp"
-        st = {
-            "current_loss_streak": CURRENT_LOSS_STREAK,
-            "current_cycle_target": CURRENT_CYCLE_TARGET,
-            "total_wins": TOTAL_WINS,
-            "total_losses": TOTAL_LOSSES,
-            "total_cycles": TOTAL_CYCLES,
-            "cycle_wins": CYCLE_WINS,
-            "cycle_losses": CYCLE_LOSSES,
-            "consecutive_skips": CONSECUTIVE_SKIPS,
-            "post_stop_loss_cooldown": POST_STOP_LOSS_COOLDOWN,
-            "memory_predictions": MEMORY_PREDICTIONS,
-            "settled_history": SETTLED_HISTORY[-100:],
-            "last_sent_signal_period": LAST_SENT_SIGNAL_PERIOD,
-            "last_sent_result_period": LAST_SENT_RESULT_PERIOD
-        }
-        with open(tmp_st, "w") as f:
-            json.dump(st, f)
-        os.replace(tmp_st, STATE_FILE)
-
-        # Background async state & draws sync to Turso Cloud
-        def _turso_save_state(st_dict, recent_draws):
-            t_conn = get_turso()
-            if t_conn:
-                try:
-                    with t_conn as conn:
-                        cur = conn.cursor()
-                        cur.execute(
-                            "INSERT INTO wingo_state (key, value) VALUES ('bot_state', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                            (json.dumps(st_dict),)
-                        )
-                        for d in recent_draws:
-                            cur.execute(
-                                "INSERT OR IGNORE INTO wingo_draws (period, num, color, has_violet, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                                (str(d.get("period", "")), int(d.get("num", 0)), str(d.get("color", "")), 1 if d.get("has_violet") else 0, str(d.get("size", "")), time.time())
-                            )
-                except Exception:
-                    pass
-        recent = MEMORY_HISTORY[-20:] if len(MEMORY_HISTORY) > 0 else []
-        threading.Thread(target=_turso_save_state, args=(st, recent), daemon=True).start()
-    except Exception:
-        pass
-
 def send_telegram_msg(chat_id, text, timeout=8, retries=2, pin=False, reply_markup=None):
+    if text and len(text) > 4000:
+        text = text[:3950] + "..."
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if reply_markup:
@@ -649,9 +666,9 @@ def send_dashboard_reply(chat_id):
     latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else "--"
     pred_info = MEMORY_PREDICTIONS.get(latest_p, {})
     t_val = pred_info.get("target_val", "ANALYZING")
-    conf = pred_info.get("conf", 88.5)
-    reason = pred_info.get("reason", "16-Agent Council Trend Consensus")
-    pattern_name = pred_info.get("pattern_name", "Dynamic Roadmap")
+    conf = pred_info.get("conf", 60.0 if t_val in ("BIG", "SMALL") else 50.0)
+    reason = html.escape(str(pred_info.get("reason", "Quantitative Trend Consensus")))
+    pattern_name = html.escape(str(pred_info.get("pattern_name", "Dynamic Roadmap")))
 
     text = (
         f"🎮 <b>WinGo 1M Elite Predictor &amp; Telemetry Engine</b>\n"
@@ -990,12 +1007,34 @@ def detect_market_patterns(history_items):
             "streak_color": "RED", "streak_len": 1, "is_alt": False,
             "alt_len": 1, "is_double": False, "pattern_desc": "Baseline",
             "recent_compact": "", "violet_due": False, "rounds_since_violet": 0,
-            "quants": {}, "pred_size": "BIG", "pred_size_conf": 75.0
+            "quants": {}, "pred_size": "BIG", "pred_size_conf": 50.0,
+            "last_s": "BIG", "opp_s": "SMALL", "s_streak": 1, "s_alt": 1,
+            "s_pred_val": "BIG", "s_quants": {}, "unified_p_big": 0.5,
+            "derived_road_tag": "CHAOTIC", "derived_road_desc": "Baseline",
+            "is_derived_chaotic": True, "is_patterned": False, "is_chaotic": True,
+            "probabilities": {}
         }
 
-    colors = [("RED" if "red" in str(it.get("color", "")).lower() or int(it.get("num", 1)) == 0 else "GREEN") for it in history_items]
-    nums = [int(it.get("num", 0)) for it in history_items]
-    sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
+    colors = []
+    nums = []
+    sizes = []
+    for it in history_items:
+        try:
+            n = int(it.get("num", 0))
+        except Exception:
+            n = 0
+        nums.append(n)
+        raw_c = str(it.get("color", "")).upper()
+        if "RED" in raw_c or n in (0, 2, 4, 6, 8):
+            colors.append("RED")
+        else:
+            colors.append("GREEN")
+        raw_s = str(it.get("size", "")).upper()
+        if raw_s in ("BIG", "SMALL"):
+            sizes.append(raw_s)
+        else:
+            sizes.append("BIG" if n >= 5 else "SMALL")
+
     last_c = colors[-1]
     opp_c = "GREEN" if last_c == "RED" else "RED"
     last_num = nums[-1]
@@ -1157,7 +1196,7 @@ def detect_market_patterns(history_items):
     violet_intervals = []
     last_v_idx = None
     for idx, it in enumerate(history_items):
-        if it.get("has_violet", False) or int(it.get("num", -1)) in (0, 5):
+        if it.get("has_violet", False) or nums[idx] in (0, 5):
             if last_v_idx is not None:
                 violet_intervals.append(idx - last_v_idx)
             last_v_idx = idx
@@ -1192,12 +1231,14 @@ def detect_market_patterns(history_items):
     h_rate = round((len(ended_t) / len(survived_t) * 100), 1) if survived_t else 50.0
 
     if streak_len >= 3:
-        # Dragon support: ride the streak!
-        q12_hazard = (last_c, min(88.0, 70.0 + streak_len * 2.5), f"Weibull streak survival favors {last_c} dragon continuation ({streak_len} rounds)")
+        if h_rate > 65.0:
+            q12_hazard = (opp_c, 62.0, f"Weibull Hazard ({h_rate}% break rate at len {streak_len}) favors reversal to {opp_c}")
+        else:
+            q12_hazard = (last_c, min(72.5, 60.0 + streak_len * 1.5), f"Weibull streak survival favors {last_c} dragon continuation ({streak_len} rounds)")
     elif alt_len >= 4:
-        q12_hazard = (opp_c, min(86.0, 68.0 + alt_len * 2.5), f"Alternation survival favors chop continuation ({alt_len} rounds)")
+        q12_hazard = (opp_c, min(70.0, 58.0 + alt_len * 1.5), f"Alternation survival favors chop continuation ({alt_len} rounds)")
     else:
-        q12_hazard = (opp_c, 55.0, f"Hazard regime favors {opp_c}")
+        q12_hazard = (opp_c, 50.0, f"Hazard regime favors {opp_c}")
 
     # 12. Quant 13: Discrete Fourier Transform (DFT) Spectral Wave Analysis
     import cmath
@@ -1220,7 +1261,6 @@ def detect_market_patterns(history_items):
         q13_fourier = (opp_c, 50.0, "Fourier baseline")
 
     # 13. Quant 14: Kolmogorov Algorithmic Complexity / Lempel-Ziv Regularity
-    import zlib
     n_k = min(len(colors), 60)
     if n_k >= 10:
         seq_str = "".join(["R" if c == "RED" else "G" for c in colors[-n_k:]])
@@ -1321,35 +1361,6 @@ def detect_market_patterns(history_items):
     size_margin_pct = round((size_edge / tot_s * 100), 1) if tot_s > 0 else 0.0
     pred_size_conf = min(96.0, max(76.0, round(65.0 + (size_ratio * 30.0), 1)))
 
-    # 16. High-Conviction Number Shots Engine (9X Payout Selection)
-    # Color + Size matrix mapping:
-    # RED + SMALL -> 0, 2, 4
-    # RED + BIG -> 6, 8
-    # GREEN + SMALL -> 1, 3
-    # GREEN + BIG -> 5, 7, 9
-    c_cand = last_c if streak_len >= 2 else (opp_c if alt_len >= 2 else last_c)
-    s_cand = pred_size
-
-    if c_cand == "RED" and s_cand == "SMALL":
-        cand_nums = [2, 4, 0] if not violet_due else [0, 2, 4]
-    elif c_cand == "RED" and s_cand == "BIG":
-        cand_nums = [6, 8]
-    elif c_cand == "GREEN" and s_cand == "SMALL":
-        cand_nums = [1, 3]
-    else: # GREEN + BIG
-        cand_nums = [7, 9, 5] if not violet_due else [5, 7, 9]
-
-    # Rank candidate numbers by historical transition from last_num
-    num_next_counts = defaultdict(int)
-    for i in range(len(nums) - 1):
-        if nums[i] == last_num:
-            num_next_counts[nums[i + 1]] += 1
-
-    sorted_cands = sorted(cand_nums, key=lambda n: num_next_counts.get(n, 0), reverse=True)
-    top_number_shots = sorted_cands[:2]
-    number_shots_str = ", ".join(str(n) for n in top_number_shots)
-    jackpot_tip = f"{number_shots_str} [9X Payout]"
-
     # Compile descriptive pattern tags
     desc = []
     if streak_len >= 2:
@@ -1366,10 +1377,11 @@ def detect_market_patterns(history_items):
         desc.append(f"🟣 Violet Overdue ({rounds_since_violet} rounds dormant)")
 
     recent_60_items = history_items[-60:] if len(history_items) >= 60 else history_items
+    offset_60 = len(history_items) - len(recent_60_items)
     compact_parts = []
-    for it in recent_60_items:
-        num = int(it.get("num", 0))
-        c_code = it.get("color", "")[:1]
+    for idx_c, it in enumerate(recent_60_items):
+        num = nums[offset_60 + idx_c]
+        c_code = colors[offset_60 + idx_c][:1]
         v_tag = "+V" if it.get("has_violet") or num in (0, 5) else ""
         compact_parts.append(f"{c_code}{v_tag}({num})")
     recent_compact = ", ".join(compact_parts)
@@ -1758,18 +1770,14 @@ def detect_market_patterns(history_items):
         ewma_slow = 0.05 * b + 0.95 * ewma_slow
     p_ewma = max(0.05, min(0.95, 0.5 + (ewma_fast - ewma_slow) * 1.5))
 
-    # 17. 10,000-Path Monte Carlo Empirical Simulation
-    import random
+    # 17. 2nd-Order Markov State Transition Empirical Posterior
     trans_2 = defaultdict(lambda: {"BIG": 0, "SMALL": 0})
     for i in range(len(sizes) - 2):
         trans_2[(sizes[i], sizes[i + 1])][sizes[i + 2]] += 1
     cur_mc_key = (sizes[-2], sizes[-1]) if len(sizes) >= 2 else None
     c_mc = trans_2[cur_mc_key] if cur_mc_key else {"BIG": 0, "SMALL": 0}
     tot_mc = c_mc["BIG"] + c_mc["SMALL"]
-    p_mc_base = (c_mc["BIG"] + 1.0) / (tot_mc + 2.0) if tot_mc >= 2 else 0.5
-    mc_trials = 10000
-    mc_wins = sum(1 for _ in range(mc_trials) if random.random() < p_mc_base)
-    p_monte_carlo = mc_wins / float(mc_trials)
+    p_monte_carlo = round((c_mc["BIG"] + 1.0) / (tot_mc + 2.0), 4) if tot_mc >= 2 else 0.5
 
     # 18. Kelly Criterion Advantage & Fractional Edge
     kelly_p = max(0.05, min(0.95, (p_markov_ensemble + p_dirichlet_big + p_ewma) / 3.0))
@@ -1881,18 +1889,18 @@ def detect_market_patterns(history_items):
         p_delta_chop = 0.50
         s_q_delta = (None, 50.0, f"Delta Velocity Baseline (Δ={avg_delta:.1f})")
 
-    # 25. Parity-Color Invariant Cluster Correlation
+    # 25. Color-Size Empirical Joint Distribution (RED favors 0,2,4 Small; GREEN favors 5,7,9 Big)
     recent_colors_10 = colors[-10:] if len(colors) >= 10 else colors
     red_ratio = recent_colors_10.count("RED") / float(len(recent_colors_10)) if recent_colors_10 else 0.5
     if red_ratio >= 0.70:
-        p_parity_color = 0.38
-        s_q_parity = ("SMALL", 74.0, f"Parity RED Dominance ({red_ratio*100:.0f}% Even/Red) -> Small Edge")
+        p_parity_color = 0.44  # 3/5 of RED digits are SMALL (0,2,4)
+        s_q_parity = ("SMALL", 60.0, f"Color-Size Joint Ratio ({red_ratio*100:.0f}% RED) statistically favors Small")
     elif red_ratio <= 0.30:
-        p_parity_color = 0.62
-        s_q_parity = ("BIG", 74.0, f"Parity GREEN Dominance ({(1-red_ratio)*100:.0f}% Odd/Green) -> Big Edge")
+        p_parity_color = 0.56  # 3/5 of GREEN digits are BIG (5,7,9)
+        s_q_parity = ("BIG", 60.0, f"Color-Size Joint Ratio ({(1-red_ratio)*100:.0f}% GREEN) statistically favors Big")
     else:
         p_parity_color = 0.50
-        s_q_parity = (None, 50.0, "Parity-Color Balanced")
+        s_q_parity = (None, 50.0, "Color-Size Balanced")
 
     # 26. Period Modulo Micro-Cycle Quant
     try:
@@ -2197,6 +2205,8 @@ def detect_market_patterns(history_items):
         "derived_road_desc": derived_road_desc,
         "is_derived_chaotic": is_derived_chaotic,
         "derived_road_tag": derived_road_tag,
+        "is_patterned": (derived_road_tag == "RED_PATTERNED"),
+        "is_chaotic": is_derived_chaotic,
         "quants": {
             "q4": q4_roadmap,
             "q5": q5_ngram,
@@ -2268,8 +2278,19 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     if consecutive_skips >= 1:
         POST_STOP_LOSS_COOLDOWN = 0
 
-    sizes = [it.get("size", "BIG" if int(it.get("num", 0)) >= 5 else "SMALL") for it in history_items]
-    nums = [int(it.get("num", 0)) for it in history_items]
+    sizes = []
+    nums = []
+    for it in history_items:
+        try:
+            n = int(it.get("num", 0))
+        except Exception:
+            n = 0
+        nums.append(n)
+        raw_s = str(it.get("size", "")).upper()
+        if raw_s in ("BIG", "SMALL"):
+            sizes.append(raw_s)
+        else:
+            sizes.append("BIG" if n >= 5 else "SMALL")
     last_num = nums[-1] if nums else 0
 
     p_info = detect_market_patterns(history_items)
@@ -2395,7 +2416,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     s_q_dorm_val = s_q_dorm_res[0] if s_q_dorm_res[1] >= 68.0 else None
 
     s_q_derived_res = s_quants.get("s_q_derived", (None, 50.0, ""))
-    s_q_derived_val = s_q_derived_res[0] if (p_info.get("is_patterned", False) or p_info.get("is_chaotic", False)) else None
+    s_q_derived_val = s_q_derived_res[0] if (p_info.get("is_patterned", False) or p_info.get("is_chaotic", False) or p_info.get("derived_road_tag") == "RED_PATTERNED") else None
 
     s_q_delta_res = s_quants.get("s_q_delta", (None, 50.0, ""))
     s_q_delta_val = s_q_delta_res[0] if (s_alt >= 2 or s_streak >= 3) else None
@@ -2567,10 +2588,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     if not fast_deterministic and time.time() >= AI_COOLDOWN_UNTIL:
         try:
             hist_15 = []
-            for it in history_items[-15:]:
-                n = int(it.get("num", 0))
-                sz = "BIG" if n >= 5 else "SMALL"
-                hist_15.append(f"{sz}({n})")
+            for n_val, sz_val in zip(nums[-15:], sizes[-15:]):
+                hist_15.append(f"{sz_val}({n_val})")
             seq_text = ", ".join(hist_15)
 
             db_summary_parts = []
@@ -2666,7 +2685,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"[MASTER AI ERROR] {e}", flush=True)
 
     ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 55.0) else None
-    all_specialists = [{"name": f"Agent AI ({'Active Neural' if ai_ok else 'Math Council'})", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}" if ai_ok else "34-Quant Consensus"}] + quant_specialists
 
     # 🔗 TRUE CONVERGENCE BRIDGE: Incorporate AI into Council Voting Tally
     if ai_vote_val in ("BIG", "SMALL"):
@@ -2694,7 +2712,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         calc_conf = round(min(72.5, max(50.0, smoothed_prob)), 1)
         has_solid_quant_consensus = (active_votes >= 10 and w_v >= 7 and (w_v / max(1, active_votes) >= 0.60) and size_margin_pct >= 20.0)
 
-    streak_surv = p_info.get("streak_survival_rate", 0.50)
 
     # ====================================================
     # 🎴 SUPREME BACCARAT & WINGO ROADMAP PATTERN ENGINE
@@ -2772,6 +2789,12 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             w_size = roadmap_target_val
             target_pattern = roadmap_pattern_name
             calc_conf = min(72.5, round(calc_conf + 3.0, 1))
+            if w_size == "BIG" and small_weight > big_weight:
+                w_v, l_v = big_votes, small_votes
+                w_weight = big_weight
+            elif w_size == "SMALL" and big_weight > small_weight:
+                w_v, l_v = small_votes, big_votes
+                w_weight = small_weight
             print(f"🎴 [ROADMAP SUPREMACY] Pattern Active: {roadmap_pattern_name} -> Lock {w_size}!", flush=True)
 
     # ====================================================
@@ -2812,7 +2835,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
     tot_synced = len(history_items)
     cur_stage_str = f"Level {current_loss_streak + 1} ({3**current_loss_streak}X)"
-    recent_20_detailed = ", ".join([f"{(it.get('size') or ('BIG' if int(it.get('num', it.get('number', 0))) >= 5 else 'SMALL'))[0]}({it.get('num', it.get('number', 0))})" for it in history_items[-20:]])
+    recent_20_detailed = ", ".join([f"{sz[0]}({n})" for sz, n in zip(sizes[-20:], nums[-20:])])
 
     # ====================================================
     # 🎯 5. RECOVERY LOCK & VIP LEVEL 1 COUNCILS
@@ -3137,11 +3160,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
     else:
         detected_pattern_name = target_pattern
-        # Single number gambling is strictly disabled to prevent account drawdowns.
-        # Statistical focus is 100% disciplined on 50/50 Size (BIG / SMALL).
-        jackpot_tip = None
-        predicted_single_num = None
-        expected_nums_tip = None
+        # Empirical Number Shots based on Digit Markov Transition Matrix:
+        cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
+        trans_counts = {}
+        for i in range(len(nums) - 1):
+            if nums[i] == last_num and nums[i + 1] in cand_nums:
+                trans_counts[nums[i + 1]] = trans_counts.get(nums[i + 1], 0) + 1
+        sorted_cands = sorted(cand_nums, key=lambda n: trans_counts.get(n, 0), reverse=True)
+        top_shots = sorted_cands[:2]
+        jackpot_tip = f"{top_shots[0]}, {top_shots[1]}"
+        predicted_single_num = top_shots[0]
+        expected_nums_tip = f"{top_shots[0]}, {top_shots[1]}"
         opposite_nums_tip = None
 
     if target_type == "SIZE" and target_val not in ("BIG", "SMALL"):
@@ -3187,7 +3216,10 @@ def seed_settled_history_if_needed():
         hist_slice = MEMORY_HISTORY[:i]
         curr_round = MEMORY_HISTORY[i]
         curr_p = str(curr_round.get("period", ""))
-        actual_num = int(curr_round.get("num", 0))
+        try:
+            actual_num = int(curr_round.get("num", 0))
+        except Exception:
+            actual_num = 0
         actual_sz = "BIG" if actual_num >= 5 else "SMALL"
         actual_c = curr_round.get("color", "RED")
 
@@ -3207,7 +3239,7 @@ def seed_settled_history_if_needed():
                 "actual_num": actual_num,
                 "actual_size": actual_sz,
                 "actual_color": actual_c,
-                "is_win": False,
+                "is_win": None,
                 "is_jackpot": False,
                 "status": "SKIP ⏸️"
             })
@@ -3273,7 +3305,6 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     if str(target_period) == str(LAST_SENT_SIGNAL_PERIOD):
         print(f"🚫 [DUPLICATE SIGNAL SUPPRESSED] Period: ...{short_period} already sent to channel. Skipping duplicate.", flush=True)
         return
-    LAST_SENT_SIGNAL_PERIOD = str(target_period)
 
     # User requirement: Screenshot 4 for SKIP
     if target_type == "SKIP" or target_val in ("SKIP", "None", None, "") or target_val not in ("BIG", "SMALL"):
@@ -3283,11 +3314,15 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
             f"🎯 <b>Prediction :</b> ⏸️ <code>SKIP</code>"
             f"</blockquote>"
         )
+        sent_any = False
         for cid in USER_ALERT_CHAT_IDS:
             try:
-                send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False)
+                if send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False):
+                    sent_any = True
             except Exception as e:
                 print(f"[USER ALERT ERROR {cid}] {e}", flush=True)
+        if sent_any:
+            LAST_SENT_SIGNAL_PERIOD = str(target_period)
         print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: ⏸️ SKIP (Filtered Noise)", flush=True)
         return
 
@@ -3297,10 +3332,10 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     mult_map = [1, 3, 8]
     mult = mult_map[min(level - 1, len(mult_map)-1)]
 
-    strategy_text = pattern_name or "Statistical Confluence"
+    strategy_text = html.escape(pattern_name or "Statistical Confluence")
     if level >= 2:
         strat_base = pattern_name or "Statistical Confluence"
-        strategy_text = f"{strat_base} [Level {level} ({mult}X) Recovery]"
+        strategy_text = f"{html.escape(strat_base)} [Level {level} ({mult}X) Recovery]"
     elif reason:
         clean_r = re.sub(r"\(Note:.*?\)", "", reason, flags=re.DOTALL).strip()
         clean_r = re.sub(r"[\*\_\`]", "", clean_r).strip()
@@ -3308,7 +3343,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         if "\n" in clean_r: clean_r = clean_r.split("\n")[0].strip()
         words = clean_r.split()
         if 2 <= len(words) <= 8 and len(clean_r) <= 50:
-            strategy_text = clean_r
+            strategy_text = html.escape(clean_r)
 
     prob_line = f"Est. Win Probability: {confidence:.1f}%" if confidence and confidence > 50.0 else "Est. Win Probability: ~55-65%"
 
@@ -3326,11 +3361,14 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     else:
         stake_badge = "🛡️ <b>BET SIZING:</b> <code>PLACE NORMAL BET</code>"
 
+    number_shot_line = f"🎰 <b>Number Shots (9X Payout):</b> <code>{jackpot_tip}</code>\n\n" if jackpot_tip and target_val in ("BIG", "SMALL") else ""
+
     msg = (
         f"<code>Win Go 1-MIN Analysis</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
         f"<blockquote><b>Target ➔</b> {arrow} <code>{target_val}</code></blockquote>\n\n"
+        f"{number_shot_line}"
         f"{stake_badge}\n\n"
         f"<code>Model Metrics:</code>\n"
         f"<i>Pattern: {strategy_text}</i>\n"
@@ -3338,12 +3376,16 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
         f"─────────────────────"
     )
 
+    sent_any = False
     for cid in USER_ALERT_CHAT_IDS:
         try:
             # Send without pin so channel is not spammed with pinned message notifications
-            send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False)
+            if send_telegram_msg(cid, msg, timeout=8, retries=1, pin=False):
+                sent_any = True
         except Exception as e:
             print(f"[USER ALERT ERROR {cid}] {e}", flush=True)
+    if sent_any:
+        LAST_SENT_SIGNAL_PERIOD = str(target_period)
     print(f"👉 [SIGNAL SENT] Period: ...{short_period} | Target: {target_type}={target_val} | Prob: {confidence:.1f}% | Level {level} | Pattern: {pattern_name}", flush=True)
 
     # Dispatch personal signals to DM users
@@ -3355,7 +3397,6 @@ def send_user_result(period, actual_number, actual_color, pred):
     if str(period) == str(LAST_SENT_RESULT_PERIOD):
         print(f"🚫 [DUPLICATE RESULT SUPPRESSED] Period: ...{str(period)[-4:]} already evaluated and broadcasted.", flush=True)
         return
-    LAST_SENT_RESULT_PERIOD = str(period)
     actual_size = "BIG" if actual_number >= 5 else "SMALL"
     p_str = str(period)
 
@@ -3368,11 +3409,12 @@ def send_user_result(period, actual_number, actual_color, pred):
             "actual_num": int(actual_number),
             "actual_size": actual_size,
             "actual_color": str(actual_color),
-            "is_win": False,
+            "is_win": None,
             "status": "SKIP ⏸️"
         })
         if len(SETTLED_HISTORY) > 100:
             SETTLED_HISTORY = SETTLED_HISTORY[-100:]
+        LAST_SENT_RESULT_PERIOD = str(period)
         return
 
     short_period = period[-4:] if len(period) >= 4 else period
@@ -3414,6 +3456,7 @@ def send_user_result(period, actual_number, actual_color, pred):
             strat_name = clean_r
     if not strat_name:
         strat_name = "Quant Consensus Edge"
+    strat_name = html.escape(strat_name)
 
     if is_win:
         win_level = CURRENT_LOSS_STREAK + 1
@@ -3463,7 +3506,7 @@ def send_user_result(period, actual_number, actual_color, pred):
         CURRENT_LOSS_STREAK += 1  # DO NOT RESET! KEEP CLIMBING UNTIL WIN!
 
         if CURRENT_LOSS_STREAK >= MAX_MARTINGALE_LEVEL:
-            # Reached max safety limit (5-Level Hard Stop-Loss)
+            # Reached max safety limit (3-Level Fortress Hard Stop-Loss)
             outcome_details = f"Level {MAX_MARTINGALE_LEVEL} Safety Hard Cap reached. Resetting to Level 1 Base."
             CYCLE_LOSSES += 1
             TOTAL_CYCLES += 1
@@ -3504,12 +3547,16 @@ def send_user_result(period, actual_number, actual_color, pred):
         f"─────────────────────"
     )
 
-    save_cache()
+    sent_any = False
     for cid in USER_ALERT_CHAT_IDS:
         try:
-            send_telegram_msg(cid, msg, timeout=8, retries=1)
+            if send_telegram_msg(cid, msg, timeout=8, retries=1):
+                sent_any = True
         except Exception as e:
             print(f"[USER RESULT ERROR {cid}] {e}", flush=True)
+    if sent_any:
+        LAST_SENT_RESULT_PERIOD = str(period)
+    save_cache()
     print(f"[RESULT] Period: ...{short_period} | Result sent (Active Level: {CURRENT_LOSS_STREAK + 1})", flush=True)
 
     # Dispatch personal results to DM users
@@ -3519,25 +3566,10 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS
     print("=" * 65)
-    print("🚀 WinGo 1M 16-Agent AI & Pure Math Hybrid Council ACTIVE! (v2.5.0-Production)")
-    print("🤖 Agent 1: Qwen-27B (Dragon Momentum & Streak Continuation)")
-    print("🤖 Agent 2: GPT-20B (1-1 Zig-Zag Chop & Alternation Specialist)")
-    print("🤖 Agent 3: Qwen-27B (2-2 Double-Step & Symmetry Specialist)")
-    print("🤖 Agent 4: GPT-20B (Contrarian Trap & Retail Sentiment Auditor)")
-    print("🤖 Agent 5: Markov N-Gram Quant Engine (Database Transition Matrix)")
-    print("🤖 Agent 6: Number-to-Color Bayesian Quant Engine (Historical Matrix)")
-    print("🤖 Agent 7: Big/Small & Color Multi-Variable Correlator")
-    print("🤖 Agent 8: Rolling Mean-Reversion & Imbalance Quant (Macro/Micro DB)")
-    print("🤖 Agent 9: Micro-Cycle Periodicity & Rhythm Quant (Autocorrelation)")
-    print("🤖 Agent 10: Market Chaos & Shannon Entropy Risk Gatekeeper")
-    print("🤖 Agent 11: Violet 0 & 5 Outlier & Hedge Specialist")
-    print("🤖 Agent 12: Weibull Hazard Function & Streak Survival Quant")
-    print("🤖 Agent 13: Discrete Fourier Transform (DFT) Harmonic Wave Quant")
-    print("🤖 Agent 14: Kolmogorov Algorithmic Complexity / Lempel-Ziv Quant")
-    print("🤖 Agent 15: Exponentially-Decayed Beta-Binomial Bayesian Quant")
-    print("🤖 Agent 16: GPT-120B (Supreme Arbiter & Risk Controller)")
-    print("🎯 Martingale Plan: 3-Level Ultra-Safe Capital Shield (1X, 3X, 8X - Anti-Ruin Protection)")
-    print("🚫 Skip Policy: Zero Unnecessary Skips (Continuous VIP Stream)")
+    print("🚀 WinGo 1M Quantitative Statistical Ensemble & AI Supervisor ACTIVE (v2.5.0)")
+    print("📊 Real Mathematical Engine: Markov N-Gram, Bayesian Laplace, EWMA, Baccarat Roads")
+    print("🧠 Master Neural AI: Multi-Provider Supervisor (Copilot GPT-4o / Gemini / Groq)")
+    print("🛡️ Risk Engine: 3-Bullet Capital Fortress (1X, 3X, 8X) | Pure Laplace Edge")
     print(f"📱 User Alerts (Direct): {USER_ALERT_CHAT_ID}")
     print(f"☁️ Cloud Storage Channel: {STORAGE_CHANNEL_ID}")
     print("=" * 65, flush=True)
@@ -3667,9 +3699,13 @@ def run_live_bot():
 
                     # D. Read in-memory history and trigger 16-Agent AI & Quant Council
                     if RESTART_PENDING:
-                        print(f"🛑 [RESTART PAUSE] Period {current_period} settled. Pausing new predictions for scheduled container reboot.", flush=True)
-                        time.sleep(2.0)
-                        continue
+                        if time.time() > RESTART_PENDING_UNTIL:
+                            RESTART_PENDING = False
+                            print("⚠️ [RESTART TIMEOUT] Reboot timed out after 90s. Resuming predictions.", flush=True)
+                        else:
+                            print(f"🛑 [RESTART PAUSE] Period {current_period} settled. Pausing new predictions for scheduled container reboot.", flush=True)
+                            time.sleep(2.0)
+                            continue
 
                     next_target_period = get_next_period(current_period)
 
