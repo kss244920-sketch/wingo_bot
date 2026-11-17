@@ -2582,16 +2582,16 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
             ai_prompt = (
                 f"You are the Lead Neural Risk Arbiter for WinGo 1M (BIG [5-9] vs SMALL [0-4]).\n"
-                f"Your task is to independently evaluate sequence flow, pattern structure, and market volatility.\n\n"
+                f"Your task is to independently evaluate sequence flow, pattern structure, and directional momentum.\n\n"
                 f"Shoe Sequence (last 15 draws, oldest->newest): [{seq_text}].\n"
                 f"Current State: Last={last_s}({last_num}) | Streak={last_s} x{s_streak} | Alternation Chop={s_alt}x | Volatility: Δ={p_info.get('avg_delta', 4.5):.1f} ({'High Volatility Chaos' if is_violent_chaos else 'Stable'})\n"
                 f"Statistical Context: P(BIG)={unified_p_big*100:.1f}%, P(SMALL)={unified_p_small*100:.1f}% (Edge: {unified_edge:.1f}%) | DB Match: {db_summary_str}\n\n"
                 f"STRICT TRADING RULES:\n"
-                f"1. DIRECTIONAL PREDICTION: Predict 'BIG' or 'SMALL' ONLY if there is a genuine, high-probability pattern (Dragon Streak >= 3, Confirmed 1-1 Alternation >= 3, or 2-2 Double-Step Rotation).\n"
-                f"2. ABSOLUTE VETO ON AMBIGUITY: If the sequence is in an erratic 50/50 chop, sudden volatility spike, or post-dragon transition, return 'SKIP'. Preserving capital is your top directive.\n"
-                f"3. NO ECHO: Do not guess. If edge is weak (< 65%), return 'SKIP'.\n"
+                f"1. DIRECTIONAL OPPORTUNITY: Predict 'BIG' or 'SMALL' whenever there is a tradeable pattern (Emerging Streak >= 2, Alternation Swing >= 2, 2-2 Double-Step, or Mathematical/Markov Edge >= 56%).\n"
+                f"2. CAPITAL PRESERVATION: Return 'SKIP' only if the market is in violent unpredictable chaos (high delta spikes) or a pure dead 50/50 balance with 0% edge.\n"
+                f"3. CONFIDENCE RANGE: Give your true estimated probability (55% to 80%). High confidence setups are 65%+.\n"
                 f"4. OUTPUT FORMAT: Return strictly valid JSON only:\n"
-                '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
+                '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 55-80, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
             all_rate_limited = True
@@ -2665,7 +2665,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         except Exception as e:
             print(f"[MASTER AI ERROR] {e}", flush=True)
 
-    ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 75.0) else None
+    ai_vote_val = ai_tgt if (ai_tgt in ("BIG", "SMALL") and ai_conf >= 55.0) else None
     all_specialists = [{"name": f"Agent AI ({'Active Neural' if ai_ok else 'Math Council'})", "val": ai_vote_val, "conf": ai_conf, "arg": f"{ai_pat}: {ai_reason}" if ai_ok else "34-Quant Consensus"}] + quant_specialists
 
     # 🔗 TRUE CONVERGENCE BRIDGE: Incorporate AI into Council Voting Tally
@@ -2746,9 +2746,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     roadmap_pattern_name = None
     roadmap_target_val = None
 
-    if s_streak >= 3 and last_num not in (0, 5) and w_size == last_s and size_margin_pct >= 10.0:
+    if s_streak >= 2 and last_num not in (0, 5) and w_size == last_s and size_margin_pct >= 8.0:
         roadmap_target_val = last_s
-        roadmap_pattern_name = f"Dragon Trend Momentum ({last_s} x{s_streak})"
+        roadmap_pattern_name = f"Trend Momentum ({last_s} x{s_streak})"
     elif is_2_2_rotation:
         roadmap_target_val = opp_s
         roadmap_pattern_name = f"2-2 Double-Step Rotation ({opp_s})"
@@ -3034,17 +3034,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = f"Violent Delta Chaos: Erratic jump swings (Δ={p_info.get('avg_delta', 4.5):.1f})."
             print(f"🛡️ [DELTA CHAOS] High volatility erratic jump swings filtered. SAFE SKIP.", flush=True)
 
-        # 🛑 ABSOLUTE AI HARD VETO: When Master AI flags noise, chop, or advises SKIP
-        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 3:
-            arbiter_wants_skip = True
-            is_qualified_bet = False
-            target_type = "SKIP"
-            target_val = "SKIP"
-            target_conf = 50.0
-            signal_grade = "SKIP"
-            final_summary = f"Master AI Noise Shield: {ai_reason or 'Edge below threshold (Ambiguous)'}"
-            print(f"🛡️ [AI HARD VETO] Master AI advises SKIP ({ai_reason}). Capital 100% preserved.", flush=True)
-
         # ⚔️ ANTI-CONFLICT SHIELD: When AI and Quant disagree, DO NOT BET! (Ambiguity = Safe Skip)
         elif ai_ok and ai_tgt in ("BIG", "SMALL") and w_size in ("BIG", "SMALL") and ai_tgt != w_size and size_margin_pct >= 10.0 and consecutive_skips < 2:
             arbiter_wants_skip = True
@@ -3056,7 +3045,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = f"Confluence Conflict: Master AI ({ai_tgt} {ai_conf:.0f}%) opposes Quants ({w_size} {size_margin_pct:.0f}%). Safe Skip."
             print(f"🛡️ [CONFLUENCE CONFLICT] AI ({ai_tgt}) vs Quant ({w_size}). Capital preserved via Safe Skip.", flush=True)
 
-        # 🎴 TIER 1: Confirmed Structural Roadmap (Dragon 3+, Confirmed Chop 4, Confirmed 2-2)
+        # 🎴 TIER 1: Confirmed Structural Roadmap (Dragon Trend, Confirmed Chop, Confirmed 2-2)
         elif roadmap_target_val in ("BIG", "SMALL") and (not ai_ok or ai_tgt == roadmap_target_val or (ai_tgt != "SKIP" and ai_conf < 75.0)):
             target_val = roadmap_target_val
             target_pattern = roadmap_pattern_name
@@ -3076,11 +3065,22 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             arbiter_wants_skip = False
             print(f"🧠 [AI-QUANT CONCURRENCE] Council aligns on {target_val} ({target_conf:.0f}%)", flush=True)
 
-        # 🎯 TIER 3: AI High-Conviction Lead (AI conf >= 82% and Quant does not oppose)
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 82.0 and (not has_solid_quant_consensus or w_size == ai_tgt):
+        # 🛑 ABSOLUTE AI HARD VETO: When Master AI flags noise, chop, or advises SKIP on weak setups
+        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 2 and size_margin_pct < 18.0:
+            arbiter_wants_skip = True
+            is_qualified_bet = False
+            target_type = "SKIP"
+            target_val = "SKIP"
+            target_conf = 50.0
+            signal_grade = "SKIP"
+            final_summary = f"Master AI Noise Shield: {ai_reason or 'Edge below threshold (Ambiguous)'}"
+            print(f"🛡️ [AI HARD VETO] Master AI advises SKIP ({ai_reason}). Capital 100% preserved.", flush=True)
+
+        # 🎯 TIER 3: AI Directional Lead (AI conf >= 58% and Quant does not oppose)
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 58.0 and (not has_solid_quant_consensus or w_size == ai_tgt):
             target_val = ai_tgt
             target_pattern = f"Master AI Directional Lead ({target_val})"
-            final_summary = f"{ai_pat or ai_reason} (AI High Conviction {ai_conf:.0f}%)"
+            final_summary = f"{ai_pat or ai_reason} (AI Directional Lead {ai_conf:.0f}%)"
             target_conf = min(72.5, round(50.0 + (ai_conf - 50.0) * 0.45, 1))
             is_qualified_bet = True
             arbiter_wants_skip = False
@@ -3312,11 +3312,26 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
 
     prob_line = f"Est. Win Probability: {confidence:.1f}%" if confidence and confidence > 50.0 else "Est. Win Probability: ~55-65%"
 
+    is_high_prob = bool(
+        (confidence and confidence >= 63.0) or
+        "High" in str(consensus_tag) or
+        "Dragon" in str(strategy_text) or
+        "Trend" in str(strategy_text) or
+        "Concurrence" in str(strategy_text) or
+        "Unanimity" in str(consensus_tag)
+    )
+
+    if is_high_prob:
+        stake_badge = "🔥 <b>BET SIZING:</b> <code>PLACE BET HIGH ⚡</code>"
+    else:
+        stake_badge = "🛡️ <b>BET SIZING:</b> <code>PLACE NORMAL BET</code>"
+
     msg = (
         f"<code>Win Go 1-MIN Analysis</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📝 <b>Period:</b> <code>{target_period}</code>\n\n"
         f"<blockquote><b>Target ➔</b> {arrow} <code>{target_val}</code></blockquote>\n\n"
+        f"{stake_badge}\n\n"
         f"<code>Model Metrics:</code>\n"
         f"<i>Pattern: {strategy_text}</i>\n"
         f"<i>{prob_line}</i>\n"
