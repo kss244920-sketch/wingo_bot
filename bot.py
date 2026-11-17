@@ -360,11 +360,14 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.5.0",
+                "version": "2.5.1",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
-                "consecutive_skips": CONSECUTIVE_SKIPS
+                "consecutive_skips": CONSECUTIVE_SKIPS,
+                "pending_predictions": list(MEMORY_PREDICTIONS.keys()),
+                "last_sent_signal": LAST_SENT_SIGNAL_PERIOD,
+                "last_sent_result": LAST_SENT_RESULT_PERIOD
             }
             self.wfile.write(json.dumps(response_data).encode("utf-8"))
         except Exception:
