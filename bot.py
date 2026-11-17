@@ -360,7 +360,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.5.2",
+                "version": "2.5.3",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
@@ -3611,7 +3611,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 # 🔄 MAIN REAL-TIME LOOP
 # ====================================================
 def run_live_bot():
-    global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS, LOOP_CYCLES, LAST_PROCESSED_PERIOD, LAST_LOOP_ERROR
+    global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS, LOOP_CYCLES, LAST_PROCESSED_PERIOD, LAST_LOOP_ERROR, RESTART_PENDING, RESTART_PENDING_UNTIL
     print("=" * 65)
     print("🚀 WinGo 1M Quantitative Statistical Ensemble & AI Supervisor ACTIVE (v2.5.0)")
     print("📊 Real Mathematical Engine: Markov N-Gram, Bayesian Laplace, EWMA, Baccarat Roads")
