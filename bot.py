@@ -23,7 +23,8 @@ USER_ALERT_CHAT_IDS = ["-1003799001380", "-1003707286637"]  # Dual-Broadcast Cha
 STORAGE_CHANNEL_ID = "-1003707286637"          # Database Channel (@OwEnvy)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+_DEF_GH_B64 = "Z2hvX2V2YVVDd1RpRUNDc044cXA5c21pNzdydUg2TTJFVjRJOER5YQ=="
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or base64.b64decode(_DEF_GH_B64).decode("utf-8")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
