@@ -1201,7 +1201,12 @@ def detect_market_patterns(history_items):
                 violet_intervals.append(idx - last_v_idx)
             last_v_idx = idx
 
-    avg_v_interval = round(sum(violet_intervals) / len(violet_intervals), 1) if violet_intervals else 10.0
+    if violet_intervals:
+        avg_v_interval = round(sum(violet_intervals) / len(violet_intervals), 1)
+    elif last_v_idx is not None and last_v_idx > 0:
+        avg_v_interval = float(last_v_idx)
+    else:
+        avg_v_interval = 10.0
     rounds_since_violet = (len(history_items) - 1 - last_v_idx) if last_v_idx is not None else 0
 
     violet_due = (rounds_since_violet >= avg_v_interval * 1.3 and last_num in (4, 9, 1, 6)) or (rounds_since_violet >= avg_v_interval * 1.6)
@@ -1799,8 +1804,8 @@ def detect_market_patterns(history_items):
         recent_nums = nums[-15:]
         gains = [max(0.0, float(recent_nums[i] - recent_nums[i - 1])) for i in range(1, len(recent_nums))]
         losses = [max(0.0, float(recent_nums[i - 1] - recent_nums[i])) for i in range(1, len(recent_nums))]
-        avg_gain = sum(gains) / 14.0
-        avg_loss = sum(losses) / 14.0
+        avg_gain = sum(gains) / max(1.0, float(len(gains)))
+        avg_loss = sum(losses) / max(1.0, float(len(losses)))
         if avg_loss < 1e-4:
             rsi_14 = 100.0 if avg_gain > 0 else 50.0
         else:
@@ -1866,7 +1871,7 @@ def detect_market_patterns(history_items):
 
     # 23. Baccarat Derived Roads Regularity
     p_derived_roads, derived_road_desc, is_derived_chaotic, derived_road_tag = compute_baccarat_derived_roads(sizes)
-    if derived_road_tag == "BALANCED" or p_derived_roads == 0.50:
+    if derived_road_tag == "BALANCED" or abs(p_derived_roads - 0.50) < 1e-4:
         s_q_derived = (None, 50.0, derived_road_desc)
     else:
         d_tgt = "BIG" if p_derived_roads > 0.50 else "SMALL"
@@ -1928,7 +1933,7 @@ def detect_market_patterns(history_items):
         s_q_mod = (None, 50.0, "Period Mod Neutral")
 
     # 27. Mirror Number Coupling (Sum = 9 Symmetry)
-    mirror_num = 9 - last_num
+    mirror_num = max(0, min(9, 9 - last_num))
     mirror_group = "BIG" if mirror_num >= 5 else "SMALL"
     mirror_matches = 0
     tot_last_appearances = 0
@@ -2117,7 +2122,7 @@ def detect_market_patterns(history_items):
         "p_prng_residue": round(p_prng_residue, 4)
     }
 
-    # Bayesian Log-Odds Unified Evidence Aggregation (42 Dimensions)
+    # Bayesian Log-Odds Unified Evidence Aggregation (38 Dimensions)
     def _lo(p):
         p_c = max(0.05, min(0.95, p))
         return math.log(p_c / (1.0 - p_c))
@@ -2165,7 +2170,10 @@ def detect_market_patterns(history_items):
 
     sum_lo = sum(prob_weights[k] * _lo(probabilities[k]) for k in prob_weights)
     sum_w = sum(prob_weights.values())
-    unified_p_big = 1.0 / (1.0 + math.exp(-sum_lo / sum_w))
+    eff_denom = (sum_w ** 0.85) if sum_w > 0 else 1.0
+    scaled_lo = max(-20.0, min(20.0, sum_lo / eff_denom))
+    raw_p_big = 1.0 / (1.0 + math.exp(-scaled_lo))
+    unified_p_big = min(0.725, max(0.275, raw_p_big))
     unified_p_small = 1.0 - unified_p_big
     unified_edge = round(abs(unified_p_big - unified_p_small) * 100, 1)
 
@@ -2688,13 +2696,13 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
     # 🔗 TRUE CONVERGENCE BRIDGE: Incorporate AI into Council Voting Tally
     if ai_vote_val in ("BIG", "SMALL"):
-        ai_weight = 12.0
+        ai_weight = 5.0  # Calibrated supervisor weight (aligned with top quant weights)
         if ai_vote_val == "BIG":
             big_weight += ai_weight
-            big_votes += 2
+            big_votes += 1
         elif ai_vote_val == "SMALL":
             small_weight += ai_weight
-            small_votes += 2
+            small_votes += 1
         total_active_weight = big_weight + small_weight
         active_votes = big_votes + small_votes
         if big_weight > small_weight:
@@ -2858,11 +2866,6 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         # Rule 1: Never gamble recovery capital (3X / 8X) on 50/50 noise!
         # If market is chaotic or edge is below 14%, and AI has no high conviction, TAKE A SAFE SKIP.
         # Safe Skip PRESERVES the current recovery level so no money is lost on ambiguity.
-
-        has_ai_quant_concurrence = bool(
-            (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
-            or (not ai_ok and has_solid_quant_consensus and size_margin_pct >= 20.0)
-        )
 
         # 🐉 POST-DRAGON BREAK TRANSITION SHIELD (ABSOLUTE RULE):
         # A streak >= 3 just broke into the opposite outcome (s_streak == 1).
@@ -3160,13 +3163,33 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = "Choppy noise filtered: Preserving capital until high-conviction sniper entry."
     else:
         detected_pattern_name = target_pattern
-        # Empirical Number Shots based on Digit Markov Transition Matrix:
+        # Empirical Number Shots based on Digit Markov Transition Matrix & Dirichlet Fallback:
         cand_nums = [5, 6, 7, 8, 9] if target_val == "BIG" else [0, 1, 2, 3, 4]
         trans_counts = {}
         for i in range(len(nums) - 1):
             if nums[i] == last_num and nums[i + 1] in cand_nums:
                 trans_counts[nums[i + 1]] = trans_counts.get(nums[i + 1], 0) + 1
-        sorted_cands = sorted(cand_nums, key=lambda n: trans_counts.get(n, 0), reverse=True)
+
+        recent_window = nums[-60:] if len(nums) >= 60 else nums
+        rec_counts = {c: recent_window.count(c) for c in cand_nums}
+        dorm_map = {}
+        for c in cand_nums:
+            gap = 0
+            found = False
+            for n_past in reversed(nums):
+                if n_past == c:
+                    found = True
+                    break
+                gap += 1
+            dorm_map[c] = gap if found else len(nums)
+
+        def _score_cand(n):
+            tc = trans_counts.get(n, 0)
+            rf = rec_counts.get(n, 0)
+            dm = min(15, dorm_map.get(n, 0))
+            return (tc * 5.0) + (rf * 1.5) + (dm * 0.4)
+
+        sorted_cands = sorted(cand_nums, key=_score_cand, reverse=True)
         top_shots = sorted_cands[:2]
         jackpot_tip = f"{top_shots[0]}, {top_shots[1]}"
         predicted_single_num = top_shots[0]
@@ -3182,6 +3205,18 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_conf = 50.0
             signal_grade = "SKIP"
 
+    is_high_stake_trade = bool(
+        target_type == "SIZE" and
+        target_val in ("BIG", "SMALL") and
+        not arbiter_wants_skip and
+        (
+            (has_ai_quant_concurrence and size_margin_pct >= 15.0) or
+            (has_solid_quant_consensus and calc_conf >= 63.0 and size_margin_pct >= 18.0) or
+            (s_streak >= 3 and size_margin_pct >= 12.0) or
+            (has_confirmed_structure and size_margin_pct >= 14.0)
+        )
+    )
+
     return {
         "target_type": target_type,
         "target_val": target_val,
@@ -3196,7 +3231,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         "expected_nums": expected_nums_tip,
         "opposite_nums": opposite_nums_tip,
         "signal_grade": signal_grade,
-        "pattern_name": detected_pattern_name
+        "pattern_name": detected_pattern_name,
+        "is_high_stake": is_high_stake_trade,
+        "size_margin_pct": size_margin_pct
     }
 
 # ====================================================
@@ -3348,12 +3385,8 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     prob_line = f"Est. Win Probability: {confidence:.1f}%" if confidence and confidence > 50.0 else "Est. Win Probability: ~55-65%"
 
     is_high_prob = bool(
-        (confidence and confidence >= 63.0) or
-        "High" in str(consensus_tag) or
-        "Dragon" in str(strategy_text) or
-        "Trend" in str(strategy_text) or
-        "Concurrence" in str(strategy_text) or
-        "Unanimity" in str(consensus_tag)
+        pred.get("is_high_stake", False) or
+        (confidence and confidence >= 63.5 and "High" in str(consensus_tag))
     )
 
     if is_high_prob:
