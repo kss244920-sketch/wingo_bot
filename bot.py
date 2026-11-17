@@ -2593,12 +2593,17 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 '{"prediction": "BIG"|"SMALL"|"SKIP", "confidence": 50-95, "pattern": "Strategy Name", "reason": "3-6 words rationale"}'
             )
 
+            all_rate_limited = True
             for provider in AI_PROVIDERS:
                 if ai_ok:
                     break
                 p_token = provider.get("token")
                 if not p_token:
                     continue
+                if time.time() < provider.get("cooldown_until", 0):
+                    continue
+
+                all_rate_limited = False
                 p_url = provider.get("url")
                 p_name = provider.get("name")
                 p_headers = {
@@ -2647,10 +2652,15 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                             except Exception:
                                 continue
                         elif r_ai.status_code == 429:
-                            print(f"⚠️ [{p_name} 429 RATE LIMIT] {mdl} rate limited, falling over to next model...", flush=True)
-                            continue
+                            provider["cooldown_until"] = time.time() + 600
+                            print(f"⚠️ [{p_name} 429 RATE LIMIT] Put on 10m cooldown, falling over to next provider...", flush=True)
+                            break
                     except Exception as e:
                         continue
+
+            if not ai_ok and all_rate_limited:
+                AI_COOLDOWN_UNTIL = time.time() + 180
+                print("⏳ [AI RATE LIMIT SHIELD] All AI providers on cooldown. Pure-Math Quants running autonomously.", flush=True)
         except Exception as e:
             print(f"[MASTER AI ERROR] {e}", flush=True)
 
