@@ -3335,7 +3335,7 @@ def to_bold(text):
 LAST_SENT_SIGNAL_PERIOD = None
 LAST_SENT_RESULT_PERIOD = None
 
-def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None, predicted_num=None):
+def send_user_signal(target_period, target_type, target_val, confidence=0.0, reason="", consensus_tag="16-Agent Council", violet_alert=False, signal_grade="LEVEL_1", jackpot_tip=None, pattern_name=None, opposite_nums=None, predicted_num=None, is_high_stake=False):
     global LAST_SENT_SIGNAL_PERIOD
     short_period = target_period[-4:] if len(target_period) >= 4 else target_period
 
@@ -3390,7 +3390,7 @@ def send_user_signal(target_period, target_type, target_val, confidence=0.0, rea
     prob_line = f"Est. Win Probability: {confidence:.1f}%" if confidence and confidence > 50.0 else "Est. Win Probability: ~55-65%"
 
     is_high_prob = bool(
-        pred.get("is_high_stake", False) or
+        is_high_stake or
         (confidence and confidence >= 63.5 and "High" in str(consensus_tag))
     )
 
@@ -3789,10 +3789,11 @@ def run_live_bot():
                                 "expected_nums": decision.get("expected_nums"),
                                 "opposite_nums": decision.get("opposite_nums"),
                                 "grade": signal_grade,
-                                "pattern_name": pattern_name
+                                "pattern_name": pattern_name,
+                                "is_high_stake": decision.get("is_high_stake", False)
                             }
                             save_cache()
-                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"))
+                            send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"), is_high_stake=decision.get("is_high_stake", False))
 
         except Exception as e:
             print(f"[LOOP ERROR] {e}", flush=True)
