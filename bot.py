@@ -2263,7 +2263,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     - Dual-Layer Sniper Filter: Skips chaotic 50/50 noise; executes high-probability Pinterest roadmaps!
     - Delivers direct Level 1 accuracy.
     """
-    global POST_STOP_LOSS_COOLDOWN, GROQ_COOLDOWN_UNTIL
+    global POST_STOP_LOSS_COOLDOWN, GROQ_COOLDOWN_UNTIL, AI_COOLDOWN_UNTIL
     if consecutive_skips >= 1:
         POST_STOP_LOSS_COOLDOWN = 0
 
