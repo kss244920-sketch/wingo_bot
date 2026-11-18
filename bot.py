@@ -276,8 +276,15 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             try:
-                latest_p = list(MEMORY_PREDICTIONS.keys())[-1] if MEMORY_PREDICTIONS else "--"
-                pred_info = MEMORY_PREDICTIONS.get(latest_p, {})
+                if MEMORY_PREDICTIONS:
+                    latest_p = list(MEMORY_PREDICTIONS.keys())[-1]
+                    pred_info = MEMORY_PREDICTIONS.get(latest_p, {})
+                elif LAST_ACTIVE_PREDICTION:
+                    latest_p = LAST_ACTIVE_PREDICTION.get("period", "--")
+                    pred_info = LAST_ACTIVE_PREDICTION
+                else:
+                    latest_p = "--"
+                    pred_info = {}
                 t_val = pred_info.get("target_val", "WAITING")
                 
                 pred_cls = ""
@@ -420,6 +427,7 @@ HEADERS = {
 MEMORY_HISTORY = []      # List of {"period": ..., "num": ..., "color": ..., "size": ..., "has_violet": ...}
 KNOWN_PERIODS = set()    # O(1) set to prevent duplicates
 MEMORY_PREDICTIONS = {}  # {target_period: {"color": ..., "size": ..., "conf": ..., "reason": ..., "consensus": ..., "violet_alert": ..., "grade": ...}}
+LAST_ACTIVE_PREDICTION = {} # Preserves active prediction during 1-2s transition to avoid WAITING/-- UI flicker
 SETTLED_HISTORY = []     # Rolling authentic record of completed rounds: [{"period": ..., "target_val": ..., "actual_num": ..., "is_win": ..., "status": ...}]
 
 CURRENT_LOSS_STREAK = 0  # 0 = Level 1, 1 = Level 2, 2 = Level 3, 3 = Level 4, 4 = Level 5
@@ -2687,7 +2695,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                                         ai_tgt = "SKIP"
                                     if ai_tgt:
                                         raw_conf = res_json.get("confidence")
-                                        ai_conf = float(raw_conf) if raw_conf and float(raw_conf) > 0 else (85.0 if ai_tgt != "SKIP" else 50.0)
+                                        clean_conf = re.sub(r"[^\d.]", "", str(raw_conf)) if raw_conf else ""
+                                        ai_conf = float(clean_conf) if clean_conf else (75.0 if ai_tgt != "SKIP" else 50.0)
                                         ai_pat = str(res_json.get("pattern", "Neural Pattern")).strip()
                                         ai_reason = str(res_json.get("reason", "Pattern continuation")).strip()
                                         ai_ok = True
@@ -3782,6 +3791,7 @@ def run_live_bot():
                         if t_type == "SKIP" or t_val in ("SKIP", "None", None, "") or t_val not in ("BIG", "SMALL"):
                             CONSECUTIVE_SKIPS += 1
                             MEMORY_PREDICTIONS[next_target_period] = {"target_type": "SKIP", "target_val": "SKIP"}
+                            LAST_ACTIVE_PREDICTION = {"period": next_target_period, "target_type": "SKIP", "target_val": "SKIP"}
                             save_cache()
                             send_user_signal(next_target_period, "SKIP", "SKIP", 0.0)
                             print(f"⏸️ [ROUND SKIPPED] Period: ...{next_target_period[-4:]} | Zero risk, Level {CURRENT_LOSS_STREAK + 1} recovery preserved.", flush=True)
@@ -3805,6 +3815,7 @@ def run_live_bot():
                                 "pattern_name": pattern_name,
                                 "is_high_stake": decision.get("is_high_stake", False)
                             }
+                            LAST_ACTIVE_PREDICTION = {"period": next_target_period, **MEMORY_PREDICTIONS[next_target_period]}
                             save_cache()
                             send_user_signal(next_target_period, t_type, t_val, t_conf, reason, consensus_tag, violet_alert, signal_grade, jackpot_tip, pattern_name, decision.get("opposite_nums"), decision.get("predicted_num"), is_high_stake=decision.get("is_high_stake", False))
 
