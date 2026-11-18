@@ -67,8 +67,10 @@ RESTART_PENDING_UNTIL = 0
 
 HISTORY_API_URLS = [
     "https://draw.ar-lottery02.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
-    "https://draw.ar-lottery.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
-    "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
+    "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery03.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery04.com/WinGo/WinGo_1M/GetHistoryIssuePage.json",
+    "https://draw.ar-lottery05.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
 ]
 HISTORY_API_URL = HISTORY_API_URLS[0]
 
@@ -360,7 +362,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             response_data = {
                 "status": "healthy",
-                "version": "2.5.3",
+                "version": "2.5.4",
                 "service": "wingo_council_bot",
                 "active_level": CURRENT_LOSS_STREAK + 1,
                 "rounds_in_memory": len(MEMORY_HISTORY),
@@ -2184,7 +2186,7 @@ def detect_market_patterns(history_items):
 
     sum_lo = sum(prob_weights[k] * _lo(probabilities[k]) for k in prob_weights)
     sum_w = sum(prob_weights.values())
-    eff_denom = (sum_w ** 0.85) if sum_w > 0 else 1.0
+    eff_denom = sum_w if sum_w > 0 else 1.0
     scaled_lo = max(-20.0, min(20.0, sum_lo / eff_denom))
     raw_p_big = 1.0 / (1.0 + math.exp(-scaled_lo))
     unified_p_big = min(0.725, max(0.275, raw_p_big))
@@ -2867,8 +2869,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
     final_summary = ""
     detected_pattern_name = None
     has_ai_quant_concurrence = bool(
-        (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 70.0 and has_solid_quant_consensus)
-        or (not ai_ok and has_solid_quant_consensus and size_margin_pct >= 20.0)
+        (ai_ok and ai_tgt in ("BIG", "SMALL") and ai_tgt == w_size and ai_conf >= 60.0 and (size_margin_pct >= 12.0 or has_solid_quant_consensus))
+        or (not ai_ok and (has_solid_quant_consensus or size_margin_pct >= 18.0))
     )
 
     if current_loss_streak > 0:
@@ -2884,8 +2886,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
         # 🐉 POST-DRAGON BREAK TRANSITION SHIELD (ABSOLUTE RULE):
         # A streak >= 3 just broke into the opposite outcome (s_streak == 1).
         # In this immediate next round, the market is 50/50 between a 2-cluster (BB) and a 1-cut (BS).
-        # Safe Skip 1 round only to confirm direction.
-        if is_post_dragon_transition and consecutive_skips < 1:
+        # Safe Skip 1 round only to confirm direction unless AI & Quant have strong concurrence.
+        if is_post_dragon_transition and not has_ai_quant_concurrence and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2897,7 +2899,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🛡️ [POST-DRAGON BREAK SHIELD] Dragon of {prev_dragon_len} broke! Skipping Level {cur_lvl} to avoid 1-cut trap!", flush=True)
 
         # 🏰 LEVEL 3 CAPITAL FORTRESS SHIELD:
-        elif cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or is_2_2) and consecutive_skips < 2:
+        elif cur_lvl >= 3 and not (has_ai_quant_concurrence or s_streak >= 3 or is_2_2 or size_margin_pct >= 14.0) and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2909,7 +2911,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🏰 [LEVEL {cur_lvl} CAPITAL FORTRESS] Safe Skip to preserve {mult}X bullet for high-conviction setup!", flush=True)
 
         # 🛡️ LEVEL 2 POST-BREAK TRANSITION SHIELD (3X PRESERVATION):
-        elif cur_lvl == 2 and not (has_ai_quant_concurrence or s_streak >= 3 or s_alt >= 4 or is_2_2) and consecutive_skips < 2:
+        elif cur_lvl == 2 and not (has_ai_quant_concurrence or s_streak >= 3 or s_alt >= 4 or is_2_2 or size_margin_pct >= 12.0) and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2921,7 +2923,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🛡️ [LEVEL 2 TRANSITION SHIELD] Post-break ambiguity filtered. SAFE SKIP (Level {cur_lvl} Preserved).", flush=True)
 
         # 🛑 ABSOLUTE AI HARD VETO IN RECOVERY: Never risk 3X/8X recovery on AI-flagged noise
-        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 3:
+        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2933,7 +2935,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🛡️ [RECOVERY AI VETO] Master AI advises SKIP at Level {cur_lvl}! SAFE SKIP (Bullet Preserved).", flush=True)
 
         # ⚔️ RECOVERY ANTI-CONFLICT SHIELD: Never risk recovery bullets (3X/8X) when AI and Quants disagree!
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and w_size in ("BIG", "SMALL") and ai_tgt != w_size and consecutive_skips < 2:
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and w_size in ("BIG", "SMALL") and ai_tgt != w_size and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -2944,7 +2946,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             final_summary = f"Recovery Conflict: AI ({ai_tgt}) opposes Quants ({w_size}). Level {cur_lvl} preserved."
             print(f"🛡️ [RECOVERY CONFLICT SHIELD] AI opposes Quants at Level {cur_lvl}! SAFE SKIP (Bullet Preserved).", flush=True)
 
-        elif (is_violent_chaos and consecutive_skips < 2 and size_margin_pct < 14.0):
+        elif (is_violent_chaos and consecutive_skips < 1 and size_margin_pct < 14.0):
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -3003,8 +3005,8 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             target_conf = min(72.5, round(calc_conf + 2.0, 1))
             print(f"⚡ [RECOVERY CHOP ALIGNMENT] Re-aligning recovery to {opp_s} chop swing! Striking {target_val} ({mult}X).", flush=True)
 
-        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 82.0 and size_margin_pct >= 10.0 and (not has_solid_quant_consensus or w_size == ai_tgt):
-            # TIER 5 RECOVERY: Master AI Directional Insight (Requires >= 82% conf and no direct quant opposition)
+        elif ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 62.0 and size_margin_pct >= 10.0 and (not has_solid_quant_consensus or w_size == ai_tgt):
+            # TIER 5 RECOVERY: Master AI Directional Insight (Requires >= 62% conf and no direct quant opposition)
             target_val = ai_tgt
             CURRENT_CYCLE_TARGET = ai_tgt
             target_type = "SIZE"
@@ -3041,9 +3043,9 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
 
     else:
         # 👑 LEVEL 1 (1X BASE PLAY): AI & Quant Harmonious Confluence
-        if POST_STOP_LOSS_COOLDOWN > 0 and consecutive_skips < 3:
-            # Smart Rebound: If Master AI & Quants have high confluence (>= 85%), execute & win!
-            if ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 85.0 and size_margin_pct >= 20.0 and ai_tgt == w_size:
+        if POST_STOP_LOSS_COOLDOWN > 0 and consecutive_skips < 2:
+            # Smart Rebound: If Master AI & Quants have high confluence (>= 68%), execute & win!
+            if ai_ok and ai_tgt in ("BIG", "SMALL") and ai_conf >= 68.0 and size_margin_pct >= 16.0 and ai_tgt == w_size:
                 POST_STOP_LOSS_COOLDOWN = 0
                 target_val = ai_tgt
                 target_pattern = f"Post Stop-Loss Sniper Strike ({target_val})"
@@ -3058,7 +3060,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
                 is_qualified_bet = False
                 final_summary = "Post Stop-Loss Capital Cooldown: Settling market after hard cap."
                 print(f"🛡️ [STOP-LOSS COOLDOWN] Settling market after stop-loss. SAFE SKIP.", flush=True)
-        elif is_post_dragon_transition and consecutive_skips < 1:
+        elif is_post_dragon_transition and not has_ai_quant_concurrence and consecutive_skips < 1:
             arbiter_wants_skip = True
             is_qualified_bet = False
             final_summary = f"Post-Dragon Transition: Dragon of {prev_dragon_len} broke. Preserving base capital."
@@ -3106,7 +3108,7 @@ def ask_12_ai_council(history_items, current_loss_streak=0, consecutive_skips=0,
             print(f"🧠 [AI-QUANT CONCURRENCE] Council aligns on {target_val} ({target_conf:.0f}%)", flush=True)
 
         # 🛑 ABSOLUTE AI HARD VETO: When Master AI flags noise, chop, or advises SKIP on weak setups
-        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 2 and size_margin_pct < 18.0:
+        elif ai_ok and ai_tgt == "SKIP" and consecutive_skips < 1 and size_margin_pct < 18.0:
             arbiter_wants_skip = True
             is_qualified_bet = False
             target_type = "SKIP"
@@ -3613,7 +3615,7 @@ def send_user_result(period, actual_number, actual_color, pred):
 def run_live_bot():
     global CONSECUTIVE_SKIPS, CURRENT_LOSS_STREAK, CURRENT_CYCLE_TARGET, TOTAL_WINS, TOTAL_LOSSES, TOTAL_CYCLES, CYCLE_WINS, CYCLE_LOSSES, MEMORY_PREDICTIONS, MEMORY_HISTORY, KNOWN_PERIODS, LOOP_CYCLES, LAST_PROCESSED_PERIOD, LAST_LOOP_ERROR, RESTART_PENDING, RESTART_PENDING_UNTIL
     print("=" * 65)
-    print("🚀 WinGo 1M Quantitative Statistical Ensemble & AI Supervisor ACTIVE (v2.5.0)")
+    print("🚀 WinGo 1M Quantitative Statistical Ensemble & AI Supervisor ACTIVE (v2.5.4)")
     print("📊 Real Mathematical Engine: Markov N-Gram, Bayesian Laplace, EWMA, Baccarat Roads")
     print("🧠 Master Neural AI: Multi-Provider Supervisor (Copilot GPT-4o / Gemini / Groq)")
     print("🛡️ Risk Engine: 3-Bullet Capital Fortress (1X, 3X, 8X) | Pure Laplace Edge")
@@ -3674,7 +3676,7 @@ def run_live_bot():
                         if p:
                             save_to_memory(p, int(item.get("number", 0)), str(item.get("color", "")), auto_save=False)
                     try:
-                        MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
+                        MEMORY_HISTORY.sort(key=lambda x: int(x["period"]) if str(x["period"]).isdigit() else 0)
                     except Exception:
                         pass
                     seed_settled_history_if_needed()
@@ -3734,7 +3736,7 @@ def run_live_bot():
 
                     if new_added:
                         try:
-                            MEMORY_HISTORY.sort(key=lambda x: int(x["period"]))
+                            MEMORY_HISTORY.sort(key=lambda x: int(x["period"]) if str(x["period"]).isdigit() else 0)
                         except Exception:
                             pass
                         save_cache()
